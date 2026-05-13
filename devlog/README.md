@@ -24,3 +24,4 @@
 | # | 단계 | 날짜 | 상태 |
 |---|---|---|---|
 | 01 | [프로젝트 셋업](01-project-setup.md) | 2026-05-13 | ✅ |
+| 02 | [Foundation Skeleton — 빌드 시스템 부트스트랩](02-foundation-skeleton.md) | 2026-05-13 | ✅ |
