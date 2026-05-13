@@ -1,0 +1,85 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vcxproj.user
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+
+# Build output
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Bb]uild/
+build*/
+cmake-build-*/
+
+# Compiled files
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.obj
+*.o
+*.idb
+*.iobj
+*.ipdb
+*.lastbuildstate
+*.unsuccessfulbuild
+*.tlog
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Shader compile cache
+*.cso
+shaders/compiled/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+._*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Profiler / GPU capture
+*.rdc
+*.pix2
+*.nsight-*
+
+# Temporary
+*.tmp
+*.bak
+*.log
