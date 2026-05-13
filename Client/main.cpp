@@ -1,11 +1,13 @@
 // WIN32_LEAN_AND_MEAN / NOMINMAX 는 vcxproj 전역 PreprocessorDefinitions 에서 정의.
 #include <Windows.h>
 
+#include <cstdint>
 #include <stdexcept>
 
 #include "platform/Window.h"
 #include "render/Device.h"
 #include "render/CommandQueue.h"
+#include "render/RtvDescriptorHeap.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance,
@@ -21,14 +23,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     try
     {
-        engine::platform::Window   window(1280, 720, L"portfolio_engine");
-        engine::render::Device     device;
-        engine::render::CommandQueue commandQueue(device);
+        constexpr std::uint32_t kSwapChainBufferCount = 2;
+
+        engine::platform::Window         window(1280, 720, L"portfolio_engine");
+        engine::render::Device           device;
+        engine::render::CommandQueue     commandQueue(device);
+        engine::render::RtvDescriptorHeap rtvHeap(device, kSwapChainBufferCount);
 
         while (window.IsOpen())
         {
             window.PumpMessages();
-            // TODO(phase1d): SwapChain Clear → Present
+            // TODO(phase1d-3): SwapChain Clear → Present (rtvHeap 사용)
         }
     }
     catch (const std::exception& e)

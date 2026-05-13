@@ -54,11 +54,11 @@
 ### 3-2. 파일
 
 - 클래스 1개에 대응하는 파일 쌍: `<ClassName>.h` + `<ClassName>.cpp`.
-- 폴더 구조가 네임스페이스를 미러: `engine::platform` → `src/engine/platform/`.
+- 폴더 구조가 네임스페이스를 미러: `engine::platform` → `Engine/platform/` (Engine.vcxproj 안).
 
 ### 3-3. 타입 alias
 
-`engine/core/types.h` (예정) 에 정의 후 본 프로젝트 전역 사용.
+`Engine/core/Types.h` (예정) 에 정의 후 Engine 모듈 전역 사용.
 
 ```cpp
 #pragma once

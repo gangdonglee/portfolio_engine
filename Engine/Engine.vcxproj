@@ -81,11 +81,13 @@
     <ClCompile Include="platform\Window.cpp" />
     <ClCompile Include="render\Device.cpp" />
     <ClCompile Include="render\CommandQueue.cpp" />
+    <ClCompile Include="render\RtvDescriptorHeap.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h" />
     <ClInclude Include="render\Device.h" />
     <ClInclude Include="render\CommandQueue.h" />
+    <ClInclude Include="render\RtvDescriptorHeap.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
