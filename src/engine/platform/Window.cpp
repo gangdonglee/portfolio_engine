@@ -27,7 +27,9 @@ namespace engine::platform
             wc.lpfnWndProc   = &Window::StaticWndProc;
             wc.hInstance     = CurrentInstance();
             wc.hCursor       = ::LoadCursorW(nullptr, IDC_ARROW);
-            wc.hbrBackground = nullptr; // 렌더러가 직접 채운다.
+            // Phase 1D(SwapChain Clear) 도입 시 nullptr 로 복원 예정.
+            // 그 전까지는 흰색 백버퍼 잔상으로 혼동되지 않도록 어두운 회색을 임시 표시.
+            wc.hbrBackground = reinterpret_cast<HBRUSH>(::GetStockObject(DKGRAY_BRUSH));
             wc.lpszClassName = kWindowClassName;
 
             if (::RegisterClassExW(&wc) == 0)
