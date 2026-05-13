@@ -88,15 +88,31 @@
 ### 4-6. 한글 인코딩 처리
 모든 한글 마크다운 파일에 **UTF-8 BOM** 적용. 한국어 Windows 환경 일부 에디터가 BOM 없는 UTF-8을 CP949로 오인식해 깨지는 문제 사전 방지.
 
-## 5. 마주친 문제와 해결
+## 5. 마주친 문제와 해결 ⚠ 필수 — 빠짐없이 기록
 
 ### 문제 1 — Git 글로벌 user.name/email 미설정
+- **문제**: `git commit` 직전 검사 시 글로벌 git 사용자 정보가 비어 있어 커밋 실패 위험.
 - **원인**: 사용자 PC에 글로벌 git config 미설정.
-- **해결**: 사용자 허락 받은 뒤 본 레포에만 로컬 config로 설정 (`git config --local`). 다른 레포에 영향 없음.
+- **해결**: 사용자에게 이름·이메일 확인 받은 뒤 본 레포에만 로컬 config로 설정 (`git config --local user.name "Kangdong Lee"`, `git config --local user.email "kd2zzang@gmail.com"`). 다른 레포에 영향 없음.
+- **교훈**: 새 PC/새 레포에서는 첫 커밋 전 `git config user.name`/`user.email` 사전 확인. 글로벌 미설정 발견 시 로컬로 한정 설정 (사용자 의도 보호).
 
 ### 문제 2 — Write 도구가 BOM 없이 UTF-8 저장
-- **원인**: Claude Code의 Write 도구는 UTF-8(BOM 없음)이 기본. 한국어 Windows의 일부 에디터는 BOM이 없으면 CP949로 자동 추정해 한글이 깨짐.
-- **해결**: Write 직후 PowerShell로 `System.Text.UTF8Encoding($true)` 적용해 BOM 추가. 이 규칙을 메모리에 저장(`feedback-korean-bom`)해 모든 후속 한글 문서에 자동 적용.
+- **문제**: 한글 .md 파일이 일부 에디터에서 깨짐.
+- **원인**: Claude Code의 Write 도구는 UTF-8(BOM 없음)이 기본. 한국어 Windows의 일부 에디터는 BOM이 없으면 CP949로 자동 추정.
+- **해결**: Write 직후 PowerShell로 BOM 추가: `$utf8Bom = New-Object System.Text.UTF8Encoding($true); [System.IO.File]::WriteAllText($path, $content, $utf8Bom)`. 메모리에 규칙 저장(`feedback-korean-bom`)해 모든 후속 한글 문서에 자동 적용.
+- **교훈**: 한글 콘텐츠 .md/.txt 작성 후 즉시 BOM 적용. 코드 파일(.cpp/.h/.hlsl)에는 적용 금지(컴파일러 호환성).
+
+### 문제 3 — Bash 도구로 한글 경로 + 따옴표 명령 시 파싱 에러
+- **문제**: 메모리 디렉토리 존재 확인을 위해 Bash로 `ls "C:\Users\이강동_2\.claude\projects\d--Things\memory\" 2>/dev/null || echo "EMPTY_OR_NEW"` 실행 → `bash: eval: line 1: unexpected EOF while looking for matching '` 에러 후 exit 2.
+- **원인**: Git Bash가 Windows 백슬래시 경로 + 한글 + 따옴표의 조합을 처리하며 따옴표 매칭 파서가 오작동. 또는 trailing `\"` 가 escape로 해석돼 다음 따옴표 매칭이 깨짐.
+- **해결**: PowerShell로 전환: `if (Test-Path $mem) { Get-ChildItem $mem -Force | ... } else { Write-Output "MEMORY_DIR_NOT_EXIST" }`. PowerShell은 백슬래시·한글·따옴표 처리가 안정적.
+- **교훈**: 한글 경로 또는 백슬래시 포함 Windows 경로 다룰 때는 **Bash 대신 PowerShell 우선**. Bash는 UNIX 경로(`/d/Things/...`)에서만 안전.
+
+### 문제 4 — PowerShell 병렬 호출 중 한 건 취소
+- **문제**: 환경 점검 시 3개 PowerShell 명령을 병렬 호출했는데 git config 체크가 exit 1로 끝나며 vswhere 검사가 "Cancelled: parallel tool call PowerShell errored" 로 취소됨.
+- **원인**: 병렬 도구 호출 그룹에서 한 건이 실패하면 같은 그룹의 나머지가 취소되는 도구 실행 메커니즘. git config --global의 미설정 값 조회는 git에서 exit 1을 반환하는데 이게 그룹 실패로 인식됨.
+- **해결**: 실패한 명령을 별도 메시지로 분리해 재실행. 동시에 git config 결과를 사용자 질문으로 분기 처리.
+- **교훈**: 병렬 호출 시 **각 명령이 독립적으로 exit 0 가능한지** 사전 확인. 결과가 없을 수 있는 조회(`git config --get`, `where.exe`)는 단독 호출 또는 `2>$null; if ($?)...` 가드로 감싸기.
 
 ## 6. 결과 / 검증
 
