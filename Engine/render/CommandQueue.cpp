@@ -1,5 +1,6 @@
 #include "render/CommandQueue.h"
 
+#include "render/CommandList.h"
 #include "render/Device.h"
 
 #include <Windows.h>
@@ -139,6 +140,13 @@ namespace engine::render
     {
         const std::uint64_t value = Signal();
         WaitForFenceValue(value);
+    }
+
+    void CommandQueue::Execute(CommandList& list)
+    {
+        // ID3D12GraphicsCommandList 는 ID3D12CommandList 의 파생. 암시 변환.
+        ID3D12CommandList* lists[] = { list.Native() };
+        m_queue->ExecuteCommandLists(_countof(lists), lists);
     }
 
     ID3D12CommandQueue* CommandQueue::Native() const noexcept

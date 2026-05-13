@@ -10,6 +10,7 @@ struct ID3D12Fence;
 namespace engine::render
 {
     class Device;
+    class CommandList;
 
     // Windows HANDLE 등가. 헤더에서 Windows.h 의존을 회피하기 위한 타입 alias.
     using FenceEventHandle = void*;
@@ -52,6 +53,10 @@ namespace engine::render
 
         // Signal + WaitForFenceValue. 모든 GPU 작업 완료를 보장.
         void FlushGpu();
+
+        // CommandList 1개를 GPU 에 제출.
+        // 호출 전 list 는 Close() 된 상태여야 한다 (호출자 책임).
+        void Execute(CommandList& list);
 
         // raw COM 포인터 노출 — engine::render 내부 사용 전용.
         ID3D12CommandQueue* Native() const noexcept;
