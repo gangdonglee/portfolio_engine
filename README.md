@@ -33,8 +33,8 @@
 ## 문서
 
 - [ORCHESTRATION.md](ORCHESTRATION.md) — Claude Code 서브에이전트 활용 운영 지침
+- [devlog/](devlog/) — 단계별 상세 작업 기록 (포트폴리오 PPT 원천 자료)
 - (예정) [ARCHITECTURE.md](ARCHITECTURE.md) — 모듈 구조와 의존성
-- (예정) `devlog/` — 결정 기록 및 회고
 
 ## 진행 상황
 
