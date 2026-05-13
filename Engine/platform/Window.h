@@ -6,13 +6,15 @@
 #include <string>
 #include <string_view>
 
+namespace engine::render { class SwapChain; }  // Window::NativeHwnd 친구 접근용
+
 namespace engine::platform
 {
     // Win32 윈도우를 RAII로 캡슐화한다.
     // - 생성자에서 윈도우 클래스 등록(최초 1회)·HWND 생성·표시까지 수행.
     // - 소멸자에서 HWND 파괴.
     // - 단일 소유(복사·이동 금지). HWND 는 하나의 인스턴스만 보유한다.
-    class Window
+    class Window final
     {
     public:
         Window(int width, int height, std::wstring_view title);
@@ -33,10 +35,14 @@ namespace engine::platform
         int  Width()  const noexcept { return m_width; }
         int  Height() const noexcept { return m_height; }
 
-        // HWND 외부 노출은 의도적으로 차단. 렌더러(SwapChain) 등 OS 핸들이 필요한
-        // 구성요소는 friend 선언 또는 좁힌 어댑터를 통해 접근하도록 한다.
+        // HWND 외부 노출은 의도적으로 차단.
+        // OS 핸들이 필요한 구성요소(현재 engine::render::SwapChain)는 friend 선언을 통해
+        // 아래 private NativeHwnd() 만 호출 가능. 공개 API 에는 HWND 가 등장하지 않는다.
 
     private:
+        friend class engine::render::SwapChain;
+        HWND NativeHwnd() const noexcept { return m_hwnd; }
+
         static void EnsureClassRegistered();
         static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

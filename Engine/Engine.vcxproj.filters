@@ -35,6 +35,9 @@
     <ClCompile Include="render\RtvDescriptorHeap.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\SwapChain.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
@@ -47,6 +50,9 @@
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="render\RtvDescriptorHeap.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\SwapChain.h">
       <Filter>Header Files\render</Filter>
     </ClInclude>
   </ItemGroup>

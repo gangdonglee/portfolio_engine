@@ -69,7 +69,8 @@ namespace engine::render
         // 멤버가 전방 선언 타입이지만 cpp 에서 정의된 소멸자이므로 이 시점에 완전 타입.
     }
 
-    ID3D12Device* Device::Native() const noexcept { return m_device.Get(); }
+    ID3D12Device*  Device::Native()  const noexcept { return m_device.Get(); }
+    IDXGIFactory6* Device::Factory() const noexcept { return m_factory.Get(); }
 
     void Device::EnableDebugLayer()
     {

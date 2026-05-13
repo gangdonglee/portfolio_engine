@@ -82,12 +82,14 @@
     <ClCompile Include="render\Device.cpp" />
     <ClCompile Include="render\CommandQueue.cpp" />
     <ClCompile Include="render\RtvDescriptorHeap.cpp" />
+    <ClCompile Include="render\SwapChain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h" />
     <ClInclude Include="render\Device.h" />
     <ClInclude Include="render\CommandQueue.h" />
     <ClInclude Include="render\RtvDescriptorHeap.h" />
+    <ClInclude Include="render\SwapChain.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

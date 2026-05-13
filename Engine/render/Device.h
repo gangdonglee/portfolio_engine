@@ -40,8 +40,10 @@ namespace engine::render
         // (Window::Handle 처럼 다중 호출처가 적은 경우와 달리, ID3D12Device 는
         //  렌더 서브시스템 거의 전부가 필요로 하므로 friend 폭증 회피 위해 공개 접근자 채택.)
         // Native() 명칭은 "raw COM 포인터를 그대로 노출한다"는 의도를 호출 측에 명시한다.
-        // Factory/Adapter 는 실제 호출처가 등장하는 시점(예: SwapChain → Factory)에 추가한다.
-        ID3D12Device* Native() const noexcept;
+        ID3D12Device*  Native()  const noexcept;
+        // SwapChain 등 DXGI 직접 사용처에서 필요 (CreateSwapChainForHwnd 등).
+        // 실 사용처 등장 시점(Phase 1D-3 SwapChain) 에 추가됨.
+        IDXGIFactory6* Factory() const noexcept;
 
     private:
         static void EnableDebugLayer();
