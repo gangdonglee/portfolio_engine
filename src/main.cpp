@@ -1,9 +1,10 @@
-#define WIN32_LEAN_AND_MEAN
+// WIN32_LEAN_AND_MEAN / NOMINMAX 는 vcxproj 전역 PreprocessorDefinitions 에서 정의.
 #include <Windows.h>
 
 #include <stdexcept>
 
 #include "engine/platform/Window.h"
+#include "engine/render/Device.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance,
@@ -20,11 +21,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     try
     {
         engine::platform::Window window(1280, 720, L"portfolio_engine");
+        engine::render::Device   device;
 
         while (window.IsOpen())
         {
             window.PumpMessages();
-            // TODO(phase1c): 렌더 / 게임 틱
+            // TODO(phase1d): SwapChain Clear → Present
         }
     }
     catch (const std::exception& e)

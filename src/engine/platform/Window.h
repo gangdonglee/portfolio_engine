@@ -1,6 +1,6 @@
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
+// WIN32_LEAN_AND_MEAN / NOMINMAX 는 vcxproj 전역 PreprocessorDefinitions 에서 정의.
 #include <Windows.h>
 
 #include <string>

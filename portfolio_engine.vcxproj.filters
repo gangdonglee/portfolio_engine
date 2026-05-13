@@ -15,11 +15,17 @@
     <Filter Include="Source Files\engine\platform">
       <UniqueIdentifier>{A0E1C002-1111-2222-3333-444444444444}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\engine\render">
+      <UniqueIdentifier>{A0E1C003-1111-2222-3333-444444444444}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\engine">
       <UniqueIdentifier>{B0E1C001-1111-2222-3333-444444444444}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\engine\platform">
       <UniqueIdentifier>{B0E1C002-1111-2222-3333-444444444444}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\engine\render">
+      <UniqueIdentifier>{B0E1C003-1111-2222-3333-444444444444}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -29,10 +35,16 @@
     <ClCompile Include="src\engine\platform\Window.cpp">
       <Filter>Source Files\engine\platform</Filter>
     </ClCompile>
+    <ClCompile Include="src\engine\render\Device.cpp">
+      <Filter>Source Files\engine\render</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\engine\platform\Window.h">
       <Filter>Header Files\engine\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="src\engine\render\Device.h">
+      <Filter>Header Files\engine\render</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
