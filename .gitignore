@@ -83,3 +83,6 @@ $RECYCLE.BIN/
 *.tmp
 *.bak
 *.log
+
+# Claude Code local settings (personal overrides, do not commit)
+.claude/settings.local.json
