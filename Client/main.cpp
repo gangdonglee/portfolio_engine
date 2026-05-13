@@ -3,9 +3,9 @@
 
 #include <stdexcept>
 
-#include "engine/platform/Window.h"
-#include "engine/render/Device.h"
-#include "engine/render/CommandQueue.h"
+#include "platform/Window.h"
+#include "render/Device.h"
+#include "render/CommandQueue.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance,
