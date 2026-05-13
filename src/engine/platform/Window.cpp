@@ -42,7 +42,7 @@ namespace engine::platform
     }
 
     Window::Window(int width, int height, std::wstring_view title)
-        : _width(width), _height(height)
+        : m_width(width), m_height(height)
     {
         EnsureClassRegistered();
 
@@ -56,7 +56,7 @@ namespace engine::platform
 
         const std::wstring titleOwned(title);
 
-        _hwnd = ::CreateWindowExW(
+        m_hwnd = ::CreateWindowExW(
             exStyle,
             kWindowClassName,
             titleOwned.c_str(),
@@ -69,26 +69,26 @@ namespace engine::platform
             CurrentInstance(),
             this); // lpParam → WM_NCCREATE 에서 GWLP_USERDATA 로 저장
 
-        if (_hwnd == nullptr)
+        if (m_hwnd == nullptr)
         {
             throw std::runtime_error("CreateWindowExW failed");
         }
 
-        ::ShowWindow(_hwnd, SW_SHOW);
-        ::UpdateWindow(_hwnd);
-        _isOpen = true;
+        ::ShowWindow(m_hwnd, SW_SHOW);
+        ::UpdateWindow(m_hwnd);
+        m_isOpen = true;
     }
 
     Window::~Window()
     {
-        // 정상 흐름에선 WM_DESTROY 가 _hwnd 를 nullptr 로 비움.
+        // 정상 흐름에선 WM_DESTROY 가 m_hwnd 를 nullptr 로 비움.
         // 이상 흐름(소멸자가 메시지 펌프보다 먼저 호출되는 경우 등) 대비:
         // ① nullptr 가드 ② IsWindow 가드(같은 HWND 가 이미 다른 경로로 파괴된 경우 보호).
-        if (_hwnd != nullptr && ::IsWindow(_hwnd) != FALSE)
+        if (m_hwnd != nullptr && ::IsWindow(m_hwnd) != FALSE)
         {
-            ::DestroyWindow(_hwnd);
+            ::DestroyWindow(m_hwnd);
         }
-        _hwnd = nullptr;
+        m_hwnd = nullptr;
     }
 
     void Window::PumpMessages()
@@ -98,7 +98,7 @@ namespace engine::platform
         {
             if (msg.message == WM_QUIT)
             {
-                _isOpen = false;
+                m_isOpen = false;
                 return;
             }
             ::TranslateMessage(&msg);
@@ -130,8 +130,8 @@ namespace engine::platform
         {
             case WM_SIZE:
             {
-                _width  = LOWORD(lParam);
-                _height = HIWORD(lParam);
+                m_width  = LOWORD(lParam);
+                m_height = HIWORD(lParam);
                 return 0;
             }
             case WM_CLOSE:
@@ -142,7 +142,7 @@ namespace engine::platform
             case WM_DESTROY:
             {
                 // OS 가 윈도우를 이미 파괴 — 소멸자의 중복 DestroyWindow 회피.
-                _hwnd = nullptr;
+                m_hwnd = nullptr;
                 ::PostQuitMessage(0);
                 return 0;
             }

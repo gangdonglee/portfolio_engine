@@ -27,11 +27,11 @@ namespace engine::platform
         // WM_QUIT 를 수신하면 내부 상태를 닫힘으로 전환한다.
         void PumpMessages();
 
-        bool IsOpen() const noexcept { return _isOpen; }
+        bool IsOpen() const noexcept { return m_isOpen; }
 
         // 클라이언트 영역(렌더 가능 영역) 크기. 윈도우 프레임/타이틀바 제외.
-        int  Width()  const noexcept { return _width; }
-        int  Height() const noexcept { return _height; }
+        int  Width()  const noexcept { return m_width; }
+        int  Height() const noexcept { return m_height; }
 
         // HWND 외부 노출은 의도적으로 차단. 렌더러(SwapChain) 등 OS 핸들이 필요한
         // 구성요소는 friend 선언 또는 좁힌 어댑터를 통해 접근하도록 한다.
@@ -41,9 +41,9 @@ namespace engine::platform
         static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-        HWND _hwnd   = nullptr;
-        int  _width  = 0;
-        int  _height = 0;
-        bool _isOpen = false;
+        HWND m_hwnd   = nullptr;
+        int  m_width  = 0;
+        int  m_height = 0;
+        bool m_isOpen = false;
     };
 }
