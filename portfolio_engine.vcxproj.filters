@@ -38,12 +38,18 @@
     <ClCompile Include="src\engine\render\Device.cpp">
       <Filter>Source Files\engine\render</Filter>
     </ClCompile>
+    <ClCompile Include="src\engine\render\CommandQueue.cpp">
+      <Filter>Source Files\engine\render</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\engine\platform\Window.h">
       <Filter>Header Files\engine\platform</Filter>
     </ClInclude>
     <ClInclude Include="src\engine\render\Device.h">
+      <Filter>Header Files\engine\render</Filter>
+    </ClInclude>
+    <ClInclude Include="src\engine\render\CommandQueue.h">
       <Filter>Header Files\engine\render</Filter>
     </ClInclude>
   </ItemGroup>

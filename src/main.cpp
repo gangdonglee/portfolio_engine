@@ -5,6 +5,7 @@
 
 #include "engine/platform/Window.h"
 #include "engine/render/Device.h"
+#include "engine/render/CommandQueue.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance,
@@ -20,8 +21,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     try
     {
-        engine::platform::Window window(1280, 720, L"portfolio_engine");
-        engine::render::Device   device;
+        engine::platform::Window   window(1280, 720, L"portfolio_engine");
+        engine::render::Device     device;
+        engine::render::CommandQueue commandQueue(device);
 
         while (window.IsOpen())
         {
