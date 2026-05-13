@@ -50,9 +50,9 @@ namespace engine::render
         void CreateDevice();
         void ConfigureInfoQueue();
 
-        Microsoft::WRL::ComPtr<IDXGIFactory6>    m_factory;
-        Microsoft::WRL::ComPtr<IDXGIAdapter1>    m_adapter;
-        Microsoft::WRL::ComPtr<ID3D12Device>     m_device;
-        Microsoft::WRL::ComPtr<ID3D12InfoQueue>  m_infoQueue;  // Debug 빌드에서만 set
+        Microsoft::WRL::ComPtr<IDXGIFactory6>    _factory;
+        Microsoft::WRL::ComPtr<IDXGIAdapter1>    _adapter;
+        Microsoft::WRL::ComPtr<ID3D12Device>     _device;
+        Microsoft::WRL::ComPtr<ID3D12InfoQueue>  _infoQueue;  // Debug 빌드에서만 set
     };
 }

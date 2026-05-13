@@ -69,7 +69,7 @@ namespace engine::render
         // 멤버가 전방 선언 타입이지만 cpp 에서 정의된 소멸자이므로 이 시점에 완전 타입.
     }
 
-    ID3D12Device* Device::Native() const noexcept { return m_device.Get(); }
+    ID3D12Device* Device::Native() const noexcept { return _device.Get(); }
 
     void Device::EnableDebugLayer()
     {
@@ -95,7 +95,7 @@ namespace engine::render
         // IDXGIFactory6 직접 요청. EnumAdapterByGpuPreference 사용 위해.
         // Windows 10 1803+ 필요 — 본 프로젝트의 SDK(10.0.26100) 최소요건 안에 포함.
         ThrowIfFailed(
-            ::CreateDXGIFactory2(flags, IID_PPV_ARGS(m_factory.ReleaseAndGetAddressOf())),
+            ::CreateDXGIFactory2(flags, IID_PPV_ARGS(_factory.ReleaseAndGetAddressOf())),
             "CreateDXGIFactory2(IDXGIFactory6)");
     }
 
@@ -105,7 +105,7 @@ namespace engine::render
         for (UINT i = 0;; ++i)
         {
             Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
-            const HRESULT enumHr = m_factory->EnumAdapterByGpuPreference(
+            const HRESULT enumHr = _factory->EnumAdapterByGpuPreference(
                 i,
                 DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
                 IID_PPV_ARGS(candidate.GetAddressOf()));
@@ -130,8 +130,8 @@ namespace engine::render
                 nullptr);
             if (SUCCEEDED(testHr))
             {
-                m_adapter = candidate;
-                LogAdapter(m_adapter.Get());
+                _adapter = candidate;
+                LogAdapter(_adapter.Get());
                 return;
             }
         }
@@ -140,19 +140,19 @@ namespace engine::render
         ::OutputDebugStringW(L"[render] No hardware adapter; falling back to WARP\n");
         Microsoft::WRL::ComPtr<IDXGIAdapter1> warpAdapter;
         ThrowIfFailed(
-            m_factory->EnumWarpAdapter(IID_PPV_ARGS(warpAdapter.GetAddressOf())),
+            _factory->EnumWarpAdapter(IID_PPV_ARGS(warpAdapter.GetAddressOf())),
             "IDXGIFactory6::EnumWarpAdapter");
-        m_adapter = warpAdapter;
-        LogAdapter(m_adapter.Get());
+        _adapter = warpAdapter;
+        LogAdapter(_adapter.Get());
     }
 
     void Device::CreateDevice()
     {
         ThrowIfFailed(
             ::D3D12CreateDevice(
-                m_adapter.Get(),
+                _adapter.Get(),
                 kMinFeatureLevel,
-                IID_PPV_ARGS(m_device.ReleaseAndGetAddressOf())),
+                IID_PPV_ARGS(_device.ReleaseAndGetAddressOf())),
             "D3D12CreateDevice");
     }
 
@@ -160,21 +160,21 @@ namespace engine::render
     {
 #if defined(_DEBUG)
         // Info Queue 인터페이스가 없는 환경(Graphics Tools 미설치 등)에서는 조용히 통과.
-        if (FAILED(m_device.As(&m_infoQueue)))
+        if (FAILED(_device.As(&_infoQueue)))
         {
             ::OutputDebugStringW(L"[render] ID3D12InfoQueue unavailable\n");
             return;
         }
-        m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-        m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR,      TRUE);
-        m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING,    FALSE);
+        _infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+        _infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR,      TRUE);
+        _infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING,    FALSE);
 
         // INFO 메시지는 디버그 출력이 시끄러워지므로 저장 필터에서 제외.
         D3D12_MESSAGE_SEVERITY deniedSeverities[] = { D3D12_MESSAGE_SEVERITY_INFO };
         D3D12_INFO_QUEUE_FILTER filter{};
         filter.DenyList.NumSeverities = static_cast<UINT>(std::size(deniedSeverities));
         filter.DenyList.pSeverityList = deniedSeverities;
-        m_infoQueue->PushStorageFilter(&filter);
+        _infoQueue->PushStorageFilter(&filter);
 
         ::OutputDebugStringW(L"[render] Info queue configured (break on Corruption/Error, INFO filtered)\n");
 #endif

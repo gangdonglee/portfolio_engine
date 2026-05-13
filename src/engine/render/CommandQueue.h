@@ -43,7 +43,7 @@ namespace engine::render
         CommandQueue& operator=(CommandQueue&&)      = delete;
 
         // 큐에 새 펜스 값을 시그널. 시그널된 값을 반환.
-        // Signal 실패 시 내부 m_fenceValue 는 변경되지 않는다 (롤백 안전).
+        // Signal 실패 시 내부 _fenceValue 는 변경되지 않는다 (롤백 안전).
         std::uint64_t Signal();
 
         // 지정 펜스 값에 도달할 때까지 CPU 대기.
@@ -57,9 +57,9 @@ namespace engine::render
         ID3D12CommandQueue* Native() const noexcept;
 
     private:
-        Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_queue;
-        Microsoft::WRL::ComPtr<ID3D12Fence>        m_fence;
-        std::uint64_t    m_fenceValue = 0;
-        FenceEventHandle m_fenceEvent = nullptr;
+        Microsoft::WRL::ComPtr<ID3D12CommandQueue> _queue;
+        Microsoft::WRL::ComPtr<ID3D12Fence>        _fence;
+        std::uint64_t    _fenceValue = 0;
+        FenceEventHandle _fenceEvent = nullptr;
     };
 }
