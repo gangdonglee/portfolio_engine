@@ -12,7 +12,7 @@
 
 | 항목 | 학습 자료 | 본 프로젝트 | 비고 |
 |---|---|---|---|
-| 멤버 변수 prefix | `_camelCase` | **채택** | `_hwnd`, `_fenceValue` |
+| 멤버 변수 prefix | `_camelCase` | **`m_camelCase`** | 학습 자료의 `_` 대신 Microsoft/Unreal 광역 관행 채택 (사용자 결정). 일관성과 외부 코드와의 친화성 우선. |
 | 타입 alias (`int8`/`uint32` 등) | `__int8` 기반 | **채택** (단 `std::int*_t` 베이스) | `using int32 = std::int32_t;` |
 | 클래스/메서드 명명 | `PascalCase` | **채택** | `Init()`, `Device`, `PumpMessages()` |
 | enum class | UPPER_SNAKE 값 + `END` 마커 | **채택** | `CONSTANT_BUFFER_TYPE::TRANSFORM` |
@@ -41,7 +41,7 @@
 | 메서드 / 함수 | PascalCase | `Init()`, `PumpMessages()`, `Signal()` |
 | 인터페이스/추상 | PascalCase | (`I` 접두사 사용 안 함) |
 | 전역 함수 | PascalCase | `ThrowIfFailed()` |
-| **private/protected 멤버 변수** | **`_camelCase`** | `_hwnd`, `_fenceValue`, `_isOpen` |
+| **private/protected 멤버 변수** | **`m_camelCase`** | `m_hwnd`, `m_fenceValue`, `m_isOpen` |
 | public struct field | `camelCase` (그대로) | `width`, `windowed` |
 | 로컬 변수 | camelCase | `backIndex`, `valueToSignal` |
 | 함수 파라미터 | camelCase | `width`, `title` |
@@ -134,8 +134,8 @@ public:
 - 진정 이동 가능해야 할 경우만 명시적 default.
 
 ### 5-3. 멤버 변수
-- `_camelCase` prefix.
-- 디폴트 초기화 권장: `int _width = 0;`, `bool _isOpen = false;`.
+- `m_camelCase` prefix.
+- 디폴트 초기화 권장: `int m_width = 0;`, `bool m_isOpen = false;`.
 - ComPtr 멤버는 자동 nullptr.
 
 ### 5-4. raw COM 노출
@@ -247,7 +247,7 @@ public: static type* GetInstance() { static type instance; return &instance; }
 - 새로운 패턴이 필요해지면 **본 문서에 먼저 추가**한 뒤 코드에 적용.
 
 ### 8-2. 기존 코드
-- 멤버 prefix `m_` → `_` 일괄 변경 (별도 commit, `refactor:` 타입).
+- 멤버 prefix `m_camelCase` 로 통일 (학습 자료의 `_camelCase` 가 아닌 Microsoft/Unreal 관행).
 - 다른 결정 사항은 이미 본 프로젝트가 따르고 있음.
 
 ### 8-3. 검토 루틴
@@ -263,7 +263,7 @@ public: static type* GetInstance() { static type instance; return &instance; }
 ## 9. 빠른 체크리스트 (코드 작성 직전 확인)
 
 - [ ] 클래스: `final` + 4종 delete 명시?
-- [ ] 멤버: `_camelCase` prefix?
+- [ ] 멤버: `m_camelCase` prefix?
 - [ ] 생성자: RAII 일괄 처리 (Init 분리 X)?
 - [ ] 헤더: 큰 SDK 헤더는 .cpp 로? 전방선언 사용?
 - [ ] HRESULT: `ThrowIfFailed` 로?
