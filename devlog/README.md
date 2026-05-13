@@ -27,3 +27,5 @@
 | 02 | [Foundation Skeleton — 빌드 시스템 부트스트랩](02-foundation-skeleton.md) | 2026-05-13 | ✅ |
 | 03 | [Phase 1B — engine::platform::Window 클래스](03-window-class.md) | 2026-05-13 | ✅ |
 | 04 | [Phase 1C — engine::render::Device 초기화](04-device.md) | 2026-05-13 | ✅ |
+| 05 | [Phase 1D-1 — engine::render::CommandQueue](05-command-queue.md) | 2026-05-13 | ✅ |
+| 06 | [코드 스타일 학습 + Engine.lib/Client.exe 분리](06-style-and-split.md) | 2026-05-13 | ✅ |
