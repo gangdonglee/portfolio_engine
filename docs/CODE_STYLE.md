@@ -252,6 +252,14 @@ public: static type* GetInstance() { static type instance; return &instance; }
 
 ### 8-3. 검토 루틴
 - 코드 리뷰(`oop-reviewer`) 호출 시 본 문서의 규칙도 점검 항목.
+
+### 8-4. 프로젝트 구조 (Engine.lib + Client.exe)
+- 모든 엔진 코드는 `Engine/` 폴더 (Engine.vcxproj = StaticLibrary).
+- 게임/도구 코드는 `Client/`, 향후 `Editor/` 등 별도 vcxproj (Application).
+- 의존성 방향: **Client → Engine** 일방.
+- 신규 도구(Editor/AssetCooker/...) 는 Client.vcxproj 패턴 따라 별도 Application 프로젝트로.
+- 자세한 구조·빌드 옵션·신규 모듈 절차는 [ARCHITECTURE.md](ARCHITECTURE.md) 참조.
+- 인클루드: `#include "platform/Window.h"`, `#include "render/Device.h"` (Engine 루트 기준, `engine/` 접두 ❌).
 - 위반 발견 시 즉시 수정 + devlog `§5 마주친 문제와 해결` 에 기록.
 
 ### 8-4. 본 문서의 운영

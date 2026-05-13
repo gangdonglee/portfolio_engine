@@ -26,17 +26,60 @@
 - HLSL Shader Model 6
 - Win32 API
 
+## 프로젝트 구조
+
+```
+portfolio_engine/
+├── Engine/                 # Engine.lib (StaticLibrary)
+│   ├── platform/  (Window, Input 등 OS 계층)
+│   └── render/    (Device, CommandQueue, SwapChain 등 DX12 코어)
+├── Client/                 # Client.exe (Application)
+│   └── main.cpp
+├── shaders/                # HLSL (예정)
+├── assets/                 # 메시·텍스처·애니메이션 (예정)
+├── docs/                   # ARCHITECTURE.md, CODE_STYLE.md
+├── devlog/                 # 단계별 작업 기록
+└── portfolio_engine.sln    # 2개 프로젝트 (Engine + Client)
+```
+
+- 의존성 방향: **Client → Engine** 일방. 자세한 내용은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 참조.
+- 향후 도구(Editor / AssetCooker 등) 는 Client.vcxproj 패턴으로 추가, Engine.lib 재사용.
+
 ## 빌드
 
-세부 절차는 추후 [BUILD.md](BUILD.md) 에 정리. 현재 단계: 초기 셋업.
+### 요구사항
+- Windows 10/11
+- Visual Studio 2022 (v143 toolset)
+- Windows SDK 10.0.26100.0 이상
+
+### MSBuild (CLI)
+```
+"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" ^
+    portfolio_engine.sln /p:Configuration=Debug /p:Platform=x64 /m
+```
+
+### VS2022 IDE
+1. `portfolio_engine.sln` 열기
+2. 솔루션 구성: Debug 또는 Release, 플랫폼: x64
+3. Client 프로젝트 우클릭 → "시작 프로젝트로 설정"
+4. F5 (디버깅 시작) 또는 Ctrl+F5
+
+### 출력
+- `build/x64/{Debug,Release}/Engine.lib`
+- `build/x64/{Debug,Release}/Client.exe`
 
 ## 문서
 
 - [ORCHESTRATION.md](ORCHESTRATION.md) — Claude Code 서브에이전트 활용 운영 지침
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 모듈 구조와 의존성
 - [docs/CODE_STYLE.md](docs/CODE_STYLE.md) — 코드 스타일 가이드 (명명·헤더·클래스 패턴)
 - [devlog/](devlog/) — 단계별 상세 작업 기록 (포트폴리오 PPT 원천 자료)
-- (예정) [ARCHITECTURE.md](ARCHITECTURE.md) — 모듈 구조와 의존성
 
 ## 진행 상황
 
-📍 **현재**: 프로젝트 초기 셋업. 아직 코드 없음.
+📍 **현재**: Phase 1D (SwapChain + 첫 클리어) 진행 중.
+- Phase 1A ✅ Foundation Skeleton (빌드 시스템)
+- Phase 1B ✅ Window 클래스
+- Phase 1C ✅ Device 초기화
+- Phase 1D-1 ✅ CommandQueue
+- Phase 1D-2~ ⏳ DescriptorHeap / SwapChain / 첫 클리어
