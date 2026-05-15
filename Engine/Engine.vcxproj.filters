@@ -44,6 +44,12 @@
     <ClCompile Include="render\ShaderCompiler.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\RootSignature.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="render\PipelineState.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
@@ -65,6 +71,12 @@
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="render\ShaderCompiler.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\RootSignature.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\PipelineState.h">
       <Filter>Header Files\render</Filter>
     </ClInclude>
   </ItemGroup>

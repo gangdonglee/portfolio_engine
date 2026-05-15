@@ -13,6 +13,8 @@
 #include "render/CommandList.h"
 #include "render/CommandQueue.h"
 #include "render/Device.h"
+#include "render/PipelineState.h"
+#include "render/RootSignature.h"
 #include "render/RtvDescriptorHeap.h"
 #include "render/ShaderCompiler.h"
 #include "render/SwapChain.h"
@@ -50,9 +52,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             shaderPath.c_str(),
             "PSMain",
             engine::render::ShaderCompiler::Stage::Pixel);
-        (void)vsBlob;
-        (void)psBlob;
-        // TODO(phase1e-2): vsBlob/psBlob 를 PSO + RootSignature 에 연결.
+
+        // Phase 1E-2: RootSignature(비어있음) + Graphics PSO (HelloTriangle 레이아웃).
+        engine::render::RootSignature rootSig(device);
+
+        engine::render::PipelineState::Desc psoDesc{};
+        psoDesc.vertexShader  = vsBlob.Get();
+        psoDesc.pixelShader   = psBlob.Get();
+        psoDesc.rootSignature = &rootSig;
+        psoDesc.rtvFormat     = DXGI_FORMAT_R8G8B8A8_UNORM;  // SwapChain 백버퍼 포맷
+        engine::render::PipelineState pso(device, psoDesc);
+        (void)pso;
+        // TODO(phase1e-3): VertexBuffer + DrawInstanced 로 첫 삼각형 가시.
 
         // 첫 클리어 색상: 어두운 슬레이트 (RGB 0.05, 0.07, 0.10).
         constexpr float kClearColor[4] = { 0.05f, 0.07f, 0.10f, 1.0f };
