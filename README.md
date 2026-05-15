@@ -94,3 +94,9 @@ Phase 2 (인프라 + 3D 회전):
 - B-4 IndexBuffer + 큐브 + 매 프레임 회전 ✅
 
 **다음 후보**: 카메라 입력 (WASD + 마우스) → 메시 로더 → 텍스처 → 조명.
+
+Phase 3 (전반):
+- C 입력 시스템 + FPS FreeCamera ✅
+- F Phong 조명 (앰비언트 + 디퓨즈 + 스페큘러) ✅
+- D Mesh 클래스 + OBJ 로더 ✅
+- E 텍스처 — 다음 turn 진행 예정

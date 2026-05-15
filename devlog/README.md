@@ -32,3 +32,4 @@
 | 07 | [Phase 1D — SwapChain + 첫 클리어 (1D-2~1D-4)](07-swapchain-and-first-clear.md) | 2026-05-14 | ✅ |
 | 08 | [Phase 1E — 첫 삼각형 (1E-1~1E-3) 🎉](08-first-triangle.md) | 2026-05-15 | ✅ |
 | 09 | [Phase 2 — 인프라 보강 + 회전 큐브 🎲](09-spinning-cube.md) | 2026-05-15 | ✅ |
+| 10 | [Phase 3 전반 — 카메라 입력 + 조명 + 메시 로더 🎮](10-camera-lighting-mesh.md) | 2026-05-15 | ✅ |
