@@ -88,6 +88,7 @@
     <ClCompile Include="render\RootSignature.cpp" />
     <ClCompile Include="render\PipelineState.cpp" />
     <ClCompile Include="render\VertexBuffer.cpp" />
+    <ClCompile Include="render\DepthStencilBuffer.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
   </ItemGroup>
@@ -104,6 +105,7 @@
     <ClInclude Include="render\RootSignature.h" />
     <ClInclude Include="render\PipelineState.h" />
     <ClInclude Include="render\VertexBuffer.h" />
+    <ClInclude Include="render\DepthStencilBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -83,6 +83,25 @@ namespace engine::render
             dss.BackFace  = noOp;
             return dss;
         }
+
+        // 깊이 활성: DepthFunc=LESS, write all. 스텐실은 미사용.
+        D3D12_DEPTH_STENCIL_DESC DepthStencilEnabled() noexcept
+        {
+            D3D12_DEPTH_STENCIL_DESC dss{};
+            dss.DepthEnable      = TRUE;
+            dss.DepthWriteMask   = D3D12_DEPTH_WRITE_MASK_ALL;
+            dss.DepthFunc        = D3D12_COMPARISON_FUNC_LESS;
+            dss.StencilEnable    = FALSE;
+            dss.StencilReadMask  = D3D12_DEFAULT_STENCIL_READ_MASK;
+            dss.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+            const D3D12_DEPTH_STENCILOP_DESC noOp = {
+                D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP,
+                D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS
+            };
+            dss.FrontFace = noOp;
+            dss.BackFace  = noOp;
+            return dss;
+        }
     }
 
     PipelineState::PipelineState(Device& device, const Desc& desc)
@@ -103,10 +122,20 @@ namespace engine::render
         psoDesc.InputLayout.pInputElementDescs = kHelloTriangleInputLayout;
         psoDesc.InputLayout.NumElements        = static_cast<UINT>(std::size(kHelloTriangleInputLayout));
 
-        psoDesc.RasterizerState   = DefaultRasterizer();
-        psoDesc.BlendState        = DefaultBlend();
-        psoDesc.DepthStencilState = DepthStencilDisabled();
-        psoDesc.DSVFormat         = DXGI_FORMAT_UNKNOWN;  // 깊이 버퍼 미사용
+        psoDesc.RasterizerState = DefaultRasterizer();
+        psoDesc.BlendState      = DefaultBlend();
+
+        // 깊이/스텐실 — Desc.dsvFormat 이 UNKNOWN 이면 비활성, 아니면 활성.
+        if (desc.dsvFormat != DXGI_FORMAT_UNKNOWN)
+        {
+            psoDesc.DepthStencilState = DepthStencilEnabled();
+            psoDesc.DSVFormat         = desc.dsvFormat;
+        }
+        else
+        {
+            psoDesc.DepthStencilState = DepthStencilDisabled();
+            psoDesc.DSVFormat         = DXGI_FORMAT_UNKNOWN;
+        }
 
         psoDesc.SampleMask            = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;

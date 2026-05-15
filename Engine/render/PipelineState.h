@@ -41,6 +41,10 @@ namespace engine::render
 
             // 렌더 타겟 포맷 — 보통 SwapChain 백버퍼 포맷과 일치.
             DXGI_FORMAT rtvFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+            // 깊이/스텐실 포맷 — DXGI_FORMAT_UNKNOWN 이면 깊이 비활성, 그 외엔 활성.
+            // DepthStencilBuffer 의 Format() 과 일치시킬 것.
+            DXGI_FORMAT dsvFormat = DXGI_FORMAT_UNKNOWN;
         };
 
         PipelineState(Device& device, const Desc& desc);

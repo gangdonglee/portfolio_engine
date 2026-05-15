@@ -59,6 +59,9 @@
     <ClCompile Include="render\VertexBuffer.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\DepthStencilBuffer.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
     <ClCompile Include="core\HrCheck.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -95,6 +98,9 @@
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="render\VertexBuffer.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\DepthStencilBuffer.h">
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="core\HrCheck.h">

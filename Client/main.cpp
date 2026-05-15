@@ -12,6 +12,7 @@
 #include "platform/Window.h"
 #include "render/CommandList.h"
 #include "render/CommandQueue.h"
+#include "render/DepthStencilBuffer.h"
 #include "render/Device.h"
 #include "render/PipelineState.h"
 #include "render/RootSignature.h"
@@ -40,6 +41,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         engine::render::RtvDescriptorHeap rtvHeap(device, engine::render::SwapChain::kBackBufferCount);
         engine::render::SwapChain         swapChain(device, commandQueue, window, rtvHeap);
         engine::render::CommandList       cmdList(device);
+        engine::render::DepthStencilBuffer depthBuffer(
+            device,
+            static_cast<std::uint32_t>(window.Width()),
+            static_cast<std::uint32_t>(window.Height()),
+            DXGI_FORMAT_D32_FLOAT);
 
         // Phase 1E-1: HelloTriangle 셰이더 컴파일 (PSO 도입 전 컴파일 단독 검증).
         const std::wstring shaderDir = engine::render::ShaderCompiler::DefaultShaderDir();
@@ -62,6 +68,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.pixelShader   = psBlob.Get();
         psoDesc.rootSignature = &rootSig;
         psoDesc.rtvFormat     = DXGI_FORMAT_R8G8B8A8_UNORM;  // SwapChain 백버퍼 포맷
+        psoDesc.dsvFormat     = depthBuffer.Format();         // 깊이 활성
         engine::render::PipelineState pso(device, psoDesc);
 
         // Phase 1E-3: 정점 데이터 + VertexBuffer.
@@ -124,10 +131,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             toRenderTarget.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
             list->ResourceBarrier(1, &toRenderTarget);
 
-            // RTV 바인딩 + 클리어
+            // RTV + DSV 바인딩 + 클리어
             const D3D12_CPU_DESCRIPTOR_HANDLE rtv = swapChain.CurrentRtv();
-            list->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+            const D3D12_CPU_DESCRIPTOR_HANDLE dsv = depthBuffer.DsvHandle();
+            list->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
             list->ClearRenderTargetView(rtv, kClearColor, 0, nullptr);
+            list->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
             // Phase 1E-3: 첫 삼각형 그리기
             list->RSSetViewports(1, &viewport);
