@@ -1,6 +1,12 @@
-// HelloTriangle.hlsl
-// 첫 삼각형용 VS + PS. 정점별 색상 패스스루.
-// SM 5.0 (D3DCompileFromFile 호환). 향후 dxc 마이그레이션 시 SM 6.0+.
+// HelloTriangle.hlsl — Phase 2 후 회전 큐브용.
+// b0 의 cbuffer 에서 MVP 행렬을 받아 정점 좌표를 변환. PS 는 정점 색을 그대로 출력.
+//
+// row_major 명시로 CPU 측 transpose 불필요 (DirectXMath 의 XMMATRIX 자체가 row-major).
+
+cbuffer FrameConstants : register(b0)
+{
+    row_major float4x4 mvp;
+};
 
 struct VSInput
 {
@@ -17,7 +23,7 @@ struct VSOutput
 VSOutput VSMain(VSInput input)
 {
     VSOutput output;
-    output.position = float4(input.position, 1.0);
+    output.position = mul(float4(input.position, 1.0), mvp);
     output.color    = input.color;
     return output;
 }

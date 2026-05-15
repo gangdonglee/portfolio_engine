@@ -10,19 +10,25 @@ namespace engine::render
 
     // D3D12 Root Signature 캡슐화.
     //
-    // Phase 1E-2 단계는 **비어있는 루트 시그니처** (인자 0개). HelloTriangle 은 정점 입력만 받고
-    // 상수 버퍼/디스크립터 테이블/Sampler 등이 모두 없음.
+    // 현 단계 지원:
+    //   - 비어있는 RS (Desc 디폴트)
+    //   - b0 CBV root descriptor (Vertex 단계 가시) — Phase 2 의 MVP 상수 버퍼 용도
     //
-    // 향후 단계:
-    //   - 매개변수화: 루트 파라미터(CBV/SRV/UAV/디스크립터 테이블/상수) 추가.
-    //   - 빌더/디스크립션 패턴 또는 별도 builder 클래스.
+    // 향후 단계: SRV/UAV/디스크립터 테이블/Static Sampler, 별도 builder 클래스.
     //
     // 단일 소유 (복사·이동 금지).
     class RootSignature final
     {
     public:
-        // 비어있는 루트 시그니처 생성. ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그 켜짐.
-        explicit RootSignature(Device& device);
+        struct Desc
+        {
+            // true 이면 b0 슬롯의 CBV root descriptor 한 개 추가 (Vertex visibility).
+            // 향후 더 풍부한 매개변수화로 확장.
+            bool cbvAtB0Vertex = false;
+        };
+
+        // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그는 항상 켜짐.
+        explicit RootSignature(Device& device, const Desc& desc = {});
         ~RootSignature();
 
         RootSignature(const RootSignature&)            = delete;

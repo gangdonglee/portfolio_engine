@@ -62,6 +62,15 @@
     <ClCompile Include="render\DepthStencilBuffer.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\ConstantBuffer.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="render\IndexBuffer.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Camera.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
     <ClCompile Include="core\HrCheck.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -102,6 +111,18 @@
     </ClInclude>
     <ClInclude Include="render\DepthStencilBuffer.h">
       <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\ConstantBuffer.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\IndexBuffer.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Camera.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\Types.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\HrCheck.h">
       <Filter>Header Files\core</Filter>
