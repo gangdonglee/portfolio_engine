@@ -1,6 +1,7 @@
 #include "render/PipelineState.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "render/Device.h"
 #include "render/RootSignature.h"
@@ -121,7 +122,7 @@ namespace engine::render
                 IID_PPV_ARGS(m_pso.ReleaseAndGetAddressOf())),
             "ID3D12Device::CreateGraphicsPipelineState");
 
-        ::OutputDebugStringW(L"[render] PipelineState (Graphics, HelloTriangle layout) created\n");
+        engine::core::LogInfo(L"[render] PipelineState (Graphics, HelloTriangle layout) created\n");
     }
 
     PipelineState::~PipelineState() = default;

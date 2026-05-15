@@ -1,6 +1,7 @@
 #include "render/CommandQueue.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "render/CommandList.h"
 #include "render/Device.h"
@@ -50,7 +51,7 @@ namespace engine::render
             throw std::runtime_error("CreateEventW (fence event) returned nullptr");
         }
 
-        ::OutputDebugStringW(L"[render] CommandQueue (Direct) created\n");
+        engine::core::LogInfo(L"[render] CommandQueue (Direct) created\n");
     }
 
     CommandQueue::~CommandQueue()
@@ -66,7 +67,7 @@ namespace engine::render
             catch (...)
             {
                 // 소멸자에서 예외 전파 금지. 디버그 출력으로만 남김.
-                ::OutputDebugStringW(L"[render] CommandQueue dtor: FlushGpu threw — ignoring\n");
+                engine::core::LogInfo(L"[render] CommandQueue dtor: FlushGpu threw — ignoring\n");
             }
         }
 

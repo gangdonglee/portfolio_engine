@@ -1,6 +1,7 @@
 #include "render/RtvDescriptorHeap.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "render/Device.h"
 
@@ -48,7 +49,7 @@ namespace engine::render
                       L"[render] RtvDescriptorHeap created (capacity=%u, slot=%u bytes)\n",
                       m_capacity,
                       m_descriptorSize);
-        ::OutputDebugStringW(line);
+        engine::core::LogInfo(line);
     }
 
     // 소멸자: ComPtr 가 자동 Release. 디스크립터 힙은 별도 cleanup 불필요.

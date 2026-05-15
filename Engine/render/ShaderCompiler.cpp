@@ -1,5 +1,7 @@
 #include "render/ShaderCompiler.h"
 
+#include "core/Logger.h"
+
 #include <Windows.h>
 #include <d3d12.h>
 #include <d3dcompiler.h>
@@ -95,9 +97,9 @@ namespace engine::render
         // 경고가 있어도 컴파일 성공인 경우가 있다 — 경고 블롭이 비어있지 않으면 로그.
         if (errors && errors->GetBufferSize() > 0)
         {
-            ::OutputDebugStringA("[render] Shader compile warnings:\n");
-            ::OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
-            ::OutputDebugStringA("\n");
+            engine::core::LogInfoA("[render] Shader compile warnings:\n");
+            engine::core::LogInfoA(static_cast<const char*>(errors->GetBufferPointer()));
+            engine::core::LogInfoA("\n");
         }
 
         wchar_t line[256];
@@ -106,7 +108,7 @@ namespace engine::render
                       entryPoint,
                       TargetForStage(stage),
                       static_cast<size_t>(code->GetBufferSize()));
-        ::OutputDebugStringW(line);
+        engine::core::LogInfo(line);
 
         return code;
     }

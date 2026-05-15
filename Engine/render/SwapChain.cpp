@@ -1,6 +1,7 @@
 #include "render/SwapChain.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "platform/Window.h"
 #include "render/CommandQueue.h"
@@ -87,7 +88,7 @@ namespace engine::render
 
         m_currentIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-        ::OutputDebugStringW(L"[render] SwapChain created (FLIP_DISCARD, 2 back buffers, RTVs registered)\n");
+        engine::core::LogInfo(L"[render] SwapChain created (FLIP_DISCARD, 2 back buffers, RTVs registered)\n");
     }
 
     SwapChain::~SwapChain() = default;

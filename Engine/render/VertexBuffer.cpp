@@ -1,6 +1,7 @@
 #include "render/VertexBuffer.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "render/Device.h"
 
@@ -77,7 +78,7 @@ namespace engine::render
         std::swprintf(line, std::size(line),
                       L"[render] VertexBuffer created (size=%u bytes, stride=%u, count=%u)\n",
                       m_byteSize, m_stride, m_byteSize / m_stride);
-        ::OutputDebugStringW(line);
+        engine::core::LogInfo(line);
     }
 
     VertexBuffer::~VertexBuffer() = default;

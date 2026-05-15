@@ -1,6 +1,7 @@
 #include "render/Device.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -36,7 +37,7 @@ namespace engine::render
                           vramMB,
                           desc.VendorId,
                           desc.DeviceId);
-            ::OutputDebugStringW(line);
+            engine::core::LogInfo(line);
         }
     }
 
@@ -51,7 +52,7 @@ namespace engine::render
 #if defined(_DEBUG)
         ConfigureInfoQueue();
 #endif
-        ::OutputDebugStringW(L"[render] D3D12 device created\n");
+        engine::core::LogInfo(L"[render] D3D12 device created\n");
     }
 
     Device::~Device()
@@ -69,12 +70,12 @@ namespace engine::render
         if (SUCCEEDED(::D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf()))))
         {
             debugController->EnableDebugLayer();
-            ::OutputDebugStringW(L"[render] D3D12 debug layer enabled\n");
+            engine::core::LogInfo(L"[render] D3D12 debug layer enabled\n");
         }
         else
         {
             // Graphics Tools (Windows 옵션 기능) 미설치 시 정상적으로 실패.
-            ::OutputDebugStringW(L"[render] D3D12 debug layer unavailable (Graphics Tools 미설치?)\n");
+            engine::core::LogInfo(L"[render] D3D12 debug layer unavailable (Graphics Tools 미설치?)\n");
         }
     }
 
@@ -129,7 +130,7 @@ namespace engine::render
         }
 
         // 하드웨어 어댑터 부재 → WARP 폴백.
-        ::OutputDebugStringW(L"[render] No hardware adapter; falling back to WARP\n");
+        engine::core::LogInfo(L"[render] No hardware adapter; falling back to WARP\n");
         Microsoft::WRL::ComPtr<IDXGIAdapter1> warpAdapter;
         ThrowIfFailed(
             m_factory->EnumWarpAdapter(IID_PPV_ARGS(warpAdapter.GetAddressOf())),
@@ -154,7 +155,7 @@ namespace engine::render
         // Info Queue 인터페이스가 없는 환경(Graphics Tools 미설치 등)에서는 조용히 통과.
         if (FAILED(m_device.As(&m_infoQueue)))
         {
-            ::OutputDebugStringW(L"[render] ID3D12InfoQueue unavailable\n");
+            engine::core::LogInfo(L"[render] ID3D12InfoQueue unavailable\n");
             return;
         }
         m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
@@ -168,7 +169,7 @@ namespace engine::render
         filter.DenyList.pSeverityList = deniedSeverities;
         m_infoQueue->PushStorageFilter(&filter);
 
-        ::OutputDebugStringW(L"[render] Info queue configured (break on Corruption/Error, INFO filtered)\n");
+        engine::core::LogInfo(L"[render] Info queue configured (break on Corruption/Error, INFO filtered)\n");
 #endif
     }
 }

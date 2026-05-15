@@ -1,6 +1,7 @@
 #include "render/RootSignature.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "render/Device.h"
 
@@ -66,7 +67,7 @@ namespace engine::render
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())),
             "ID3D12Device::CreateRootSignature");
 
-        ::OutputDebugStringW(L"[render] RootSignature created (empty, IA layout 허용)\n");
+        engine::core::LogInfo(L"[render] RootSignature created (empty, IA layout 허용)\n");
     }
 
     RootSignature::~RootSignature() = default;

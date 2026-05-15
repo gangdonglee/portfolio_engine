@@ -1,6 +1,7 @@
 #include "render/CommandList.h"
 
 #include "core/HrCheck.h"
+#include "core/Logger.h"
 
 #include "render/Device.h"
 
@@ -41,7 +42,7 @@ namespace engine::render
         // 일관된 Reset → record → Close 사이클을 위해 즉시 Close 해서 closed 상태로 맞춘다.
         ThrowIfFailed(m_list->Close(), "ID3D12GraphicsCommandList::Close (initial)");
 
-        ::OutputDebugStringW(L"[render] CommandList (Direct) created\n");
+        engine::core::LogInfo(L"[render] CommandList (Direct) created\n");
     }
 
     CommandList::~CommandList() = default;
