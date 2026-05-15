@@ -77,17 +77,20 @@ portfolio_engine/
 
 ## 진행 상황
 
-📍 **현재**: **Phase 1 종결 — 첫 삼각형 렌더 도달 🎉**
+📍 **현재**: **Phase 2 종결 — 회전하는 컬러 큐브 도달 🎲**
 
-- Phase 1A ✅ Foundation Skeleton (빌드 시스템)
-- Phase 1B ✅ Window 클래스
-- Phase 1C ✅ Device 초기화
-- Phase 1D-1 ✅ CommandQueue
-- Phase 1D-2 ✅ RtvDescriptorHeap
-- Phase 1D-3 ✅ SwapChain + Window friend
-- Phase 1D-4 ✅ 매 프레임 Clear + Present
-- Phase 1E-1 ✅ ShaderCompiler + HelloTriangle.hlsl
-- Phase 1E-2 ✅ RootSignature + Graphics PSO
-- Phase 1E-3 ✅ VertexBuffer + DrawInstanced → 첫 삼각형 가시
+Phase 1 (Foundation + 첫 삼각형):
+- 1A Foundation Skeleton / 1B Window / 1C Device / 1D-1 CommandQueue
+- 1D-2 RtvHeap / 1D-3 SwapChain / 1D-4 Clear+Present
+- 1E-1 Shader / 1E-2 RootSig+PSO / 1E-3 첫 삼각형 ✅
 
-**다음**: Phase 2 진입 전 인프라 보강 (HrCheck/Logger/Types) 또는 Phase 2 직진 (깊이 버퍼 / 상수 버퍼 / 메시 로더 / 카메라).
+Phase 2 (인프라 + 3D 회전):
+- A-1 HrCheck (ThrowIfFailed 공용) ✅
+- A-2 Logger (OutputDebugString wrapper) ✅
+- A-3 Types (int8/uint32 alias) ✅
+- B-1 DepthStencilBuffer ✅
+- B-2 ConstantBuffer + RootSig 매개변수화 ✅
+- B-3 Camera (LookAt + Perspective) ✅
+- B-4 IndexBuffer + 큐브 + 매 프레임 회전 ✅
+
+**다음 후보**: 카메라 입력 (WASD + 마우스) → 메시 로더 → 텍스처 → 조명.
