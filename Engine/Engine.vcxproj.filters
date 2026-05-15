@@ -50,6 +50,9 @@
     <ClCompile Include="render\PipelineState.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\VertexBuffer.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
@@ -77,6 +80,9 @@
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="render\PipelineState.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\VertexBuffer.h">
       <Filter>Header Files\render</Filter>
     </ClInclude>
   </ItemGroup>

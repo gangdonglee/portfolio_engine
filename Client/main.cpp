@@ -18,6 +18,7 @@
 #include "render/RtvDescriptorHeap.h"
 #include "render/ShaderCompiler.h"
 #include "render/SwapChain.h"
+#include "render/VertexBuffer.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance,
@@ -62,8 +63,39 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.rootSignature = &rootSig;
         psoDesc.rtvFormat     = DXGI_FORMAT_R8G8B8A8_UNORM;  // SwapChain 백버퍼 포맷
         engine::render::PipelineState pso(device, psoDesc);
-        (void)pso;
-        // TODO(phase1e-3): VertexBuffer + DrawInstanced 로 첫 삼각형 가시.
+
+        // Phase 1E-3: 정점 데이터 + VertexBuffer.
+        // HelloTriangle 의 3개 정점 — NDC 좌표 (Y 위쪽이 +). 색상 = 정점별 R/G/B.
+        struct HelloVertex
+        {
+            float position[3];
+            float color[3];
+        };
+        constexpr HelloVertex kTriangleVertices[] = {
+            { {  0.0f,  0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } },  // 위 — 빨강
+            { {  0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } },  // 우하 — 초록
+            { { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } },  // 좌하 — 파랑
+        };
+        engine::render::VertexBuffer triangleVB(
+            device,
+            kTriangleVertices,
+            static_cast<std::uint32_t>(sizeof(kTriangleVertices)),
+            static_cast<std::uint32_t>(sizeof(HelloVertex)));
+
+        // 뷰포트 / 시저 — 윈도우 클라이언트 크기 기준. 리사이즈 처리는 후속 단계.
+        D3D12_VIEWPORT viewport{};
+        viewport.TopLeftX = 0.0f;
+        viewport.TopLeftY = 0.0f;
+        viewport.Width    = static_cast<float>(window.Width());
+        viewport.Height   = static_cast<float>(window.Height());
+        viewport.MinDepth = 0.0f;
+        viewport.MaxDepth = 1.0f;
+
+        D3D12_RECT scissor{};
+        scissor.left   = 0;
+        scissor.top    = 0;
+        scissor.right  = static_cast<LONG>(window.Width());
+        scissor.bottom = static_cast<LONG>(window.Height());
 
         // 첫 클리어 색상: 어두운 슬레이트 (RGB 0.05, 0.07, 0.10).
         constexpr float kClearColor[4] = { 0.05f, 0.07f, 0.10f, 1.0f };
@@ -92,8 +124,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             toRenderTarget.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
             list->ResourceBarrier(1, &toRenderTarget);
 
-            // 현재 백버퍼 RTV 를 클리어
-            list->ClearRenderTargetView(swapChain.CurrentRtv(), kClearColor, 0, nullptr);
+            // RTV 바인딩 + 클리어
+            const D3D12_CPU_DESCRIPTOR_HANDLE rtv = swapChain.CurrentRtv();
+            list->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+            list->ClearRenderTargetView(rtv, kClearColor, 0, nullptr);
+
+            // Phase 1E-3: 첫 삼각형 그리기
+            list->RSSetViewports(1, &viewport);
+            list->RSSetScissorRects(1, &scissor);
+            list->SetGraphicsRootSignature(rootSig.Native());
+            list->SetPipelineState(pso.Native());
+            list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            triangleVB.Bind(list);
+            list->DrawInstanced(triangleVB.VertexCount(), 1, 0, 0);
 
             // RENDER_TARGET → PRESENT
             D3D12_RESOURCE_BARRIER toPresent{};
