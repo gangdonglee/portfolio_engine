@@ -30,3 +30,4 @@
 | 05 | [Phase 1D-1 — engine::render::CommandQueue](05-command-queue.md) | 2026-05-13 | ✅ |
 | 06 | [코드 스타일 학습 + Engine.lib/Client.exe 분리](06-style-and-split.md) | 2026-05-13 | ✅ |
 | 07 | [Phase 1D — SwapChain + 첫 클리어 (1D-2~1D-4)](07-swapchain-and-first-clear.md) | 2026-05-14 | ✅ |
+| 08 | [Phase 1E — 첫 삼각형 (1E-1~1E-3) 🎉](08-first-triangle.md) | 2026-05-15 | ✅ |

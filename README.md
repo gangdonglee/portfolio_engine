@@ -77,9 +77,17 @@ portfolio_engine/
 
 ## 진행 상황
 
-📍 **현재**: Phase 1D (SwapChain + 첫 클리어) 진행 중.
+📍 **현재**: **Phase 1 종결 — 첫 삼각형 렌더 도달 🎉**
+
 - Phase 1A ✅ Foundation Skeleton (빌드 시스템)
 - Phase 1B ✅ Window 클래스
 - Phase 1C ✅ Device 초기화
 - Phase 1D-1 ✅ CommandQueue
-- Phase 1D-2~ ⏳ DescriptorHeap / SwapChain / 첫 클리어
+- Phase 1D-2 ✅ RtvDescriptorHeap
+- Phase 1D-3 ✅ SwapChain + Window friend
+- Phase 1D-4 ✅ 매 프레임 Clear + Present
+- Phase 1E-1 ✅ ShaderCompiler + HelloTriangle.hlsl
+- Phase 1E-2 ✅ RootSignature + Graphics PSO
+- Phase 1E-3 ✅ VertexBuffer + DrawInstanced → 첫 삼각형 가시
+
+**다음**: Phase 2 진입 전 인프라 보강 (HrCheck/Logger/Types) 또는 Phase 2 직진 (깊이 버퍼 / 상수 버퍼 / 메시 로더 / 카메라).
