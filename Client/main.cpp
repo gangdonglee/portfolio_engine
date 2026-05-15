@@ -7,12 +7,14 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 
 #include "platform/Window.h"
 #include "render/CommandList.h"
 #include "render/CommandQueue.h"
 #include "render/Device.h"
 #include "render/RtvDescriptorHeap.h"
+#include "render/ShaderCompiler.h"
 #include "render/SwapChain.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -35,6 +37,22 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         engine::render::RtvDescriptorHeap rtvHeap(device, engine::render::SwapChain::kBackBufferCount);
         engine::render::SwapChain         swapChain(device, commandQueue, window, rtvHeap);
         engine::render::CommandList       cmdList(device);
+
+        // Phase 1E-1: HelloTriangle 셰이더 컴파일 (PSO 도입 전 컴파일 단독 검증).
+        const std::wstring shaderDir = engine::render::ShaderCompiler::DefaultShaderDir();
+        const std::wstring shaderPath = shaderDir + L"HelloTriangle.hlsl";
+
+        const auto vsBlob = engine::render::ShaderCompiler::CompileFromFile(
+            shaderPath.c_str(),
+            "VSMain",
+            engine::render::ShaderCompiler::Stage::Vertex);
+        const auto psBlob = engine::render::ShaderCompiler::CompileFromFile(
+            shaderPath.c_str(),
+            "PSMain",
+            engine::render::ShaderCompiler::Stage::Pixel);
+        (void)vsBlob;
+        (void)psBlob;
+        // TODO(phase1e-2): vsBlob/psBlob 를 PSO + RootSignature 에 연결.
 
         // 첫 클리어 색상: 어두운 슬레이트 (RGB 0.05, 0.07, 0.10).
         constexpr float kClearColor[4] = { 0.05f, 0.07f, 0.10f, 1.0f };
