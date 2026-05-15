@@ -37,3 +37,4 @@
 | 12 | [윈도우 리사이즈 (WM_SIZE → SwapChain/Depth/Viewport/Camera) 🪟](12-window-resize.md) | 2026-05-15 | ✅ |
 | 13 | [N프레임 in-flight (CPU/GPU 병렬화) ⏩](13-frame-in-flight.md) | 2026-05-15 | ✅ |
 | 14 | [DXGI_PRESENT_ALLOW_TEARING (VRR V-Sync OFF) 📺](14-allow-tearing.md) | 2026-05-15 | ✅ |
+| 15 | [MTL 머티리얼 (mtllib/usemtl/Kd) 🎨](15-mtl-materials.md) | 2026-05-15 | ✅ |
