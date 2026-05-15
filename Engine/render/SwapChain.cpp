@@ -1,5 +1,7 @@
 #include "render/SwapChain.h"
 
+#include "core/HrCheck.h"
+
 #include "platform/Window.h"
 #include "render/CommandQueue.h"
 #include "render/Device.h"
@@ -15,20 +17,10 @@
 
 namespace engine::render
 {
+    using engine::core::ThrowIfFailed;
+
     namespace
     {
-        void ThrowIfFailed(HRESULT hr, const char* what)
-        {
-            if (FAILED(hr))
-            {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf),
-                              "%s failed: HRESULT=0x%08lX",
-                              what,
-                              static_cast<unsigned long>(hr));
-                throw std::runtime_error(buf);
-            }
-        }
 
         constexpr DXGI_FORMAT kBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     }

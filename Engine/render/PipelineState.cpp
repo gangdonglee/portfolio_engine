@@ -1,5 +1,7 @@
 #include "render/PipelineState.h"
 
+#include "core/HrCheck.h"
+
 #include "render/Device.h"
 #include "render/RootSignature.h"
 
@@ -11,20 +13,10 @@
 
 namespace engine::render
 {
+    using engine::core::ThrowIfFailed;
+
     namespace
     {
-        void ThrowIfFailed(HRESULT hr, const char* what)
-        {
-            if (FAILED(hr))
-            {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf),
-                              "%s failed: HRESULT=0x%08lX",
-                              what,
-                              static_cast<unsigned long>(hr));
-                throw std::runtime_error(buf);
-            }
-        }
 
         // HelloTriangle 정점 레이아웃: POSITION(float3) + COLOR(float3). 인터리브.
         constexpr D3D12_INPUT_ELEMENT_DESC kHelloTriangleInputLayout[] = {

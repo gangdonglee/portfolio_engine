@@ -1,5 +1,7 @@
 #include "render/Device.h"
 
+#include "core/HrCheck.h"
+
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -11,22 +13,11 @@
 
 namespace engine::render
 {
+    using engine::core::ThrowIfFailed;
+
     namespace
     {
         constexpr D3D_FEATURE_LEVEL kMinFeatureLevel = D3D_FEATURE_LEVEL_12_0;
-
-        void ThrowIfFailed(HRESULT hr, const char* what)
-        {
-            if (FAILED(hr))
-            {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf),
-                              "%s failed: HRESULT=0x%08lX",
-                              what,
-                              static_cast<unsigned long>(hr));
-                throw std::runtime_error(buf);
-            }
-        }
 
         // TODO(로깅 시스템 도입 시): 주입된 로거 인터페이스로 교체.
         void LogAdapter(IDXGIAdapter1* adapter)

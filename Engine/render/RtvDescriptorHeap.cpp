@@ -1,5 +1,7 @@
 #include "render/RtvDescriptorHeap.h"
 
+#include "core/HrCheck.h"
+
 #include "render/Device.h"
 
 #include <Windows.h>
@@ -9,20 +11,10 @@
 
 namespace engine::render
 {
+    using engine::core::ThrowIfFailed;
+
     namespace
     {
-        void ThrowIfFailed(HRESULT hr, const char* what)
-        {
-            if (FAILED(hr))
-            {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf),
-                              "%s failed: HRESULT=0x%08lX",
-                              what,
-                              static_cast<unsigned long>(hr));
-                throw std::runtime_error(buf);
-            }
-        }
     }
 
     RtvDescriptorHeap::RtvDescriptorHeap(Device& device, std::uint32_t capacity)

@@ -15,11 +15,17 @@
     <Filter Include="Source Files\render">
       <UniqueIdentifier>{A1000002-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\core">
+      <UniqueIdentifier>{A1000003-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\platform">
       <UniqueIdentifier>{B1000001-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\render">
       <UniqueIdentifier>{B1000002-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\core">
+      <UniqueIdentifier>{B1000003-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -53,6 +59,9 @@
     <ClCompile Include="render\VertexBuffer.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="core\HrCheck.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
@@ -84,6 +93,9 @@
     </ClInclude>
     <ClInclude Include="render\VertexBuffer.h">
       <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\HrCheck.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

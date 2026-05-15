@@ -88,8 +88,10 @@
     <ClCompile Include="render\RootSignature.cpp" />
     <ClCompile Include="render\PipelineState.cpp" />
     <ClCompile Include="render\VertexBuffer.cpp" />
+    <ClCompile Include="core\HrCheck.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="core\HrCheck.h" />
     <ClInclude Include="platform\Window.h" />
     <ClInclude Include="render\Device.h" />
     <ClInclude Include="render\CommandQueue.h" />
