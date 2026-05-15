@@ -198,19 +198,29 @@ namespace engine::render::obj_loader
             }
             else if (tag == "f")
             {
-                // 삼각형 가정 — 3개 토큰.
-                std::string a, b, c;
-                iss >> a >> b >> c;
-                if (a.empty() || b.empty() || c.empty())
+                // n-gon fan triangulation — 정점 N (≥3) 개를 (v0, v_i, v_{i+1}) 삼각형 (N-2) 개로 분해.
+                // 볼록 다각형 가정. 오목 polygon 은 self-intersection 가능 — 향후 ear clipping 으로 확장.
+                std::vector<std::string> tokens;
+                tokens.reserve(4);
+                std::string tok;
+                while (iss >> tok) { tokens.push_back(tok); }
+                if (tokens.size() < 3)
                 {
-                    throw std::runtime_error("OBJ: f 라인이 삼각형이 아님 (n-gon 미지원)");
+                    throw std::runtime_error("OBJ: f 라인 정점 수 < 3");
                 }
-                faceVertices.push_back(ParseFaceVertex(a));
-                faceVertices.push_back(ParseFaceVertex(b));
-                faceVertices.push_back(ParseFaceVertex(c));
-                faceVertexColors.push_back(currentColor);
-                faceVertexColors.push_back(currentColor);
-                faceVertexColors.push_back(currentColor);
+
+                const FaceVertex v0 = ParseFaceVertex(tokens[0]);
+                for (size_t i = 1; i + 1 < tokens.size(); ++i)
+                {
+                    const FaceVertex vi  = ParseFaceVertex(tokens[i]);
+                    const FaceVertex vii = ParseFaceVertex(tokens[i + 1]);
+                    faceVertices.push_back(v0);
+                    faceVertices.push_back(vi);
+                    faceVertices.push_back(vii);
+                    faceVertexColors.push_back(currentColor);
+                    faceVertexColors.push_back(currentColor);
+                    faceVertexColors.push_back(currentColor);
+                }
             }
             // 기타 라인 (o/s/g 등) 무시.
         }
