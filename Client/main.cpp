@@ -63,9 +63,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         const auto psBlob = engine::render::ShaderCompiler::CompileFromFile(
             shaderPath.c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
 
-        // RootSignature: b0 CBV root descriptor 1개 (Vertex 단계 가시).
+        // RootSignature: b0 CBV root descriptor 1개 (VS + PS 모두 가시 — Phong 조명용).
         engine::render::RootSignature::Desc rsDesc{};
-        rsDesc.cbvAtB0Vertex = true;
+        rsDesc.cbvAtB0 = engine::render::RootSignature::Desc::CbvB0::All;
         engine::render::RootSignature rootSig(device, rsDesc);
 
         // PSO: 깊이 활성 + HelloTriangle 입력 레이아웃.
@@ -77,36 +77,56 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.dsvFormat     = depthBuffer.Format();
         engine::render::PipelineState pso(device, psoDesc);
 
-        // === 회전 큐브 메시 (8 정점, 36 인덱스, 12 삼각형) ===
+        // === 회전 큐브 메시 (24 정점, 면별 normal, 6 면 색상) ===
+        // 정점 = 4 * 6 = 24. 각 정점이 한 면에만 속하므로 normal 이 면별로 명확.
+        // CullBack + FrontCCW=FALSE → CW(outward normal 방향에서 본 시계방향)가 정면.
         struct HelloVertex
         {
             float position[3];
+            float normal[3];
             float color[3];
         };
-        constexpr HelloVertex kCubeVertices[8] = {
-            { { -1.0f, -1.0f, -1.0f }, { 0.0f, 0.0f, 0.0f } },  // 0: 좌하전
-            { { +1.0f, -1.0f, -1.0f }, { 1.0f, 0.0f, 0.0f } },  // 1: 우하전 — 빨강
-            { { +1.0f, +1.0f, -1.0f }, { 1.0f, 1.0f, 0.0f } },  // 2: 우상전 — 노랑
-            { { -1.0f, +1.0f, -1.0f }, { 0.0f, 1.0f, 0.0f } },  // 3: 좌상전 — 초록
-            { { -1.0f, -1.0f, +1.0f }, { 0.0f, 0.0f, 1.0f } },  // 4: 좌하후 — 파랑
-            { { +1.0f, -1.0f, +1.0f }, { 1.0f, 0.0f, 1.0f } },  // 5: 우하후 — 자홍
-            { { +1.0f, +1.0f, +1.0f }, { 1.0f, 1.0f, 1.0f } },  // 6: 우상후 — 흰색
-            { { -1.0f, +1.0f, +1.0f }, { 0.0f, 1.0f, 1.0f } },  // 7: 좌상후 — 청록
+        constexpr HelloVertex kCubeVertices[24] = {
+            // Front  (z=-1, normal=-Z) — 빨강
+            { { -1, -1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 0 좌하
+            { { +1, -1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 1 우하
+            { { +1, +1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 2 우상
+            { { -1, +1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 3 좌상
+            // Back   (z=+1, normal=+Z) — 초록
+            { { +1, -1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 4 좌하(시점 좌우 반전)
+            { { -1, -1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 5 우하
+            { { -1, +1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 6 우상
+            { { +1, +1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 7 좌상
+            // Left   (x=-1, normal=-X) — 파랑
+            { { -1, -1, +1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 8 좌하
+            { { -1, -1, -1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 9 우하
+            { { -1, +1, -1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 10 우상
+            { { -1, +1, +1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 11 좌상
+            // Right  (x=+1, normal=+X) — 노랑
+            { { +1, -1, -1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 12 좌하
+            { { +1, -1, +1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 13 우하
+            { { +1, +1, +1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 14 우상
+            { { +1, +1, -1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 15 좌상
+            // Top    (y=+1, normal=+Y) — 자홍
+            { { -1, +1, -1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 16 좌하
+            { { +1, +1, -1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 17 우하
+            { { +1, +1, +1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 18 우상
+            { { -1, +1, +1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 19 좌상
+            // Bottom (y=-1, normal=-Y) — 청록
+            { { -1, -1, +1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 20 좌하
+            { { +1, -1, +1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 21 우하
+            { { +1, -1, -1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 22 우상
+            { { -1, -1, -1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 23 좌상
         };
-        // LH 좌표계 + CullMode=BACK + FrontCCW=FALSE → CW(시계방향) 가 정면.
+        // 각 면 4 정점(좌하·우하·우상·좌상 순)을 CW 삼각형 2개로:
+        //   (좌하 → 우하 → 우상) + (좌하 → 우상 → 좌상)
         constexpr std::uint16_t kCubeIndices[36] = {
-            // Front  (z=-1, 카메라에서 본 CW)
-            0, 3, 2,  0, 2, 1,
-            // Back   (z=+1)
-            5, 6, 7,  5, 7, 4,
-            // Left   (x=-1)
-            4, 7, 3,  4, 3, 0,
-            // Right  (x=+1)
-            1, 2, 6,  1, 6, 5,
-            // Top    (y=+1)
-            3, 7, 6,  3, 6, 2,
-            // Bottom (y=-1)
-            4, 0, 1,  4, 1, 5,
+             0,  1,  2,   0,  2,  3,  // Front
+             4,  5,  6,   4,  6,  7,  // Back
+             8,  9, 10,   8, 10, 11,  // Left
+            12, 13, 14,  12, 14, 15,  // Right
+            16, 17, 18,  16, 18, 19,  // Top
+            20, 21, 22,  20, 22, 23,  // Bottom
         };
 
         engine::render::VertexBuffer cubeVB(
@@ -131,11 +151,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         // 자유 카메라 컨트롤러 (WASD + QE + 우클릭 hold 마우스 회전, Shift 부스트).
         engine::render::FreeCamera freeCamera(camera);
 
-        // 상수 버퍼: row-major float4x4 MVP (64바이트, 256 정렬됨).
+        // 상수 버퍼: MVP + World + 카메라 위치 + 라이트.
+        // 각 float3 뒤 4바이트 패딩 = HLSL 의 float3 가 16바이트 정렬되도록 보장.
         struct FrameConstants
         {
             DirectX::XMFLOAT4X4 mvp;
+            DirectX::XMFLOAT4X4 world;
+            DirectX::XMFLOAT3   cameraPosWS;  float _pad0;
+            DirectX::XMFLOAT3   lightDirWS;   float _pad1;
+            DirectX::XMFLOAT3   lightColor;   float _pad2;
+            DirectX::XMFLOAT3   ambient;      float _pad3;
         };
+        static_assert(sizeof(FrameConstants) == 192, "FrameConstants 정렬 깨짐");
         engine::render::ConstantBuffer frameCB(
             device, static_cast<engine::uint32>(sizeof(FrameConstants)));
 
@@ -181,8 +208,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             const XMMATRIX world = XMMatrixRotationY(t) * XMMatrixRotationX(t * 0.7f);
             const XMMATRIX mvp   = world * camera.ViewProjection();
 
-            FrameConstants cb;
-            XMStoreFloat4x4(&cb.mvp, mvp);
+            FrameConstants cb{};
+            XMStoreFloat4x4(&cb.mvp,   mvp);
+            XMStoreFloat4x4(&cb.world, world);
+            cb.cameraPosWS = camera.Position();
+            // 라이트는 사선 위에서 내려오는 방향광. 정규화된 단위 벡터.
+            const XMVECTOR lightDir = XMVector3Normalize(XMVectorSet(-0.5f, -1.0f, 0.4f, 0.0f));
+            XMStoreFloat3(&cb.lightDirWS, lightDir);
+            cb.lightColor = { 1.0f, 0.97f, 0.92f };  // 약간 따뜻한 흰색
+            cb.ambient    = { 0.15f, 0.15f, 0.18f }; // 약간 푸른 앰비언트
             frameCB.Update(&cb, sizeof(cb));
 
             // === 매 프레임 명령 기록 ===

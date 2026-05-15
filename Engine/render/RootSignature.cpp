@@ -17,15 +17,18 @@ namespace engine::render
 
     RootSignature::RootSignature(Device& device, const Desc& desc)
     {
-        // 루트 파라미터 구성. cbvAtB0Vertex 면 b0 CBV root descriptor 1개.
+        // 루트 파라미터 구성. cbvAtB0 가 None 외면 b0 CBV root descriptor 1개.
         D3D12_ROOT_PARAMETER params[1]{};
         UINT paramCount = 0;
-        if (desc.cbvAtB0Vertex)
+        if (desc.cbvAtB0 != Desc::CbvB0::None)
         {
             params[0].ParameterType             = D3D12_ROOT_PARAMETER_TYPE_CBV;
             params[0].Descriptor.ShaderRegister = 0;
             params[0].Descriptor.RegisterSpace  = 0;
-            params[0].ShaderVisibility          = D3D12_SHADER_VISIBILITY_VERTEX;
+            params[0].ShaderVisibility =
+                (desc.cbvAtB0 == Desc::CbvB0::Vertex)
+                    ? D3D12_SHADER_VISIBILITY_VERTEX
+                    : D3D12_SHADER_VISIBILITY_ALL;
             paramCount = 1;
         }
 
@@ -75,13 +78,17 @@ namespace engine::render
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())),
             "ID3D12Device::CreateRootSignature");
 
-        if (desc.cbvAtB0Vertex)
+        switch (desc.cbvAtB0)
         {
-            engine::core::LogInfo(L"[render] RootSignature created (1 CBV @ b0 vertex visible, IA layout 허용)\n");
-        }
-        else
-        {
-            engine::core::LogInfo(L"[render] RootSignature created (empty, IA layout 허용)\n");
+            case Desc::CbvB0::None:
+                engine::core::LogInfo(L"[render] RootSignature created (empty, IA layout 허용)\n");
+                break;
+            case Desc::CbvB0::Vertex:
+                engine::core::LogInfo(L"[render] RootSignature created (1 CBV @ b0 vertex visible)\n");
+                break;
+            case Desc::CbvB0::All:
+                engine::core::LogInfo(L"[render] RootSignature created (1 CBV @ b0 all-visible)\n");
+                break;
         }
     }
 

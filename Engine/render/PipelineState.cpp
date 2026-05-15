@@ -19,10 +19,12 @@ namespace engine::render
     namespace
     {
 
-        // HelloTriangle 정점 레이아웃: POSITION(float3) + COLOR(float3). 인터리브.
+        // HelloTriangle 정점 레이아웃: POSITION + NORMAL + COLOR (각 float3). 인터리브.
+        // Phase F 조명 도입으로 NORMAL 추가됨. 이후 메시 로더가 같은 형식의 정점을 생산.
         constexpr D3D12_INPUT_ELEMENT_DESC kHelloTriangleInputLayout[] = {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         D3D12_RASTERIZER_DESC DefaultRasterizer() noexcept

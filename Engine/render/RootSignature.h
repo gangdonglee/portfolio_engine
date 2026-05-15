@@ -22,9 +22,12 @@ namespace engine::render
     public:
         struct Desc
         {
-            // true 이면 b0 슬롯의 CBV root descriptor 한 개 추가 (Vertex visibility).
-            // 향후 더 풍부한 매개변수화로 확장.
-            bool cbvAtB0Vertex = false;
+            // b0 슬롯의 CBV root descriptor 가시성.
+            //   None: 비어있는 RS.
+            //   Vertex: VS 만 접근.
+            //   All: VS + PS 모두 접근 (Phong 조명처럼 같은 cbuffer 를 양 단계가 쓰는 경우).
+            enum class CbvB0 { None, Vertex, All };
+            CbvB0 cbvAtB0 = CbvB0::None;
         };
 
         // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그는 항상 켜짐.
