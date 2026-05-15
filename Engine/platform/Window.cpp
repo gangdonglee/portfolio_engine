@@ -92,6 +92,13 @@ namespace engine::platform
         m_hwnd = nullptr;
     }
 
+    bool Window::ConsumeResize() noexcept
+    {
+        if (!m_resizeDirty) { return false; }
+        m_resizeDirty = false;
+        return true;
+    }
+
     void Window::PumpMessages()
     {
         MSG msg{};
@@ -131,8 +138,19 @@ namespace engine::platform
         {
             case WM_SIZE:
             {
-                m_width  = LOWORD(lParam);
-                m_height = HIWORD(lParam);
+                // SIZE_MINIMIZED 는 무시 — 0x0 으로 ResizeBuffers 호출 시 D3D12 가 거부.
+                // 복귀 시 SIZE_RESTORED 가 다시 와서 정상 크기로 dirty 설정됨.
+                const int newWidth  = static_cast<int>(LOWORD(lParam));
+                const int newHeight = static_cast<int>(HIWORD(lParam));
+                if (wParam != SIZE_MINIMIZED && newWidth > 0 && newHeight > 0)
+                {
+                    if (newWidth != m_width || newHeight != m_height)
+                    {
+                        m_width        = newWidth;
+                        m_height       = newHeight;
+                        m_resizeDirty  = true;
+                    }
+                }
                 return 0;
             }
             case WM_CLOSE:

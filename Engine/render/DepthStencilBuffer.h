@@ -37,11 +37,18 @@ namespace engine::render
         DepthStencilBuffer(DepthStencilBuffer&&)                 = delete;
         DepthStencilBuffer& operator=(DepthStencilBuffer&&)      = delete;
 
+        // 깊이 텍스처를 새 크기로 재생성. DSV 힙은 그대로 두고 같은 핸들에 view 만 재등록.
+        // GPU 가 이 버퍼를 참조 중이 아니어야 함 — 호출자 책임 (FlushGpu 선행).
+        void Resize(Device& device, std::uint32_t width, std::uint32_t height);
+
         D3D12_CPU_DESCRIPTOR_HANDLE DsvHandle() const noexcept;
         ID3D12Resource*             Native()    const noexcept;
         DXGI_FORMAT                 Format()    const noexcept;
 
     private:
+        // 깊이 텍스처 + DSV 생성 또는 재생성. DSV 힙은 이미 존재한다고 가정.
+        void CreateBufferAndView(Device& device, std::uint32_t width, std::uint32_t height);
+
         Microsoft::WRL::ComPtr<ID3D12Resource>       m_buffer;
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
         D3D12_CPU_DESCRIPTOR_HANDLE                  m_dsvHandle{};

@@ -34,7 +34,6 @@ namespace engine::render
     // TODO(추후):
     //   - DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING + DXGI_PRESENT_ALLOW_TEARING — V-Sync OFF 일관성 강화.
     //     단, IDXGIFactory5::CheckFeatureSupport(VARIABLE_REFRESH_RATE) 로 지원 여부 사전 확인 필요.
-    //   - 리사이즈 처리 (WM_SIZE → SwapChain::Resize) — 백버퍼 재생성 + RTV 재등록.
     class SwapChain final
     {
     public:
@@ -52,6 +51,13 @@ namespace engine::render
 
         // 현재 백버퍼를 Present. 내부 인덱스를 IDXGISwapChain3::GetCurrentBackBufferIndex 로 갱신.
         void Present();
+
+        // 백버퍼 크기 변경.
+        //   ① 호출 전 GPU 가 백버퍼 참조 중이 아니어야 함 — 호출자가 CommandQueue::FlushGpu() 선행.
+        //   ② 내부 ID3D12Resource 백버퍼 ComPtr 모두 Reset → ResizeBuffers → 재취득.
+        //   ③ RTV 디스크립터 슬롯은 기존 m_rtvHandles[i] 를 재사용 (CreateRenderTargetView 덮어쓰기).
+        // width/height 가 0 이면 throw — 호출자가 사전 체크 권장.
+        void Resize(Device& device, std::uint32_t width, std::uint32_t height);
 
         std::uint32_t CurrentBackBufferIndex() const noexcept { return m_currentIndex; }
         ID3D12Resource* CurrentBackBuffer() const noexcept;

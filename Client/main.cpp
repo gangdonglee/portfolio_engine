@@ -121,14 +121,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         albedoTex.CreateSrv(device, srvHeap);
 
         // 카메라: (0, 1, -5) 시작, 원점 근처. 45도 FoV.
+        constexpr float kFovY     = DirectX::XM_PIDIV4;
+        constexpr float kNearPlane = 0.1f;
+        constexpr float kFarPlane  = 100.0f;
         engine::render::Camera camera;
         camera.SetPosition({ 0.0f, 1.0f, -5.0f });
         camera.SetTarget  ({ 0.0f, 0.0f,  0.0f });
         camera.SetUp      ({ 0.0f, 1.0f,  0.0f });
         camera.SetPerspective(
-            DirectX::XM_PIDIV4,
+            kFovY,
             static_cast<float>(window.Width()) / static_cast<float>(window.Height()),
-            0.1f, 100.0f);
+            kNearPlane, kFarPlane);
 
         // 자유 카메라 컨트롤러 (WASD + QE + 우클릭 hold 마우스 회전, Shift 부스트).
         engine::render::FreeCamera freeCamera(camera);
@@ -148,7 +151,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         engine::render::ConstantBuffer frameCB(
             device, static_cast<engine::uint32>(sizeof(FrameConstants)));
 
-        // 뷰포트 / 시저 — 윈도우 크기 기준. 리사이즈 처리는 후속 단계.
+        // 뷰포트 / 시저 — 윈도우 크기 기준. 매 리사이즈마다 갱신.
         D3D12_VIEWPORT viewport{};
         viewport.TopLeftX = 0.0f;
         viewport.TopLeftY = 0.0f;
@@ -173,6 +176,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         {
             window.PumpMessages();
             if (!window.IsOpen()) { break; }
+
+            // 윈도우 리사이즈 처리: WM_SIZE 가 dirty 플래그 설정 → 한 번에 모든 종속 자원 갱신.
+            // 매 픽셀당 WM_SIZE 가 와도 ConsumeResize 가 직전 상태만 토대로 처리하므로 한 번만 Resize.
+            if (window.ConsumeResize())
+            {
+                commandQueue.FlushGpu();   // GPU 가 백버퍼/뎁스를 더 이상 참조하지 않음을 보장
+                const auto w = static_cast<std::uint32_t>(window.Width());
+                const auto h = static_cast<std::uint32_t>(window.Height());
+
+                swapChain.Resize(device, w, h);
+                depthBuffer.Resize(device, w, h);
+
+                viewport.Width  = static_cast<float>(w);
+                viewport.Height = static_cast<float>(h);
+                scissor.right   = static_cast<LONG>(w);
+                scissor.bottom  = static_cast<LONG>(h);
+
+                camera.SetPerspective(
+                    kFovY,
+                    static_cast<float>(w) / static_cast<float>(h),
+                    kNearPlane, kFarPlane);
+            }
+
             // PumpMessages 가 마우스/키 이벤트 누적 후 — 이번 프레임 델타 확정.
             window.GetInput().BeginFrame();
 

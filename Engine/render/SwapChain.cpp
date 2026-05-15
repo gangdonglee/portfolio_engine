@@ -14,6 +14,8 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cwchar>
+#include <iterator>
 #include <stdexcept>
 
 namespace engine::render
@@ -92,6 +94,52 @@ namespace engine::render
     }
 
     SwapChain::~SwapChain() = default;
+
+    void SwapChain::Resize(Device& device, std::uint32_t width, std::uint32_t height)
+    {
+        if (width == 0 || height == 0)
+        {
+            throw std::runtime_error("SwapChain::Resize: width/height must be > 0");
+        }
+
+        // ResizeBuffers 의 전제 조건: 백버퍼에 대한 모든 외부 참조 해제.
+        // ComPtr.Reset() 으로 우리 측 참조 해제 — GPU 측은 FlushGpu 가 호출자 책임.
+        for (auto& backBuffer : m_backBuffers)
+        {
+            backBuffer.Reset();
+        }
+
+        // 현재 스왑체인 desc 보존 (포맷·플래그·SwapEffect 동일 유지).
+        DXGI_SWAP_CHAIN_DESC1 desc{};
+        ThrowIfFailed(m_swapChain->GetDesc1(&desc), "IDXGISwapChain3::GetDesc1");
+
+        ThrowIfFailed(
+            m_swapChain->ResizeBuffers(
+                kBackBufferCount,
+                width, height,
+                desc.Format,
+                desc.Flags),
+            "IDXGISwapChain3::ResizeBuffers");
+
+        // 백버퍼 재취득 + RTV 재등록 (슬롯 위치 동일, 디스크립터 덮어쓰기).
+        ID3D12Device* d3dDevice = device.Native();
+        for (std::uint32_t i = 0; i < kBackBufferCount; ++i)
+        {
+            ThrowIfFailed(
+                m_swapChain->GetBuffer(i, IID_PPV_ARGS(m_backBuffers[i].GetAddressOf())),
+                "IDXGISwapChain3::GetBuffer (resize)");
+            d3dDevice->CreateRenderTargetView(
+                m_backBuffers[i].Get(),
+                nullptr,
+                m_rtvHandles[i]);
+        }
+        m_currentIndex = m_swapChain->GetCurrentBackBufferIndex();
+
+        wchar_t line[160];
+        std::swprintf(line, std::size(line),
+                      L"[render] SwapChain resized to %ux%u\n", width, height);
+        engine::core::LogInfo(line);
+    }
 
     void SwapChain::Present()
     {

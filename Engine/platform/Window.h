@@ -41,6 +41,11 @@ namespace engine::platform
         Input&       GetInput()       noexcept { return m_input; }
         const Input& GetInput() const noexcept { return m_input; }
 
+        // 리사이즈 dirty 플래그 소비. true 반환 시 dirty 클리어 — 호출자는 새 Width()/Height() 로
+        // 스왑체인/뎁스버퍼/뷰포트를 갱신해야 한다.
+        // SIZE_MINIMIZED 와 0x0 크기는 dirty 를 켜지 않는다 (ResizeBuffers 가 거부).
+        bool ConsumeResize() noexcept;
+
         // HWND 외부 노출은 의도적으로 차단.
         // OS 핸들이 필요한 구성요소(현재 engine::render::SwapChain)는 friend 선언을 통해
         // 아래 private NativeHwnd() 만 호출 가능. 공개 API 에는 HWND 가 등장하지 않는다.
@@ -53,10 +58,11 @@ namespace engine::platform
         static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-        HWND  m_hwnd   = nullptr;
-        int   m_width  = 0;
-        int   m_height = 0;
-        bool  m_isOpen = false;
+        HWND  m_hwnd         = nullptr;
+        int   m_width        = 0;
+        int   m_height       = 0;
+        bool  m_isOpen       = false;
+        bool  m_resizeDirty  = false;
         Input m_input;
     };
 }
