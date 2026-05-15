@@ -33,6 +33,7 @@ namespace engine::render
         CommandQueue&              presentQueue,
         engine::platform::Window&  window,
         RtvDescriptorHeap&         rtvHeap)
+        : m_allowTearing(device.SupportsTearing())
     {
         IDXGIFactory6* factory = device.Factory();
 
@@ -48,7 +49,8 @@ namespace engine::render
         desc.Scaling            = DXGI_SCALING_STRETCH;
         desc.SwapEffect         = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         desc.AlphaMode          = DXGI_ALPHA_MODE_UNSPECIFIED;
-        desc.Flags              = 0;
+        // ALLOW_TEARING flag 는 생성·ResizeBuffers 양쪽에서 일치해야 함 — 미적용 시 Present(ALLOW_TEARING) 가 거부됨.
+        desc.Flags              = m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 
         Microsoft::WRL::ComPtr<IDXGISwapChain1> swapChain1;
         ThrowIfFailed(
@@ -143,8 +145,9 @@ namespace engine::render
 
     void SwapChain::Present()
     {
-        // SyncInterval=0 → V-Sync OFF. PresentFlags=0 → 기본 동작.
-        ThrowIfFailed(m_swapChain->Present(0, 0), "IDXGISwapChain3::Present");
+        // SyncInterval=0 → V-Sync OFF. ALLOW_TEARING 지원 시 PresentFlags 에 추가 (VRR 환경 일관성).
+        const UINT flags = m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+        ThrowIfFailed(m_swapChain->Present(0, flags), "IDXGISwapChain3::Present");
         m_currentIndex = m_swapChain->GetCurrentBackBufferIndex();
     }
 

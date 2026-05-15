@@ -52,6 +52,7 @@ namespace engine::render
 #if defined(_DEBUG)
         ConfigureInfoQueue();
 #endif
+        QueryTearingSupport();
         engine::core::LogInfo(L"[render] D3D12 device created\n");
     }
 
@@ -61,8 +62,9 @@ namespace engine::render
         // 멤버가 전방 선언 타입이지만 cpp 에서 정의된 소멸자이므로 이 시점에 완전 타입.
     }
 
-    ID3D12Device*  Device::Native()  const noexcept { return m_device.Get(); }
-    IDXGIFactory6* Device::Factory() const noexcept { return m_factory.Get(); }
+    ID3D12Device*  Device::Native()         const noexcept { return m_device.Get(); }
+    IDXGIFactory6* Device::Factory()        const noexcept { return m_factory.Get(); }
+    bool           Device::SupportsTearing() const noexcept { return m_supportsTearing; }
 
     void Device::EnableDebugLayer()
     {
@@ -147,6 +149,23 @@ namespace engine::render
                 kMinFeatureLevel,
                 IID_PPV_ARGS(m_device.ReleaseAndGetAddressOf())),
             "D3D12CreateDevice");
+    }
+
+    void Device::QueryTearingSupport()
+    {
+        // VRR (가변 리프레시) / 윈도우 모드 V-Sync OFF 시 tearing 허용 지원 여부.
+        // 미지원 환경 (예: 일부 WARP / 구형 GPU) 에서는 조용히 false 유지.
+        BOOL allowTearing = FALSE;
+        const HRESULT hr = m_factory->CheckFeatureSupport(
+            DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+            &allowTearing,
+            sizeof(allowTearing));
+        m_supportsTearing = SUCCEEDED(hr) && (allowTearing != FALSE);
+
+        engine::core::LogInfo(
+            m_supportsTearing
+                ? L"[render] DXGI tearing support: yes\n"
+                : L"[render] DXGI tearing support: no\n");
     }
 
     void Device::ConfigureInfoQueue()

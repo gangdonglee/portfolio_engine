@@ -71,6 +71,8 @@ namespace engine::render
         Microsoft::WRL::ComPtr<IDXGISwapChain3> m_swapChain;
         Microsoft::WRL::ComPtr<ID3D12Resource>  m_backBuffers[kBackBufferCount];
         D3D12_CPU_DESCRIPTOR_HANDLE             m_rtvHandles[kBackBufferCount]{};
-        std::uint32_t                           m_currentIndex = 0;
+        std::uint32_t                           m_currentIndex   = 0;
+        // ALLOW_TEARING (Device 가 한 번 조회 후 결정). 생성 desc.Flags + Present flag 둘 다 동일하게 적용.
+        bool                                    m_allowTearing   = false;
     };
 }

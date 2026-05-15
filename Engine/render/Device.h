@@ -45,16 +45,22 @@ namespace engine::render
         // 실 사용처 등장 시점(Phase 1D-3 SwapChain) 에 추가됨.
         IDXGIFactory6* Factory() const noexcept;
 
+        // VRR (가변 리프레시) 디스플레이에서 V-Sync OFF tearing 허용 지원 여부.
+        // 생성자에서 IDXGIFactory6::CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING) 한 번 조회.
+        bool SupportsTearing() const noexcept;
+
     private:
         static void EnableDebugLayer();
         void CreateFactory();
         void SelectAdapter();
         void CreateDevice();
         void ConfigureInfoQueue();
+        void QueryTearingSupport();
 
         Microsoft::WRL::ComPtr<IDXGIFactory6>    m_factory;
         Microsoft::WRL::ComPtr<IDXGIAdapter1>    m_adapter;
         Microsoft::WRL::ComPtr<ID3D12Device>     m_device;
         Microsoft::WRL::ComPtr<ID3D12InfoQueue>  m_infoQueue;  // Debug 빌드에서만 set
+        bool m_supportsTearing = false;
     };
 }
