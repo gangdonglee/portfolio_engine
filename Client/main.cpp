@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -48,12 +49,25 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     try
     {
+        // N프레임 in-flight: 백버퍼 수와 동일 슬롯 수 (CPU 는 GPU 보다 N-1 프레임 앞서 record).
+        // 슬롯당 보유 자원: CommandList(=allocator+list 쌍) + ConstantBuffer + fence value.
+        // 공유 자원: Device, CommandQueue, Mesh, Texture, RootSig, PSO, RTV/DSV/SRV 힙
+        //   (GPU 큐는 명령을 순차 실행 — frame N 종료 후 N+1 시작이므로 자원 공유 안전).
+        constexpr std::uint32_t kFrameCount = engine::render::SwapChain::kBackBufferCount;
+
         engine::platform::Window           window(1280, 720, L"portfolio_engine");
         engine::render::Device             device;
         engine::render::CommandQueue       commandQueue(device);
         engine::render::RtvDescriptorHeap  rtvHeap(device, engine::render::SwapChain::kBackBufferCount);
         engine::render::SwapChain          swapChain(device, commandQueue, window, rtvHeap);
-        engine::render::CommandList        cmdList(device);
+
+        // 프레임당 CommandList — 비이동 클래스라 unique_ptr 로 슬롯 채움.
+        std::array<std::unique_ptr<engine::render::CommandList>, kFrameCount> cmdLists;
+        for (std::uint32_t i = 0; i < kFrameCount; ++i)
+        {
+            cmdLists[i] = std::make_unique<engine::render::CommandList>(device);
+        }
+
         engine::render::DepthStencilBuffer depthBuffer(
             device,
             static_cast<std::uint32_t>(window.Width()),
@@ -112,8 +126,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 checker[idx + 3] = 255;
             }
         }
+        // Texture 업로드는 1회성 — 메인 루프 시작 전이므로 첫 슬롯 cmdLists[0] 빌려 사용.
+        // 내부에서 FlushGpu 후 list 가 Close 상태로 남으므로 메인 루프의 Reset 사이클과 호환.
         engine::render::Texture albedoTex(
-            device, commandQueue, cmdList,
+            device, commandQueue, *cmdLists[0],
             checker.data(), kTexW, kTexH);
 
         // SRV 디스크립터 힙 (shader-visible, capacity 4 — 향후 텍스처 추가 여유).
@@ -148,8 +164,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             DirectX::XMFLOAT3   ambient;      float _pad3;
         };
         static_assert(sizeof(FrameConstants) == 192, "FrameConstants 정렬 깨짐");
-        engine::render::ConstantBuffer frameCB(
-            device, static_cast<engine::uint32>(sizeof(FrameConstants)));
+
+        // 프레임당 ConstantBuffer — CPU 가 frame N 의 데이터를 쓰는 동안 GPU 는 frame N-1 의 데이터를 읽음.
+        // 단일 cbuffer 공유 시 race; 슬롯 N개로 분리하면 안전.
+        std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount> frameCBs;
+        for (std::uint32_t i = 0; i < kFrameCount; ++i)
+        {
+            frameCBs[i] = std::make_unique<engine::render::ConstantBuffer>(
+                device, static_cast<engine::uint32>(sizeof(FrameConstants)));
+        }
+
+        // 슬롯당 직전 제출의 fence value — 0 은 "아직 미사용 슬롯" 의미 (대기 skip).
+        std::array<std::uint64_t, kFrameCount> frameFenceValues{};
+        std::uint32_t frameIndex = 0;
 
         // 뷰포트 / 시저 — 윈도우 크기 기준. 매 리사이즈마다 갱신.
         D3D12_VIEWPORT viewport{};
@@ -182,6 +209,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             if (window.ConsumeResize())
             {
                 commandQueue.FlushGpu();   // GPU 가 백버퍼/뎁스를 더 이상 참조하지 않음을 보장
+                // 모든 in-flight 슬롯이 완료된 상태 — fence 추적 값 reset.
+                for (auto& v : frameFenceValues) { v = 0; }
+
                 const auto w = static_cast<std::uint32_t>(window.Width());
                 const auto h = static_cast<std::uint32_t>(window.Height());
 
@@ -225,10 +255,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             XMStoreFloat3(&cb.lightDirWS, lightDir);
             cb.lightColor = { 1.0f, 0.97f, 0.92f };  // 약간 따뜻한 흰색
             cb.ambient    = { 0.15f, 0.15f, 0.18f }; // 약간 푸른 앰비언트
+
+            // === N프레임 in-flight: 이 슬롯의 직전 제출 완료 대기 ===
+            // frameFenceValues[i] == 0 은 "아직 사용 안 한 슬롯" — 첫 N프레임은 wait skip.
+            // GPU 가 이미 완료한 값에 WaitForFenceValue 호출은 즉시 반환 (CommandQueue 내부 GetCompletedValue 분기).
+            if (frameFenceValues[frameIndex] != 0)
+            {
+                commandQueue.WaitForFenceValue(frameFenceValues[frameIndex]);
+            }
+
+            // 이 슬롯의 자원 — allocator+list 쌍, 자기 영역의 cbuffer.
+            engine::render::CommandList&    cmdList = *cmdLists[frameIndex];
+            engine::render::ConstantBuffer& frameCB = *frameCBs[frameIndex];
             frameCB.Update(&cb, sizeof(cb));
 
             // === 매 프레임 명령 기록 ===
-            commandQueue.FlushGpu();
             cmdList.Reset();
             ID3D12GraphicsCommandList* list = cmdList.Native();
 
@@ -281,6 +322,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             cmdList.Close();
             commandQueue.Execute(cmdList);
             swapChain.Present();
+
+            // 이 슬롯의 fence value 갱신 — 다음에 같은 슬롯이 돌아왔을 때 대기 기준.
+            frameFenceValues[frameIndex] = commandQueue.Signal();
+
+            // 다음 슬롯으로 회전. SwapChain 의 백버퍼 인덱스 회전과 같은 cadence.
+            frameIndex = (frameIndex + 1) % kFrameCount;
         }
 
         // 마지막 GPU 작업 완료 대기 (소멸 순서 안전).
