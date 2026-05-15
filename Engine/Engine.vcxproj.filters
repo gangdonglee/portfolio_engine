@@ -32,6 +32,9 @@
     <ClCompile Include="platform\Window.cpp">
       <Filter>Source Files\platform</Filter>
     </ClCompile>
+    <ClCompile Include="platform\Input.cpp">
+      <Filter>Source Files\platform</Filter>
+    </ClCompile>
     <ClCompile Include="render\Device.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
@@ -71,6 +74,9 @@
     <ClCompile Include="render\Camera.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\FreeCamera.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
     <ClCompile Include="core\HrCheck.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -80,6 +86,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
+      <Filter>Header Files\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\Input.h">
       <Filter>Header Files\platform</Filter>
     </ClInclude>
     <ClInclude Include="render\Device.h">
@@ -119,6 +128,9 @@
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="render\Camera.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\FreeCamera.h">
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="core\Types.h">

@@ -6,6 +6,8 @@
 #include <string>
 #include <string_view>
 
+#include "platform/Input.h"
+
 namespace engine::render { class SwapChain; }  // Window::NativeHwnd 친구 접근용
 
 namespace engine::platform
@@ -35,6 +37,10 @@ namespace engine::platform
         int  Width()  const noexcept { return m_width; }
         int  Height() const noexcept { return m_height; }
 
+        // 키보드/마우스 입력 상태. 매 프레임 PumpMessages 직후 Input::BeginFrame() 권장.
+        Input&       GetInput()       noexcept { return m_input; }
+        const Input& GetInput() const noexcept { return m_input; }
+
         // HWND 외부 노출은 의도적으로 차단.
         // OS 핸들이 필요한 구성요소(현재 engine::render::SwapChain)는 friend 선언을 통해
         // 아래 private NativeHwnd() 만 호출 가능. 공개 API 에는 HWND 가 등장하지 않는다.
@@ -47,9 +53,10 @@ namespace engine::platform
         static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-        HWND m_hwnd   = nullptr;
-        int  m_width  = 0;
-        int  m_height = 0;
-        bool m_isOpen = false;
+        HWND  m_hwnd   = nullptr;
+        int   m_width  = 0;
+        int   m_height = 0;
+        bool  m_isOpen = false;
+        Input m_input;
     };
 }

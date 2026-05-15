@@ -11,9 +11,11 @@
 #include <stdexcept>
 #include <string>
 
+#include "platform/Input.h"
 #include "platform/Window.h"
 #include "render/Camera.h"
 #include "render/CommandList.h"
+#include "render/FreeCamera.h"
 #include "render/CommandQueue.h"
 #include "render/ConstantBuffer.h"
 #include "render/DepthStencilBuffer.h"
@@ -116,15 +118,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             static_cast<engine::uint32>(sizeof(kCubeIndices)),
             DXGI_FORMAT_R16_UINT);
 
-        // 카메라: (3, 2, -5) → 원점 바라보기, 45도 FoV.
+        // 카메라: (0, 1, -5) 시작, 원점 근처. 45도 FoV.
         engine::render::Camera camera;
-        camera.SetPosition({ 3.0f, 2.0f, -5.0f });
+        camera.SetPosition({ 0.0f, 1.0f, -5.0f });
         camera.SetTarget  ({ 0.0f, 0.0f,  0.0f });
         camera.SetUp      ({ 0.0f, 1.0f,  0.0f });
         camera.SetPerspective(
             DirectX::XM_PIDIV4,
             static_cast<float>(window.Width()) / static_cast<float>(window.Height()),
             0.1f, 100.0f);
+
+        // 자유 카메라 컨트롤러 (WASD + QE + 우클릭 hold 마우스 회전, Shift 부스트).
+        engine::render::FreeCamera freeCamera(camera);
 
         // 상수 버퍼: row-major float4x4 MVP (64바이트, 256 정렬됨).
         struct FrameConstants
@@ -151,19 +156,27 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
         constexpr float kClearColor[4] = { 0.05f, 0.07f, 0.10f, 1.0f };
 
-        // 시간 측정 — 회전 각도 = elapsed seconds.
+        // 시간 측정.
         const auto startTime = std::chrono::steady_clock::now();
+        auto       prevFrame = startTime;
 
         while (window.IsOpen())
         {
             window.PumpMessages();
             if (!window.IsOpen()) { break; }
+            // PumpMessages 가 마우스/키 이벤트 누적 후 — 이번 프레임 델타 확정.
+            window.GetInput().BeginFrame();
 
-            // 경과 시간 (초).
+            // 프레임 dt + 누적 시간.
             const auto now = std::chrono::steady_clock::now();
+            const float dt = std::chrono::duration<float>(now - prevFrame).count();
             const float t  = std::chrono::duration<float>(now - startTime).count();
+            prevFrame = now;
 
-            // World = RotationY(t) * RotationX(t * 0.7) — 두 축 회전으로 큐브의 모든 면 가시.
+            // 입력으로 카메라 갱신.
+            freeCamera.Update(window.GetInput(), dt);
+
+            // World = 회전 큐브 자체 회전 (시각 흐름 유지).
             using namespace DirectX;
             const XMMATRIX world = XMMatrixRotationY(t) * XMMatrixRotationX(t * 0.7f);
             const XMMATRIX mvp   = world * camera.ViewProjection();

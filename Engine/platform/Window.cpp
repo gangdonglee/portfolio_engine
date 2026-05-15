@@ -147,6 +147,36 @@ namespace engine::platform
                 ::PostQuitMessage(0);
                 return 0;
             }
+
+            // === 키보드 입력 ===
+            case WM_KEYDOWN:
+            case WM_SYSKEYDOWN:
+            {
+                m_input.OnKeyDown(static_cast<unsigned int>(wParam));
+                return 0;
+            }
+            case WM_KEYUP:
+            case WM_SYSKEYUP:
+            {
+                m_input.OnKeyUp(static_cast<unsigned int>(wParam));
+                return 0;
+            }
+
+            // === 마우스 입력 ===
+            case WM_MOUSEMOVE:
+            {
+                m_input.OnMouseMove(
+                    static_cast<int>(static_cast<short>(LOWORD(lParam))),
+                    static_cast<int>(static_cast<short>(HIWORD(lParam))));
+                return 0;
+            }
+            case WM_LBUTTONDOWN: m_input.OnMouseButton(0, true);  return 0;
+            case WM_LBUTTONUP:   m_input.OnMouseButton(0, false); return 0;
+            case WM_RBUTTONDOWN: m_input.OnMouseButton(1, true);  return 0;
+            case WM_RBUTTONUP:   m_input.OnMouseButton(1, false); return 0;
+            case WM_MBUTTONDOWN: m_input.OnMouseButton(2, true);  return 0;
+            case WM_MBUTTONUP:   m_input.OnMouseButton(2, false); return 0;
+
             default:
                 return ::DefWindowProcW(hwnd, msg, wParam, lParam);
         }

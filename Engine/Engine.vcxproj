@@ -79,6 +79,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="platform\Window.cpp" />
+    <ClCompile Include="platform\Input.cpp" />
     <ClCompile Include="render\Device.cpp" />
     <ClCompile Include="render\CommandQueue.cpp" />
     <ClCompile Include="render\RtvDescriptorHeap.cpp" />
@@ -92,6 +93,7 @@
     <ClCompile Include="render\ConstantBuffer.cpp" />
     <ClCompile Include="render\IndexBuffer.cpp" />
     <ClCompile Include="render\Camera.cpp" />
+    <ClCompile Include="render\FreeCamera.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
   </ItemGroup>
@@ -99,6 +101,7 @@
     <ClInclude Include="core\HrCheck.h" />
     <ClInclude Include="core\Logger.h" />
     <ClInclude Include="platform\Window.h" />
+    <ClInclude Include="platform\Input.h" />
     <ClInclude Include="render\Device.h" />
     <ClInclude Include="render\CommandQueue.h" />
     <ClInclude Include="render\RtvDescriptorHeap.h" />
@@ -112,6 +115,7 @@
     <ClInclude Include="render\ConstantBuffer.h" />
     <ClInclude Include="render\IndexBuffer.h" />
     <ClInclude Include="render\Camera.h" />
+    <ClInclude Include="render\FreeCamera.h" />
     <ClInclude Include="core\Types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
