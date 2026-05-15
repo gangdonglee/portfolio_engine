@@ -21,6 +21,8 @@
 #include "render/DepthStencilBuffer.h"
 #include "render/Device.h"
 #include "render/IndexBuffer.h"
+#include "render/Mesh.h"
+#include "render/ObjLoader.h"
 #include "render/PipelineState.h"
 #include "render/RootSignature.h"
 #include "render/RtvDescriptorHeap.h"
@@ -77,66 +79,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.dsvFormat     = depthBuffer.Format();
         engine::render::PipelineState pso(device, psoDesc);
 
-        // === 회전 큐브 메시 (24 정점, 면별 normal, 6 면 색상) ===
-        // 정점 = 4 * 6 = 24. 각 정점이 한 면에만 속하므로 normal 이 면별로 명확.
-        // CullBack + FrontCCW=FALSE → CW(outward normal 방향에서 본 시계방향)가 정면.
-        struct HelloVertex
-        {
-            float position[3];
-            float normal[3];
-            float color[3];
-        };
-        constexpr HelloVertex kCubeVertices[24] = {
-            // Front  (z=-1, normal=-Z) — 빨강
-            { { -1, -1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 0 좌하
-            { { +1, -1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 1 우하
-            { { +1, +1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 2 우상
-            { { -1, +1, -1 }, {  0,  0, -1 }, { 1, 0, 0 } },  // 3 좌상
-            // Back   (z=+1, normal=+Z) — 초록
-            { { +1, -1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 4 좌하(시점 좌우 반전)
-            { { -1, -1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 5 우하
-            { { -1, +1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 6 우상
-            { { +1, +1, +1 }, {  0,  0, +1 }, { 0, 1, 0 } },  // 7 좌상
-            // Left   (x=-1, normal=-X) — 파랑
-            { { -1, -1, +1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 8 좌하
-            { { -1, -1, -1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 9 우하
-            { { -1, +1, -1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 10 우상
-            { { -1, +1, +1 }, { -1,  0,  0 }, { 0, 0, 1 } },  // 11 좌상
-            // Right  (x=+1, normal=+X) — 노랑
-            { { +1, -1, -1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 12 좌하
-            { { +1, -1, +1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 13 우하
-            { { +1, +1, +1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 14 우상
-            { { +1, +1, -1 }, { +1,  0,  0 }, { 1, 1, 0 } },  // 15 좌상
-            // Top    (y=+1, normal=+Y) — 자홍
-            { { -1, +1, -1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 16 좌하
-            { { +1, +1, -1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 17 우하
-            { { +1, +1, +1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 18 우상
-            { { -1, +1, +1 }, {  0, +1,  0 }, { 1, 0, 1 } },  // 19 좌상
-            // Bottom (y=-1, normal=-Y) — 청록
-            { { -1, -1, +1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 20 좌하
-            { { +1, -1, +1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 21 우하
-            { { +1, -1, -1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 22 우상
-            { { -1, -1, -1 }, {  0, -1,  0 }, { 0, 1, 1 } },  // 23 좌상
-        };
-        // 각 면 4 정점(좌하·우하·우상·좌상 순)을 CW 삼각형 2개로:
-        //   (좌하 → 우하 → 우상) + (좌하 → 우상 → 좌상)
-        constexpr std::uint16_t kCubeIndices[36] = {
-             0,  1,  2,   0,  2,  3,  // Front
-             4,  5,  6,   4,  6,  7,  // Back
-             8,  9, 10,   8, 10, 11,  // Left
-            12, 13, 14,  12, 14, 15,  // Right
-            16, 17, 18,  16, 18, 19,  // Top
-            20, 21, 22,  20, 22, 23,  // Bottom
-        };
-
-        engine::render::VertexBuffer cubeVB(
-            device, kCubeVertices,
-            static_cast<engine::uint32>(sizeof(kCubeVertices)),
-            static_cast<engine::uint32>(sizeof(HelloVertex)));
-        engine::render::IndexBuffer cubeIB(
-            device, kCubeIndices,
-            static_cast<engine::uint32>(sizeof(kCubeIndices)),
-            DXGI_FORMAT_R16_UINT);
+        // === Mesh 로드 — OBJ 파일에서 큐브 ===
+        // 손코딩 정점/인덱스 배열 제거. assets/Cube.obj 에서 로드.
+        // 색상은 OBJ 표준 미지원 → defaultColor 로 일괄 (각 면 색상 차이 X, 라이트 음영만으로 표현).
+        const std::wstring assetsDir = engine::render::obj_loader::DefaultAssetsDir();
+        const std::wstring cubePath  = assetsDir + L"Cube.obj";
+        std::unique_ptr<engine::render::Mesh> cubeMesh =
+            engine::render::obj_loader::LoadObj(
+                device,
+                cubePath.c_str(),
+                { 0.85f, 0.85f, 0.92f });  // 약간 푸른 회색 — 라이트 음영이 가장 잘 보이는 무채색
 
         // 카메라: (0, 1, -5) 시작, 원점 근처. 45도 FoV.
         engine::render::Camera camera;
@@ -250,9 +202,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             list->SetPipelineState(pso.Native());
             list->SetGraphicsRootConstantBufferView(0, frameCB.GpuAddress());
             list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cubeVB.Bind(list);
-            cubeIB.Bind(list);
-            list->DrawIndexedInstanced(cubeIB.IndexCount(), 1, 0, 0, 0);
+            cubeMesh->Bind(list);
+            cubeMesh->Draw(list);
 
             // RENDER_TARGET → PRESENT
             D3D12_RESOURCE_BARRIER toPresent{};

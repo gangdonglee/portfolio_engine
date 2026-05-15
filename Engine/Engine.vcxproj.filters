@@ -77,6 +77,12 @@
     <ClCompile Include="render\FreeCamera.cpp">
       <Filter>Source Files\render</Filter>
     </ClCompile>
+    <ClCompile Include="render\Mesh.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
+    <ClCompile Include="render\ObjLoader.cpp">
+      <Filter>Source Files\render</Filter>
+    </ClCompile>
     <ClCompile Include="core\HrCheck.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -131,6 +137,12 @@
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="render\FreeCamera.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Mesh.h">
+      <Filter>Header Files\render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\ObjLoader.h">
       <Filter>Header Files\render</Filter>
     </ClInclude>
     <ClInclude Include="core\Types.h">

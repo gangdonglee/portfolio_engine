@@ -94,6 +94,8 @@
     <ClCompile Include="render\IndexBuffer.cpp" />
     <ClCompile Include="render\Camera.cpp" />
     <ClCompile Include="render\FreeCamera.cpp" />
+    <ClCompile Include="render\Mesh.cpp" />
+    <ClCompile Include="render\ObjLoader.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
   </ItemGroup>
@@ -116,6 +118,8 @@
     <ClInclude Include="render\IndexBuffer.h" />
     <ClInclude Include="render\Camera.h" />
     <ClInclude Include="render\FreeCamera.h" />
+    <ClInclude Include="render\Mesh.h" />
+    <ClInclude Include="render\ObjLoader.h" />
     <ClInclude Include="core\Types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

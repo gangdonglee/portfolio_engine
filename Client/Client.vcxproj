@@ -68,8 +68,10 @@
     </Link>
     <PostBuildEvent>
       <Command>if not exist "$(OutDir)shaders" mkdir "$(OutDir)shaders"
-xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul</Command>
-      <Message>Copying shaders to output</Message>
+xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul
+if not exist "$(OutDir)assets" mkdir "$(OutDir)assets"
+xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul</Command>
+      <Message>Copying shaders + assets to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -96,8 +98,10 @@ xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul</Comma
     </Link>
     <PostBuildEvent>
       <Command>if not exist "$(OutDir)shaders" mkdir "$(OutDir)shaders"
-xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul</Command>
-      <Message>Copying shaders to output</Message>
+xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul
+if not exist "$(OutDir)assets" mkdir "$(OutDir)assets"
+xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul</Command>
+      <Message>Copying shaders + assets to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
