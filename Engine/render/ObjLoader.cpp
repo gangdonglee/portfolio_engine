@@ -21,8 +21,8 @@ namespace engine::render::obj_loader
 {
     namespace
     {
-        // "v//vn" / "v/vt/vn" / "v" 형식의 face vertex 토큰 파싱.
-        struct FaceVertex { int32 posIdx = -1; int32 normIdx = -1; };
+        // "v" / "v/vt" / "v//vn" / "v/vt/vn" 형식의 face vertex 토큰 파싱.
+        struct FaceVertex { int32 posIdx = -1; int32 uvIdx = -1; int32 normIdx = -1; };
 
         FaceVertex ParseFaceVertex(const std::string& token)
         {
@@ -40,9 +40,23 @@ namespace engine::render::obj_loader
             if (lastSlash == firstSlash)
             {
                 // "v/vt" — normal 없음
+                const std::string uvStr = token.substr(firstSlash + 1);
+                if (!uvStr.empty())
+                {
+                    fv.uvIdx = std::stoi(uvStr);
+                }
                 return fv;
             }
             // "v//vn" 또는 "v/vt/vn"
+            // 가운데 vt 부분 — firstSlash+1 .. lastSlash (비어있을 수 있음)
+            if (lastSlash > firstSlash + 1)
+            {
+                const std::string uvStr = token.substr(firstSlash + 1, lastSlash - firstSlash - 1);
+                if (!uvStr.empty())
+                {
+                    fv.uvIdx = std::stoi(uvStr);
+                }
+            }
             const std::string normStr = token.substr(lastSlash + 1);
             if (!normStr.empty())
             {
@@ -67,6 +81,7 @@ namespace engine::render::obj_loader
 
         std::vector<DirectX::XMFLOAT3> positions;
         std::vector<DirectX::XMFLOAT3> normals;
+        std::vector<DirectX::XMFLOAT2> uvs;
         std::vector<FaceVertex>        faceVertices;  // 모든 face 정점 (순서대로 삼각형 인덱스)
 
         std::string line;
@@ -90,6 +105,14 @@ namespace engine::render::obj_loader
                 iss >> x >> y >> z;
                 normals.push_back({ x, y, z });
             }
+            else if (tag == "vt")
+            {
+                // OBJ 의 vt 는 u v [w] — w 는 무시.
+                // OBJ 의 V축은 bottom-up. D3D 텍스처는 top-down 이므로 (1 - v) 로 뒤집어 저장.
+                float u{}, v{};
+                iss >> u >> v;
+                uvs.push_back({ u, 1.0f - v });
+            }
             else if (tag == "f")
             {
                 // 삼각형 가정 — 3개 토큰.
@@ -103,7 +126,7 @@ namespace engine::render::obj_loader
                 faceVertices.push_back(ParseFaceVertex(b));
                 faceVertices.push_back(ParseFaceVertex(c));
             }
-            // vt 등 기타 라인 무시.
+            // 기타 라인 (mtllib/usemtl/o/s/g 등) 무시.
         }
 
         if (positions.empty() || faceVertices.empty())
@@ -111,8 +134,16 @@ namespace engine::render::obj_loader
             throw std::runtime_error("OBJ: 유효한 정점/면 없음");
         }
 
-        // (posIdx, normIdx) 쌍을 키로 unique vertex 생성.
-        std::map<std::pair<int32, int32>, uint16> dedup;
+        // (posIdx, uvIdx, normIdx) 트리플을 키로 unique vertex 생성.
+        struct Key { int32 pos; int32 uv; int32 norm; };
+        struct KeyLess {
+            bool operator()(const Key& a, const Key& b) const noexcept {
+                if (a.pos != b.pos)   return a.pos  < b.pos;
+                if (a.uv  != b.uv)    return a.uv   < b.uv;
+                return a.norm < b.norm;
+            }
+        };
+        std::map<Key, uint16, KeyLess> dedup;
         std::vector<Mesh::Vertex> vertices;
         std::vector<uint16>       indices;
 
@@ -129,7 +160,7 @@ namespace engine::render::obj_loader
                 throw std::runtime_error("OBJ: position 인덱스 범위 초과");
             }
 
-            const std::pair<int32, int32> key{ fv.posIdx, fv.normIdx };
+            const Key key{ fv.posIdx, fv.uvIdx, fv.normIdx };
             auto it = dedup.find(key);
             if (it != dedup.end())
             {
@@ -147,6 +178,14 @@ namespace engine::render::obj_loader
             {
                 v.normal = { 0.0f, 1.0f, 0.0f };  // normal 없으면 디폴트 +Y
             }
+            if (fv.uvIdx > 0 && static_cast<size_t>(fv.uvIdx - 1) < uvs.size())
+            {
+                v.uv = uvs[fv.uvIdx - 1];
+            }
+            else
+            {
+                v.uv = { 0.0f, 0.0f };  // uv 없으면 디폴트 (0,0)
+            }
             v.color = defaultColor;
 
             if (vertices.size() >= 65535)
@@ -161,8 +200,8 @@ namespace engine::render::obj_loader
 
         wchar_t logLine[256];
         std::swprintf(logLine, std::size(logLine),
-                      L"[render] OBJ loaded: positions=%zu, normals=%zu, vertices=%zu, indices=%zu\n",
-                      positions.size(), normals.size(), vertices.size(), indices.size());
+                      L"[render] OBJ loaded: positions=%zu, normals=%zu, uvs=%zu, vertices=%zu, indices=%zu\n",
+                      positions.size(), normals.size(), uvs.size(), vertices.size(), indices.size());
         engine::core::LogInfo(logLine);
 
         return std::make_unique<Mesh>(

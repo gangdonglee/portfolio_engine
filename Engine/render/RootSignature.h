@@ -28,6 +28,9 @@ namespace engine::render
             //   All: VS + PS 모두 접근 (Phong 조명처럼 같은 cbuffer 를 양 단계가 쓰는 경우).
             enum class CbvB0 { None, Vertex, All };
             CbvB0 cbvAtB0 = CbvB0::None;
+
+            // true 이면 t0 슬롯에 SRV 디스크립터 테이블 (PS 가시) + s0 정적 샘플러 (linear/wrap) 추가.
+            bool srvT0Pixel = false;
         };
 
         // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그는 항상 켜짐.

@@ -1,6 +1,6 @@
 // HelloTriangle.hlsl
-// Phong 조명(앰비언트 + 디퓨즈 + Blinn-Phong 스페큘러) 셰이딩.
-// 정점 입력: POSITION + NORMAL + COLOR.
+// Phong 조명(앰비언트 + 디퓨즈 + Blinn-Phong 스페큘러) + 알베도 텍스처 샘플링.
+// 정점 입력: POSITION + NORMAL + TEXCOORD + COLOR.
 // 행렬은 row-major (DirectXMath 와 일치, CPU 측 transpose 불필요).
 
 cbuffer FrameConstants : register(b0)
@@ -13,10 +13,15 @@ cbuffer FrameConstants : register(b0)
     float3 ambient;       float _pad3;
 };
 
+// 알베도 텍스처 + 정적 샘플러 (RootSig 의 t0 / s0 슬롯과 일치).
+Texture2D    g_albedo  : register(t0);
+SamplerState g_sampler : register(s0);
+
 struct VSInput
 {
     float3 position : POSITION;
     float3 normal   : NORMAL;
+    float2 uv       : TEXCOORD;
     float3 color    : COLOR;
 };
 
@@ -24,7 +29,8 @@ struct VSOutput
 {
     float4 position   : SV_Position;
     float3 normalWS   : NORMAL;
-    float3 positionWS : TEXCOORD0;  // world space 위치
+    float2 uv         : TEXCOORD0;
+    float3 positionWS : TEXCOORD1;  // world space 위치
     float3 color      : COLOR;
 };
 
@@ -36,6 +42,7 @@ VSOutput VSMain(VSInput input)
     output.positionWS = mul(localPos, world).xyz;
     // uniform scale 가정 — 법선을 world 의 3x3 부분에 곱해도 됨.
     output.normalWS   = normalize(mul(input.normal, (float3x3)world));
+    output.uv         = input.uv;
     output.color      = input.color;
     return output;
 }
@@ -51,8 +58,11 @@ float4 PSMain(VSOutput input) : SV_Target
     const float  NdotH  = saturate(dot(N, H));
     const float  shininess = 32.0;
 
-    const float3 ambientLit = ambient    * input.color;
-    const float3 diffuse    = NdotL      * lightColor * input.color;
+    // 알베도 = 텍스처 색 * 정점 색 (정점 색은 OBJ 의 defaultColor 로 들어옴).
+    const float3 albedo = g_albedo.Sample(g_sampler, input.uv).rgb * input.color;
+
+    const float3 ambientLit = ambient    * albedo;
+    const float3 diffuse    = NdotL      * lightColor * albedo;
     const float3 specular   = pow(NdotH, shininess) * lightColor * 0.5;
 
     return float4(ambientLit + diffuse + specular, 1.0);

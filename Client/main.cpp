@@ -27,8 +27,12 @@
 #include "render/RootSignature.h"
 #include "render/RtvDescriptorHeap.h"
 #include "render/ShaderCompiler.h"
+#include "render/SrvDescriptorHeap.h"
 #include "render/SwapChain.h"
+#include "render/Texture.h"
 #include "render/VertexBuffer.h"
+
+#include <array>
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                       _In_opt_ HINSTANCE hPrevInstance,
@@ -65,9 +69,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         const auto psBlob = engine::render::ShaderCompiler::CompileFromFile(
             shaderPath.c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
 
-        // RootSignature: b0 CBV root descriptor 1개 (VS + PS 모두 가시 — Phong 조명용).
+        // RootSignature: b0 CBV root descriptor (VS+PS 가시 — Phong) + t0 SRV table (PS 가시 — albedo) + s0 정적 샘플러.
         engine::render::RootSignature::Desc rsDesc{};
-        rsDesc.cbvAtB0 = engine::render::RootSignature::Desc::CbvB0::All;
+        rsDesc.cbvAtB0    = engine::render::RootSignature::Desc::CbvB0::All;
+        rsDesc.srvT0Pixel = true;
         engine::render::RootSignature rootSig(device, rsDesc);
 
         // PSO: 깊이 활성 + HelloTriangle 입력 레이아웃.
@@ -81,14 +86,39 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
         // === Mesh 로드 — OBJ 파일에서 큐브 ===
         // 손코딩 정점/인덱스 배열 제거. assets/Cube.obj 에서 로드.
-        // 색상은 OBJ 표준 미지원 → defaultColor 로 일괄 (각 면 색상 차이 X, 라이트 음영만으로 표현).
+        // 정점 색상은 흰색 — 알베도 색은 텍스처에서 가져옴.
         const std::wstring assetsDir = engine::render::obj_loader::DefaultAssetsDir();
         const std::wstring cubePath  = assetsDir + L"Cube.obj";
         std::unique_ptr<engine::render::Mesh> cubeMesh =
             engine::render::obj_loader::LoadObj(
                 device,
                 cubePath.c_str(),
-                { 0.85f, 0.85f, 0.92f });  // 약간 푸른 회색 — 라이트 음영이 가장 잘 보이는 무채색
+                { 1.0f, 1.0f, 1.0f });
+
+        // === 체커보드 알베도 텍스처 (8x8 RGBA8) ===
+        // 외부 이미지 로더 없이 셰이딩 확인용으로 코드 생성. 노랑/검정 8x8.
+        constexpr engine::uint32 kTexW = 8;
+        constexpr engine::uint32 kTexH = 8;
+        std::array<engine::uint8, kTexW * kTexH * 4> checker{};
+        for (engine::uint32 y = 0; y < kTexH; ++y)
+        {
+            for (engine::uint32 x = 0; x < kTexW; ++x)
+            {
+                const bool light = ((x ^ y) & 1) == 0;
+                const engine::uint32 idx = (y * kTexW + x) * 4;
+                checker[idx + 0] = light ? 255 : 30;   // R
+                checker[idx + 1] = light ? 220 : 30;   // G
+                checker[idx + 2] = light ? 60  : 30;   // B
+                checker[idx + 3] = 255;
+            }
+        }
+        engine::render::Texture albedoTex(
+            device, commandQueue, cmdList,
+            checker.data(), kTexW, kTexH);
+
+        // SRV 디스크립터 힙 (shader-visible, capacity 4 — 향후 텍스처 추가 여유).
+        engine::render::SrvDescriptorHeap srvHeap(device, 4);
+        albedoTex.CreateSrv(device, srvHeap);
 
         // 카메라: (0, 1, -5) 시작, 원점 근처. 45도 FoV.
         engine::render::Camera camera;
@@ -200,7 +230,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             list->RSSetScissorRects(1, &scissor);
             list->SetGraphicsRootSignature(rootSig.Native());
             list->SetPipelineState(pso.Native());
+
+            // SRV 힙은 한 번에 하나만 바인딩. SetDescriptorHeaps → root table 바인딩.
+            ID3D12DescriptorHeap* heaps[] = { srvHeap.Native() };
+            list->SetDescriptorHeaps(1, heaps);
+
             list->SetGraphicsRootConstantBufferView(0, frameCB.GpuAddress());
+            list->SetGraphicsRootDescriptorTable(1, albedoTex.SrvGpuHandle());
+
             list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cubeMesh->Bind(list);
             cubeMesh->Draw(list);

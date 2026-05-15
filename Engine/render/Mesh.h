@@ -15,7 +15,7 @@ namespace engine::render
 
     // VertexBuffer + IndexBuffer 묶음. 셰이더의 입력 레이아웃과 1:1 대응되는 표준 정점 형식.
     //
-    // 표준 정점 형식: POSITION(float3) + NORMAL(float3) + COLOR(float3). 36바이트.
+    // 표준 정점 형식: POSITION(float3) + NORMAL(float3) + TEXCOORD(float2) + COLOR(float3). 44바이트.
     //   PipelineState 의 kHelloTriangleInputLayout 과 일치.
     //
     // 단일 소유 (복사·이동 금지). 사용자가 unique_ptr<Mesh> 로 래핑하면 이동 가능.
@@ -26,6 +26,7 @@ namespace engine::render
         {
             DirectX::XMFLOAT3 position;
             DirectX::XMFLOAT3 normal;
+            DirectX::XMFLOAT2 uv;
             DirectX::XMFLOAT3 color;
         };
 

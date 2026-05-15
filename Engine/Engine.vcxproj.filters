@@ -66,6 +66,12 @@
     <ClCompile Include="render\ObjLoader.cpp">
       <Filter>render</Filter>
     </ClCompile>
+    <ClCompile Include="render\SrvDescriptorHeap.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Texture.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="core\HrCheck.cpp">
       <Filter>core</Filter>
     </ClCompile>
@@ -126,6 +132,12 @@
       <Filter>render</Filter>
     </ClInclude>
     <ClInclude Include="render\ObjLoader.h">
+      <Filter>render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\SrvDescriptorHeap.h">
+      <Filter>render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Texture.h">
       <Filter>render</Filter>
     </ClInclude>
     <ClInclude Include="core\HrCheck.h">

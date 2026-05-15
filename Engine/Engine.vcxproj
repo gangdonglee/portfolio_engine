@@ -96,6 +96,8 @@
     <ClCompile Include="render\FreeCamera.cpp" />
     <ClCompile Include="render\Mesh.cpp" />
     <ClCompile Include="render\ObjLoader.cpp" />
+    <ClCompile Include="render\SrvDescriptorHeap.cpp" />
+    <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
   </ItemGroup>
@@ -120,6 +122,8 @@
     <ClInclude Include="render\FreeCamera.h" />
     <ClInclude Include="render\Mesh.h" />
     <ClInclude Include="render\ObjLoader.h" />
+    <ClInclude Include="render\SrvDescriptorHeap.h" />
+    <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

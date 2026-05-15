@@ -17,26 +17,66 @@ namespace engine::render
 
     RootSignature::RootSignature(Device& device, const Desc& desc)
     {
-        // 루트 파라미터 구성. cbvAtB0 가 None 외면 b0 CBV root descriptor 1개.
-        D3D12_ROOT_PARAMETER params[1]{};
-        UINT paramCount = 0;
+        // 루트 파라미터 구성: 최대 2개 (b0 CBV + t0 SRV table).
+        D3D12_ROOT_PARAMETER  params[2]{};
+        UINT                  paramCount = 0;
+
+        // [0] b0 CBV root descriptor
         if (desc.cbvAtB0 != Desc::CbvB0::None)
         {
-            params[0].ParameterType             = D3D12_ROOT_PARAMETER_TYPE_CBV;
-            params[0].Descriptor.ShaderRegister = 0;
-            params[0].Descriptor.RegisterSpace  = 0;
-            params[0].ShaderVisibility =
+            params[paramCount].ParameterType             = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            params[paramCount].Descriptor.ShaderRegister = 0;
+            params[paramCount].Descriptor.RegisterSpace  = 0;
+            params[paramCount].ShaderVisibility =
                 (desc.cbvAtB0 == Desc::CbvB0::Vertex)
                     ? D3D12_SHADER_VISIBILITY_VERTEX
                     : D3D12_SHADER_VISIBILITY_ALL;
-            paramCount = 1;
+            ++paramCount;
+        }
+
+        // [1] t0 SRV descriptor table (PS visibility)
+        D3D12_DESCRIPTOR_RANGE srvRange{};
+        if (desc.srvT0Pixel)
+        {
+            srvRange.RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            srvRange.NumDescriptors     = 1;
+            srvRange.BaseShaderRegister = 0;   // t0
+            srvRange.RegisterSpace      = 0;
+            srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+            params[paramCount].ParameterType                       = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+            params[paramCount].DescriptorTable.pDescriptorRanges   = &srvRange;
+            params[paramCount].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_PIXEL;
+            ++paramCount;
+        }
+
+        // Static sampler s0 — linear filter / wrap, PS 가시.
+        D3D12_STATIC_SAMPLER_DESC samplers[1]{};
+        UINT samplerCount = 0;
+        if (desc.srvT0Pixel)
+        {
+            samplers[0].Filter           = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+            samplers[0].AddressU         = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+            samplers[0].AddressV         = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+            samplers[0].AddressW         = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+            samplers[0].MipLODBias       = 0.0f;
+            samplers[0].MaxAnisotropy    = 1;
+            samplers[0].ComparisonFunc   = D3D12_COMPARISON_FUNC_ALWAYS;
+            samplers[0].BorderColor      = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+            samplers[0].MinLOD           = 0.0f;
+            samplers[0].MaxLOD           = D3D12_FLOAT32_MAX;
+            samplers[0].ShaderRegister   = 0;   // s0
+            samplers[0].RegisterSpace    = 0;
+            samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            samplerCount = 1;
         }
 
         D3D12_ROOT_SIGNATURE_DESC rsDesc{};
         rsDesc.NumParameters     = paramCount;
         rsDesc.pParameters       = paramCount > 0 ? params : nullptr;
-        rsDesc.NumStaticSamplers = 0;
-        rsDesc.pStaticSamplers   = nullptr;
+        rsDesc.NumStaticSamplers = samplerCount;
+        rsDesc.pStaticSamplers   = samplerCount > 0 ? samplers : nullptr;
         // IA 단계의 input layout 사용 허용. 비어있는 RS 라도 IA 가 필요하면 이 플래그 필수.
         rsDesc.Flags             = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
@@ -78,18 +118,11 @@ namespace engine::render
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())),
             "ID3D12Device::CreateRootSignature");
 
-        switch (desc.cbvAtB0)
-        {
-            case Desc::CbvB0::None:
-                engine::core::LogInfo(L"[render] RootSignature created (empty, IA layout 허용)\n");
-                break;
-            case Desc::CbvB0::Vertex:
-                engine::core::LogInfo(L"[render] RootSignature created (1 CBV @ b0 vertex visible)\n");
-                break;
-            case Desc::CbvB0::All:
-                engine::core::LogInfo(L"[render] RootSignature created (1 CBV @ b0 all-visible)\n");
-                break;
-        }
+        wchar_t buf[256];
+        std::swprintf(buf, std::size(buf),
+                      L"[render] RootSignature created (params=%u, samplers=%u, IA layout 허용)\n",
+                      paramCount, samplerCount);
+        engine::core::LogInfo(buf);
     }
 
     RootSignature::~RootSignature() = default;
