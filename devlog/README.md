@@ -34,3 +34,4 @@
 | 09 | [Phase 2 — 인프라 보강 + 회전 큐브 🎲](09-spinning-cube.md) | 2026-05-15 | ✅ |
 | 10 | [Phase 3 전반 — 카메라 입력 + 조명 + 메시 로더 🎮](10-camera-lighting-mesh.md) | 2026-05-15 | ✅ |
 | 11 | [Phase 3 (E) — 텍스처 업로드 + SRV 디스크립터 테이블 🖼️](11-texture.md) | 2026-05-15 | ✅ |
+| 12 | [윈도우 리사이즈 (WM_SIZE → SwapChain/Depth/Viewport/Camera) 🪟](12-window-resize.md) | 2026-05-15 | ✅ |
