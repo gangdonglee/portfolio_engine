@@ -24,6 +24,58 @@ namespace engine::render::obj_loader
         // "v" / "v/vt" / "v//vn" / "v/vt/vn" 형식의 face vertex 토큰 파싱.
         struct FaceVertex { int32 posIdx = -1; int32 uvIdx = -1; int32 normIdx = -1; };
 
+        // .mtl 파일에서 newmtl/Kd 쌍을 파싱. 그 외 라인(Ka/Ks/Ns/map_Kd 등)은 무시.
+        // 파일 부재/포맷 오류는 fatal 이 아님 — 빈 테이블 반환 → 호출자가 defaultColor 로 폴백.
+        std::map<std::string, DirectX::XMFLOAT3> LoadMtl(const std::wstring& mtlPath)
+        {
+            std::map<std::string, DirectX::XMFLOAT3> materials;
+            std::ifstream file(mtlPath);
+            if (!file.is_open())
+            {
+                wchar_t buf[MAX_PATH + 64];
+                std::swprintf(buf, std::size(buf),
+                              L"[render] MTL 파일 열기 실패 (조용히 폴백): %ls\n",
+                              mtlPath.c_str());
+                engine::core::LogInfo(buf);
+                return materials;
+            }
+
+            std::string             curName;
+            DirectX::XMFLOAT3       curKd{ 1.0f, 1.0f, 1.0f };
+            bool                    hasCurrent = false;
+
+            auto flush = [&]() {
+                if (hasCurrent && !curName.empty())
+                {
+                    materials[curName] = curKd;
+                }
+            };
+
+            std::string line;
+            while (std::getline(file, line))
+            {
+                if (line.empty() || line[0] == '#') continue;
+                std::istringstream iss(line);
+                std::string tag;
+                iss >> tag;
+
+                if (tag == "newmtl")
+                {
+                    flush();
+                    iss >> curName;
+                    curKd = { 1.0f, 1.0f, 1.0f };
+                    hasCurrent = true;
+                }
+                else if (tag == "Kd")
+                {
+                    iss >> curKd.x >> curKd.y >> curKd.z;
+                }
+                // Ka/Ks/Ns/map_Kd/illum 등 모두 무시
+            }
+            flush();
+            return materials;
+        }
+
         FaceVertex ParseFaceVertex(const std::string& token)
         {
             FaceVertex fv;
@@ -79,10 +131,22 @@ namespace engine::render::obj_loader
             throw std::runtime_error(buf);
         }
 
-        std::vector<DirectX::XMFLOAT3> positions;
-        std::vector<DirectX::XMFLOAT3> normals;
-        std::vector<DirectX::XMFLOAT2> uvs;
-        std::vector<FaceVertex>        faceVertices;  // 모든 face 정점 (순서대로 삼각형 인덱스)
+        // OBJ 가 위치한 디렉터리 — mtllib 의 .mtl 파일 경로 계산용.
+        std::wstring objDir;
+        {
+            std::wstring path(absolutePath);
+            const size_t sep = path.find_last_of(L"\\/");
+            objDir = (sep == std::wstring::npos) ? std::wstring{} : path.substr(0, sep + 1);
+        }
+
+        std::vector<DirectX::XMFLOAT3>     positions;
+        std::vector<DirectX::XMFLOAT3>     normals;
+        std::vector<DirectX::XMFLOAT2>     uvs;
+        std::vector<FaceVertex>            faceVertices;        // 모든 face 정점 (순서대로 삼각형 인덱스)
+        std::vector<DirectX::XMFLOAT3>     faceVertexColors;    // faceVertices 와 같은 길이 — 현재 머티리얼 색
+
+        std::map<std::string, DirectX::XMFLOAT3> materials;
+        DirectX::XMFLOAT3                  currentColor = defaultColor;
 
         std::string line;
         while (std::getline(file, line))
@@ -113,6 +177,25 @@ namespace engine::render::obj_loader
                 iss >> u >> v;
                 uvs.push_back({ u, 1.0f - v });
             }
+            else if (tag == "mtllib")
+            {
+                // 같은 폴더의 .mtl 파일 로드. ASCII 파일명 가정.
+                std::string mtlName;
+                iss >> mtlName;
+                if (!mtlName.empty())
+                {
+                    const std::wstring mtlPath = objDir + std::wstring(mtlName.begin(), mtlName.end());
+                    auto loaded = LoadMtl(mtlPath);
+                    for (auto& kv : loaded) { materials[kv.first] = kv.second; }
+                }
+            }
+            else if (tag == "usemtl")
+            {
+                std::string name;
+                iss >> name;
+                auto it = materials.find(name);
+                currentColor = (it != materials.end()) ? it->second : defaultColor;
+            }
             else if (tag == "f")
             {
                 // 삼각형 가정 — 3개 토큰.
@@ -125,8 +208,11 @@ namespace engine::render::obj_loader
                 faceVertices.push_back(ParseFaceVertex(a));
                 faceVertices.push_back(ParseFaceVertex(b));
                 faceVertices.push_back(ParseFaceVertex(c));
+                faceVertexColors.push_back(currentColor);
+                faceVertexColors.push_back(currentColor);
+                faceVertexColors.push_back(currentColor);
             }
-            // 기타 라인 (mtllib/usemtl/o/s/g 등) 무시.
+            // 기타 라인 (o/s/g 등) 무시.
         }
 
         if (positions.empty() || faceVertices.empty())
@@ -147,8 +233,11 @@ namespace engine::render::obj_loader
         std::vector<Mesh::Vertex> vertices;
         std::vector<uint16>       indices;
 
-        for (const FaceVertex& fv : faceVertices)
+        for (size_t fvIdx = 0; fvIdx < faceVertices.size(); ++fvIdx)
         {
+            const FaceVertex&        fv    = faceVertices[fvIdx];
+            const DirectX::XMFLOAT3& color = faceVertexColors[fvIdx];
+
             // OBJ 는 1-based 인덱스. 음수 인덱스는 끝에서부터(역방향) — 현 구현 미지원.
             if (fv.posIdx <= 0)
             {
@@ -186,7 +275,8 @@ namespace engine::render::obj_loader
             {
                 v.uv = { 0.0f, 0.0f };  // uv 없으면 디폴트 (0,0)
             }
-            v.color = defaultColor;
+            // 머티리얼이 적용된 면이면 그 색, 아니면 defaultColor (faceVertexColors 가 currentColor 로 채워짐).
+            v.color = color;
 
             if (vertices.size() >= 65535)
             {
@@ -200,8 +290,9 @@ namespace engine::render::obj_loader
 
         wchar_t logLine[256];
         std::swprintf(logLine, std::size(logLine),
-                      L"[render] OBJ loaded: positions=%zu, normals=%zu, uvs=%zu, vertices=%zu, indices=%zu\n",
-                      positions.size(), normals.size(), uvs.size(), vertices.size(), indices.size());
+                      L"[render] OBJ loaded: positions=%zu, normals=%zu, uvs=%zu, materials=%zu, vertices=%zu, indices=%zu\n",
+                      positions.size(), normals.size(), uvs.size(),
+                      materials.size(), vertices.size(), indices.size());
         engine::core::LogInfo(logLine);
 
         return std::make_unique<Mesh>(
