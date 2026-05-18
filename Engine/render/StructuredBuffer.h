@@ -28,6 +28,12 @@ namespace engine::render
     //   - 단일 슬롯 (N프레임 in-flight 시 프레임당 별도 인스턴스 권장).
     //   - elementCapacity 초과 시 throw.
     //
+    // 호출자 책임:
+    //   - **소멸 시점에 GPU 가 본 리소스를 참조하지 않음을 보장** (CommandQueue::FlushGpu 등 선행).
+    //     persistent Map 패턴이라 ComPtr 소멸이 implicit Unmap → GPU 가 읽는 중이면 UB.
+    //   - count==0 으로 UpdateRange 호출 시 *메모리는 그대로* — 직전 호출 값이 남는다.
+    //     셰이더 측은 lightCount==0 분기에서 루프 skip 하는 약속 (현 Client/HelloTriangle.hlsl 패턴).
+    //
     // 단일 소유 (복사·이동 금지).
     class StructuredBuffer final
     {

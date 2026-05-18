@@ -231,6 +231,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 
         // === 메시 자산 캐시 ===
         // meshAssetPath 가 동일하면 한 번만 로드. 인스턴스 N개여도 GPU 메모리는 1배.
+        // **append-only** — erase / 캐시 무효화 미사용. animSkeleton / animClips 가 캐시 내부의
+        //   unique_ptr 를 raw 포인터로 빌려보관하므로 캐시 lifetime 동안 안정해야 함.
+        //   M2 에서 동적 자산 언로드 도입 시 raw 포인터 → weak_ptr 또는 핸들로 격상.
         std::unordered_map<std::string, LoadedAsset> assetCache;
         const std::wstring fbxDir = engine::render::fbx_loader::DefaultFbxDir();
 

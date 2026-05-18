@@ -45,6 +45,8 @@ namespace engine::render
         }
 
         // [2] t0 SRV descriptor table (PS visibility)
+        // srvRange 는 D3D12SerializeRootSignature 호출 시점까지 살아 있어야 한다 (params 가
+        // 주소 포인터로 참조). 본 함수 스코프 끝까지 유효하므로 if 블록 안에 두어도 안전.
         D3D12_DESCRIPTOR_RANGE srvRange{};
         if (desc.srvT0Pixel)
         {
