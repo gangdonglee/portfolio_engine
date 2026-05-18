@@ -13,6 +13,24 @@
     <Filter Include="scene">
       <UniqueIdentifier>{F1000004-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
+    <Filter Include="render\core">
+      <UniqueIdentifier>{F1000005-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="render\pipeline">
+      <UniqueIdentifier>{F1000006-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="render\resource">
+      <UniqueIdentifier>{F1000007-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="render\camera">
+      <UniqueIdentifier>{F1000008-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="render\asset">
+      <UniqueIdentifier>{F1000009-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="render\animation">
+      <UniqueIdentifier>{F100000A-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="platform\Window.cpp">
@@ -22,73 +40,73 @@
       <Filter>platform</Filter>
     </ClCompile>
     <ClCompile Include="render\Device.cpp">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClCompile>
     <ClCompile Include="render\CommandQueue.cpp">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClCompile>
     <ClCompile Include="render\CommandList.cpp">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClCompile>
     <ClCompile Include="render\RtvDescriptorHeap.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\SwapChain.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\ShaderCompiler.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\RootSignature.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\PipelineState.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\VertexBuffer.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\IndexBuffer.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\ConstantBuffer.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\DepthStencilBuffer.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\Camera.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\FreeCamera.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\Mesh.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\ObjLoader.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\FbxLoader.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\ImageLoader.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\Skeleton.cpp">
-      <Filter>render</Filter>
-    </ClCompile>
-    <ClCompile Include="render\Animator.cpp">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClCompile>
     <ClCompile Include="render\SrvDescriptorHeap.cpp">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
+    </ClCompile>
+    <ClCompile Include="render\SwapChain.cpp">
+      <Filter>render\core</Filter>
+    </ClCompile>
+    <ClCompile Include="render\ShaderCompiler.cpp">
+      <Filter>render\pipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="render\RootSignature.cpp">
+      <Filter>render\pipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="render\PipelineState.cpp">
+      <Filter>render\pipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="render\VertexBuffer.cpp">
+      <Filter>render\resource</Filter>
+    </ClCompile>
+    <ClCompile Include="render\IndexBuffer.cpp">
+      <Filter>render\resource</Filter>
+    </ClCompile>
+    <ClCompile Include="render\ConstantBuffer.cpp">
+      <Filter>render\resource</Filter>
+    </ClCompile>
+    <ClCompile Include="render\DepthStencilBuffer.cpp">
+      <Filter>render\resource</Filter>
     </ClCompile>
     <ClCompile Include="render\StructuredBuffer.cpp">
-      <Filter>render</Filter>
+      <Filter>render\resource</Filter>
     </ClCompile>
     <ClCompile Include="render\Texture.cpp">
-      <Filter>render</Filter>
+      <Filter>render\resource</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Camera.cpp">
+      <Filter>render\camera</Filter>
+    </ClCompile>
+    <ClCompile Include="render\FreeCamera.cpp">
+      <Filter>render\camera</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Mesh.cpp">
+      <Filter>render\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="render\ObjLoader.cpp">
+      <Filter>render\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="render\FbxLoader.cpp">
+      <Filter>render\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="render\ImageLoader.cpp">
+      <Filter>render\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Skeleton.cpp">
+      <Filter>render\animation</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Animator.cpp">
+      <Filter>render\animation</Filter>
     </ClCompile>
     <ClCompile Include="core\HrCheck.cpp">
       <Filter>core</Filter>
@@ -108,79 +126,79 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="render\Device.h">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClInclude>
     <ClInclude Include="render\CommandQueue.h">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClInclude>
     <ClInclude Include="render\CommandList.h">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClInclude>
     <ClInclude Include="render\RtvDescriptorHeap.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\SwapChain.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\ShaderCompiler.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\RootSignature.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\PipelineState.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\VertexBuffer.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\IndexBuffer.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\ConstantBuffer.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\DepthStencilBuffer.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\Camera.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\FreeCamera.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\Mesh.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\ObjLoader.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\FbxLoader.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\ImageLoader.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\Material.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\Skeleton.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\AnimClip.h">
-      <Filter>render</Filter>
-    </ClInclude>
-    <ClInclude Include="render\Animator.h">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
     </ClInclude>
     <ClInclude Include="render\SrvDescriptorHeap.h">
-      <Filter>render</Filter>
+      <Filter>render\core</Filter>
+    </ClInclude>
+    <ClInclude Include="render\SwapChain.h">
+      <Filter>render\core</Filter>
+    </ClInclude>
+    <ClInclude Include="render\ShaderCompiler.h">
+      <Filter>render\pipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="render\RootSignature.h">
+      <Filter>render\pipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="render\PipelineState.h">
+      <Filter>render\pipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="render\VertexBuffer.h">
+      <Filter>render\resource</Filter>
+    </ClInclude>
+    <ClInclude Include="render\IndexBuffer.h">
+      <Filter>render\resource</Filter>
+    </ClInclude>
+    <ClInclude Include="render\ConstantBuffer.h">
+      <Filter>render\resource</Filter>
+    </ClInclude>
+    <ClInclude Include="render\DepthStencilBuffer.h">
+      <Filter>render\resource</Filter>
     </ClInclude>
     <ClInclude Include="render\StructuredBuffer.h">
-      <Filter>render</Filter>
+      <Filter>render\resource</Filter>
     </ClInclude>
     <ClInclude Include="render\Texture.h">
-      <Filter>render</Filter>
+      <Filter>render\resource</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Camera.h">
+      <Filter>render\camera</Filter>
+    </ClInclude>
+    <ClInclude Include="render\FreeCamera.h">
+      <Filter>render\camera</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Mesh.h">
+      <Filter>render\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="render\ObjLoader.h">
+      <Filter>render\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="render\FbxLoader.h">
+      <Filter>render\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="render\ImageLoader.h">
+      <Filter>render\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Material.h">
+      <Filter>render\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Skeleton.h">
+      <Filter>render\animation</Filter>
+    </ClInclude>
+    <ClInclude Include="render\AnimClip.h">
+      <Filter>render\animation</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Animator.h">
+      <Filter>render\animation</Filter>
     </ClInclude>
     <ClInclude Include="core\HrCheck.h">
       <Filter>core</Filter>

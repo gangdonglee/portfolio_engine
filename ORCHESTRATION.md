@@ -23,6 +23,7 @@
 |---|---|---|
 | **dx12-reviewer** | DX12 코드 리뷰 — 리소스 상태 전이, 펜스/동기화, 디스크립터 힙, 커맨드 리스트 소유권, COM 라이프타임 | 렌더링 관련 .cpp/.h 추가·변경 후 커밋 직전 |
 | **oop-reviewer** | C++ 객체지향 원칙 준수 검사 — SRP, 캡슐화, RAII, 의존성 방향, 다형성 적절성 | 새 클래스/모듈 추가 시, 큰 리팩토링 후 |
+| **vcxproj-filter-organizer** | `.vcxproj.filters` 의 단일 필터 과적재(>10) 시 도메인별 서브 필터로 재조직 (Solution Explorer 가독성) | render/scene 같은 대규모 필터에 파일 누적 시 |
 
 신규 커스텀 에이전트를 추가할 때는 `.claude/agents/<name>.md` 를 만들고 본 표에 한 줄 추가한다. 정의 파일은 git에 커밋(팀/장기적 활용).
 
