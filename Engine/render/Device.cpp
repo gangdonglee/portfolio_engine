@@ -18,7 +18,14 @@ namespace engine::render
 
     namespace
     {
-        constexpr D3D_FEATURE_LEVEL kMinFeatureLevel = D3D_FEATURE_LEVEL_12_0;
+        // Fallback chain — 선호도 높은 순. D3D12 API 는 11_0 부터 지원하므로 마지막 후보.
+        // 어댑터별로 첫 통과 레벨을 채택 → 12_0 미지원 GPU(예: Kepler/Maxwell-1) 도 하드웨어로 동작.
+        constexpr D3D_FEATURE_LEVEL kFeatureLevelChain[] =
+        {
+            D3D_FEATURE_LEVEL_12_0,
+            D3D_FEATURE_LEVEL_11_1,
+            D3D_FEATURE_LEVEL_11_0,
+        };
 
         // TODO(로깅 시스템 도입 시): 주입된 로거 인터페이스로 교체.
         void LogAdapter(IDXGIAdapter1* adapter)
@@ -97,6 +104,7 @@ namespace engine::render
     void Device::SelectAdapter()
     {
         // GPU 선호도 기반 어댑터 열거 — 노트북 iGPU+dGPU 환경에서 dGPU 선택을 결정적으로 만든다.
+        // 각 어댑터에 대해 kFeatureLevelChain 순으로 D3D12CreateDevice 드라이런 — 첫 통과 레벨을 채택.
         for (UINT i = 0;; ++i)
         {
             Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
@@ -117,27 +125,37 @@ namespace engine::render
                 continue;  // WARP 는 폴백에서 별도 처리.
             }
 
-            // 호환성만 확인: nullptr 디바이스 인수로 D3D12CreateDevice 드라이런.
-            const HRESULT testHr = ::D3D12CreateDevice(
-                candidate.Get(),
-                kMinFeatureLevel,
-                __uuidof(ID3D12Device),
-                nullptr);
-            if (SUCCEEDED(testHr))
+            for (D3D_FEATURE_LEVEL fl : kFeatureLevelChain)
             {
-                m_adapter = candidate;
-                LogAdapter(m_adapter.Get());
-                return;
+                // 호환성만 확인: nullptr 디바이스 인수로 D3D12CreateDevice 드라이런.
+                const HRESULT testHr = ::D3D12CreateDevice(
+                    candidate.Get(),
+                    fl,
+                    __uuidof(ID3D12Device),
+                    nullptr);
+                if (SUCCEEDED(testHr))
+                {
+                    m_adapter           = candidate;
+                    m_selectedFeatureLevel = fl;
+                    LogAdapter(m_adapter.Get());
+                    wchar_t flLine[96];
+                    std::swprintf(flLine, std::size(flLine),
+                                  L"[render] Selected feature level: 0x%X\n",
+                                  static_cast<unsigned>(fl));
+                    engine::core::LogInfo(flLine);
+                    return;
+                }
             }
         }
 
-        // 하드웨어 어댑터 부재 → WARP 폴백.
+        // 하드웨어 어댑터 부재 → WARP 폴백. WARP 는 12_1 까지 지원하므로 체인 첫 항목으로 시도.
         engine::core::LogInfo(L"[render] No hardware adapter; falling back to WARP\n");
         Microsoft::WRL::ComPtr<IDXGIAdapter1> warpAdapter;
         ThrowIfFailed(
             m_factory->EnumWarpAdapter(IID_PPV_ARGS(warpAdapter.GetAddressOf())),
             "IDXGIFactory6::EnumWarpAdapter");
-        m_adapter = warpAdapter;
+        m_adapter              = warpAdapter;
+        m_selectedFeatureLevel = kFeatureLevelChain[0];
         LogAdapter(m_adapter.Get());
     }
 
@@ -146,7 +164,7 @@ namespace engine::render
         ThrowIfFailed(
             ::D3D12CreateDevice(
                 m_adapter.Get(),
-                kMinFeatureLevel,
+                m_selectedFeatureLevel,
                 IID_PPV_ARGS(m_device.ReleaseAndGetAddressOf())),
             "D3D12CreateDevice");
     }

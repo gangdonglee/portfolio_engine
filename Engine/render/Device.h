@@ -2,6 +2,8 @@
 
 #include <wrl/client.h>
 
+#include <d3dcommon.h>   // D3D_FEATURE_LEVEL — enum 이라 전방 선언 불가.
+
 // DX12/DXGI 인터페이스 전방 선언. 헤더가 d3d12.h / dxgi*.h / Windows.h 를 끌어들이지 않음.
 struct IDXGIFactory6;
 struct IDXGIAdapter1;
@@ -61,6 +63,7 @@ namespace engine::render
         Microsoft::WRL::ComPtr<IDXGIAdapter1>    m_adapter;
         Microsoft::WRL::ComPtr<ID3D12Device>     m_device;
         Microsoft::WRL::ComPtr<ID3D12InfoQueue>  m_infoQueue;  // Debug 빌드에서만 set
+        D3D_FEATURE_LEVEL m_selectedFeatureLevel = D3D_FEATURE_LEVEL_11_0;  // SelectAdapter 가 갱신
         bool m_supportsTearing = false;
     };
 }
