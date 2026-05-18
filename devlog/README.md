@@ -41,3 +41,4 @@
 | 16 | [OBJ n-gon 자동 삼각형화 (Fan Triangulation) 🔺](16-obj-ngon.md) | 2026-05-15 | ✅ |
 | 17 | [Autodesk FBX SDK 통합 + Dragon.fbx 로드 🐉](17-fbx-loader.md) | 2026-05-18 | ✅ |
 | 18 | [WIC 이미지 디코더 (체커보드 → 실제 텍스처) 🖼️](18-image-loader-wic.md) | 2026-05-18 | ✅ |
+| 19 | [머티리얼 sub-draw 시스템 (FBX 머티리얼별 텍스처) 🎭](19-material-subdraw.md) | 2026-05-18 | ✅ |
