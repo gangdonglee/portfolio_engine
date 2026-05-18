@@ -42,3 +42,4 @@
 | 17 | [Autodesk FBX SDK 통합 + Dragon.fbx 로드 🐉](17-fbx-loader.md) | 2026-05-18 | ✅ |
 | 18 | [WIC 이미지 디코더 (체커보드 → 실제 텍스처) 🖼️](18-image-loader-wic.md) | 2026-05-18 | ✅ |
 | 19 | [머티리얼 sub-draw 시스템 (FBX 머티리얼별 텍스처) 🎭](19-material-subdraw.md) | 2026-05-18 | ✅ |
+| 20 | [스키닝 + 애니메이션 (Dragon이 살아 움직임) 🐉🦴](20-skinning-animation.md) | 2026-05-18 | ✅ |
