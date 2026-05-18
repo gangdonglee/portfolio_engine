@@ -14,6 +14,8 @@
 
 #include "platform/Input.h"
 #include "platform/Window.h"
+#include "render/AnimClip.h"
+#include "render/Animator.h"
 #include "render/Camera.h"
 #include "render/CommandList.h"
 #include "render/FbxLoader.h"
@@ -26,6 +28,7 @@
 #include "render/IndexBuffer.h"
 #include "render/Mesh.h"
 #include "render/ObjLoader.h"
+#include "render/Skeleton.h"
 #include "render/PipelineState.h"
 #include "render/RootSignature.h"
 #include "render/RtvDescriptorHeap.h"
@@ -85,10 +88,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         const auto psBlob = engine::render::ShaderCompiler::CompileFromFile(
             shaderPath.c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
 
-        // RootSignature: b0 CBV root descriptor (VS+PS 가시 — Phong) + t0 SRV table (PS 가시 — albedo) + s0 정적 샘플러.
+        // RootSignature: b0 CBV (All, FrameConstants) + b1 CBV (VS, BonePalette) + t0 SRV table (PS) + s0 정적 샘플러.
+        // 파라미터 순서: [0]=b0, [1]=b1, [2]=t0 table.
         engine::render::RootSignature::Desc rsDesc{};
-        rsDesc.cbvAtB0    = engine::render::RootSignature::Desc::CbvB0::All;
-        rsDesc.srvT0Pixel = true;
+        rsDesc.cbvAtB0     = engine::render::RootSignature::Desc::CbvB0::All;
+        rsDesc.cbvB1Vertex = true;
+        rsDesc.srvT0Pixel  = true;
         engine::render::RootSignature rootSig(device, rsDesc);
 
         // PSO: 깊이 활성 + HelloTriangle 입력 레이아웃.
@@ -115,15 +120,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             albedoImg.pixels.data(), albedoImg.width, albedoImg.height);
         fallbackAlbedo.CreateSrv(device, srvHeap);   // 슬롯 0
 
-        // Dragon FBX 로드 — 머티리얼별 sub-mesh 분리 + 각자 diffuse 텍스처 자동 로드.
-        // FbxLoader 가 SrvHeap 슬롯 1+ 사용.
+        // Dragon FBX 로드 — 머티리얼별 sub-mesh + 텍스처 + 스키레톤 + 애니메이션 클립.
         const std::wstring fbxDir  = engine::render::fbx_loader::DefaultFbxDir();
         const std::wstring fbxPath = fbxDir + L"Dragon.fbx";
-        std::unique_ptr<engine::render::Mesh> mainMesh =
+        engine::render::fbx_loader::LoadedFbxModel loaded =
             engine::render::fbx_loader::LoadFbx(
                 device, commandQueue, *cmdLists[0], srvHeap,
                 fbxPath.c_str(),
                 { 0.85f, 0.85f, 0.92f });
+        std::unique_ptr<engine::render::Mesh> mainMesh = std::move(loaded.mesh);
+
+        // Animator — 스키레톤 + 첫 애니메이션 클립이 있으면 생성.
+        std::unique_ptr<engine::render::Animator> animator;
+        if (loaded.skeleton && !loaded.clips.empty())
+        {
+            animator = std::make_unique<engine::render::Animator>(
+                *loaded.skeleton, *loaded.clips[0]);
+        }
 
         // 카메라: Dragon.fbx 가 unit cm 기준(약 ±100 박스) — Cube(±1) 보다 멀리 + far plane 확대.
         constexpr float kFovY      = DirectX::XM_PIDIV4;
@@ -156,13 +169,31 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         };
         static_assert(sizeof(FrameConstants) == 192, "FrameConstants 정렬 깨짐");
 
+        // 본 팔레트 cbuffer — HLSL `bones[MAX_BONES=128]` 와 1:1.
+        // 매 프레임 in-flight 슬롯마다 독립 — frameCBs 와 동일 패턴.
+        constexpr std::uint32_t kMaxBones = 128;
+        struct BonePalette
+        {
+            DirectX::XMFLOAT4X4 bones[kMaxBones];
+        };
+        static_assert(sizeof(BonePalette) == kMaxBones * 64, "BonePalette 크기 깨짐");
+
         // 프레임당 ConstantBuffer — CPU 가 frame N 의 데이터를 쓰는 동안 GPU 는 frame N-1 의 데이터를 읽음.
-        // 단일 cbuffer 공유 시 race; 슬롯 N개로 분리하면 안전.
         std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount> frameCBs;
+        std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount> bonePaletteCBs;
         for (std::uint32_t i = 0; i < kFrameCount; ++i)
         {
             frameCBs[i] = std::make_unique<engine::render::ConstantBuffer>(
                 device, static_cast<engine::uint32>(sizeof(FrameConstants)));
+            bonePaletteCBs[i] = std::make_unique<engine::render::ConstantBuffer>(
+                device, static_cast<engine::uint32>(sizeof(BonePalette)));
+        }
+
+        // 정적 모델용 identity 팔레트 — Animator 없을 때 cbuffer 에 한 번만 채우면 됨.
+        BonePalette identityPalette{};
+        for (std::uint32_t i = 0; i < kMaxBones; ++i)
+        {
+            DirectX::XMStoreFloat4x4(&identityPalette.bones[i], DirectX::XMMatrixIdentity());
         }
 
         // 슬롯당 직전 제출의 fence value — 0 은 "아직 미사용 슬롯" 의미 (대기 skip).
@@ -256,9 +287,24 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             }
 
             // 이 슬롯의 자원 — allocator+list 쌍, 자기 영역의 cbuffer.
-            engine::render::CommandList&    cmdList = *cmdLists[frameIndex];
-            engine::render::ConstantBuffer& frameCB = *frameCBs[frameIndex];
+            engine::render::CommandList&    cmdList     = *cmdLists[frameIndex];
+            engine::render::ConstantBuffer& frameCB     = *frameCBs[frameIndex];
+            engine::render::ConstantBuffer& bonePalette = *bonePaletteCBs[frameIndex];
             frameCB.Update(&cb, sizeof(cb));
+
+            // 본 팔레트 갱신 — Animator 있으면 매 프레임 계산, 없으면 identity.
+            BonePalette palette = identityPalette;   // 모두 identity 초기화
+            if (animator)
+            {
+                animator->Update(dt);
+                const auto& src = animator->Palette();
+                const size_t n = (src.size() < kMaxBones) ? src.size() : kMaxBones;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    palette.bones[i] = src[i];
+                }
+            }
+            bonePalette.Update(&palette, sizeof(palette));
 
             // === 매 프레임 명령 기록 ===
             cmdList.Reset();
@@ -293,13 +339,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             ID3D12DescriptorHeap* heaps[] = { srvHeap.Native() };
             list->SetDescriptorHeaps(1, heaps);
 
+            // RootParam: [0]=b0 FrameConstants, [1]=b1 BonePalette, [2]=t0 SRV table.
             list->SetGraphicsRootConstantBufferView(0, frameCB.GpuAddress());
+            list->SetGraphicsRootConstantBufferView(1, bonePalette.GpuAddress());
             list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            // 머티리얼별 sub-draw — Mesh 내부가 매 SubMesh 마다 SetGraphicsRootDescriptorTable(1, ...) + DrawIndexed.
-            // 머티리얼에 텍스처 없으면 fallbackAlbedo SRV 사용.
+            // 머티리얼별 sub-draw — Mesh 가 매 SubMesh 마다 SetGraphicsRootDescriptorTable(2, ...) + DrawIndexed.
             mainMesh->BindVertexBuffer(list);
-            mainMesh->DrawAll(list, /*rootParamMaterialTable*/1, fallbackAlbedo.SrvGpuHandle());
+            mainMesh->DrawAll(list, /*rootParamMaterialTable*/2, fallbackAlbedo.SrvGpuHandle());
 
             // RENDER_TARGET → PRESENT
             D3D12_RESOURCE_BARRIER toPresent{};

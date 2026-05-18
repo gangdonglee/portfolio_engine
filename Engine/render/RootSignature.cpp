@@ -17,8 +17,8 @@ namespace engine::render
 
     RootSignature::RootSignature(Device& device, const Desc& desc)
     {
-        // 루트 파라미터 구성: 최대 2개 (b0 CBV + t0 SRV table).
-        D3D12_ROOT_PARAMETER  params[2]{};
+        // 루트 파라미터 구성: 최대 3개 (b0 CBV + b1 CBV + t0 SRV table).
+        D3D12_ROOT_PARAMETER  params[3]{};
         UINT                  paramCount = 0;
 
         // [0] b0 CBV root descriptor
@@ -34,7 +34,17 @@ namespace engine::render
             ++paramCount;
         }
 
-        // [1] t0 SRV descriptor table (PS visibility)
+        // [1] b1 CBV root descriptor (VS 가시) — 본 팔레트
+        if (desc.cbvB1Vertex)
+        {
+            params[paramCount].ParameterType             = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            params[paramCount].Descriptor.ShaderRegister = 1;   // b1
+            params[paramCount].Descriptor.RegisterSpace  = 0;
+            params[paramCount].ShaderVisibility          = D3D12_SHADER_VISIBILITY_VERTEX;
+            ++paramCount;
+        }
+
+        // [2] t0 SRV descriptor table (PS visibility)
         D3D12_DESCRIPTOR_RANGE srvRange{};
         if (desc.srvT0Pixel)
         {

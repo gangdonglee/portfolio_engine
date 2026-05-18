@@ -19,14 +19,18 @@ namespace engine::render
     namespace
     {
 
-        // HelloTriangle 정점 레이아웃: POSITION + NORMAL + TEXCOORD + COLOR. 인터리브.
-        // Phase F 조명: NORMAL 추가. Phase E 텍스처: TEXCOORD(float2) 추가.
-        // 오프셋: pos 0, normal 12, uv 24, color 32. 총 44바이트.
+        // HelloTriangle 정점 레이아웃 (76 바이트):
+        //   POSITION + NORMAL + TEXCOORD + COLOR + BLENDINDICES + BLENDWEIGHT.
+        // 오프셋: pos 0, normal 12, uv 24, color 32, blendIdx 44, blendWeight 60.
+        // BLENDINDICES 는 uint4(R32G32B32A32_UINT), BLENDWEIGHT 는 float4(R32G32B32A32_FLOAT).
+        // 스키닝 미사용 메시는 BLENDWEIGHT = (0,0,0,0) — VS 가 weight 합 0 분기에서 그대로 통과.
         constexpr D3D12_INPUT_ELEMENT_DESC kHelloTriangleInputLayout[] = {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT,       0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "COLOR",        0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,  0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 60, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         D3D12_RASTERIZER_DESC DefaultRasterizer() noexcept

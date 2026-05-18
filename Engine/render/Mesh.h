@@ -20,8 +20,13 @@ namespace engine::render
     // 단일 VB + 머티리얼별 sub-indices 패턴 — FBX 의 다중 머티리얼 메시 그대로 표현.
     // OBJ 처럼 단일 머티리얼은 SubMesh 하나로 폴백.
     //
-    // 표준 정점 형식: POSITION(float3) + NORMAL(float3) + TEXCOORD(float2) + COLOR(float3). 44바이트.
-    //   PipelineState 의 kHelloTriangleInputLayout 과 일치.
+    // 표준 정점 형식 (76 바이트):
+    //   POSITION(float3) + NORMAL(float3) + TEXCOORD(float2) + COLOR(float3)
+    //   + BLENDINDICES(uint4) + BLENDWEIGHT(float4)
+    //   = 12 + 12 + 8 + 12 + 16 + 16 = 76 바이트.
+    // PipelineState 의 kHelloTriangleInputLayout 과 일치.
+    // 스키닝 미사용 메시는 boneIndices = {0,0,0,0} + boneWeights = {0,0,0,0} 으로 두면
+    // HLSL VS 가 weight 합 0 분기에서 정점을 그대로 통과시킨다.
     //
     // 단일 소유 (복사·이동 금지). 사용자가 unique_ptr<Mesh> 로 래핑하면 이동 가능.
     class Mesh final
@@ -29,10 +34,12 @@ namespace engine::render
     public:
         struct Vertex
         {
-            DirectX::XMFLOAT3 position;
-            DirectX::XMFLOAT3 normal;
-            DirectX::XMFLOAT2 uv;
-            DirectX::XMFLOAT3 color;
+            DirectX::XMFLOAT3  position;
+            DirectX::XMFLOAT3  normal;
+            DirectX::XMFLOAT2  uv;
+            DirectX::XMFLOAT3  color;
+            DirectX::XMUINT4   boneIndices{ 0, 0, 0, 0 };
+            DirectX::XMFLOAT4  boneWeights{ 0.0f, 0.0f, 0.0f, 0.0f };
         };
 
         // 단일 머티리얼 메시 (OBJ/Cube 경로). SubMesh 1개로 폴백.

@@ -72,6 +72,12 @@
     <ClCompile Include="render\ImageLoader.cpp">
       <Filter>render</Filter>
     </ClCompile>
+    <ClCompile Include="render\Skeleton.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
+    <ClCompile Include="render\Animator.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="render\SrvDescriptorHeap.cpp">
       <Filter>render</Filter>
     </ClCompile>
@@ -147,6 +153,15 @@
       <Filter>render</Filter>
     </ClInclude>
     <ClInclude Include="render\Material.h">
+      <Filter>render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Skeleton.h">
+      <Filter>render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\AnimClip.h">
+      <Filter>render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\Animator.h">
       <Filter>render</Filter>
     </ClInclude>
     <ClInclude Include="render\SrvDescriptorHeap.h">

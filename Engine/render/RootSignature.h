@@ -31,6 +31,10 @@ namespace engine::render
 
             // true 이면 t0 슬롯에 SRV 디스크립터 테이블 (PS 가시) + s0 정적 샘플러 (linear/wrap) 추가.
             bool srvT0Pixel = false;
+
+            // true 이면 b1 슬롯에 CBV root descriptor (Vertex 가시) 추가 — 본 팔레트용.
+            // 자리 순서: [b0?] [b1?] [t0 table?] — 비어있는 슬롯은 건너뜀.
+            bool cbvB1Vertex = false;
         };
 
         // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그는 항상 켜짐.

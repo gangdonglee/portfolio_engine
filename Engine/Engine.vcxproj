@@ -106,6 +106,8 @@
     <ClCompile Include="render\ObjLoader.cpp" />
     <ClCompile Include="render\FbxLoader.cpp" />
     <ClCompile Include="render\ImageLoader.cpp" />
+    <ClCompile Include="render\Skeleton.cpp" />
+    <ClCompile Include="render\Animator.cpp" />
     <ClCompile Include="render\SrvDescriptorHeap.cpp" />
     <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
@@ -135,6 +137,9 @@
     <ClInclude Include="render\FbxLoader.h" />
     <ClInclude Include="render\ImageLoader.h" />
     <ClInclude Include="render\Material.h" />
+    <ClInclude Include="render\Skeleton.h" />
+    <ClInclude Include="render\AnimClip.h" />
+    <ClInclude Include="render\Animator.h" />
     <ClInclude Include="render\SrvDescriptorHeap.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />
