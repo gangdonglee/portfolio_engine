@@ -39,3 +39,4 @@
 | 14 | [DXGI_PRESENT_ALLOW_TEARING (VRR V-Sync OFF) 📺](14-allow-tearing.md) | 2026-05-15 | ✅ |
 | 15 | [MTL 머티리얼 (mtllib/usemtl/Kd) 🎨](15-mtl-materials.md) | 2026-05-15 | ✅ |
 | 16 | [OBJ n-gon 자동 삼각형화 (Fan Triangulation) 🔺](16-obj-ngon.md) | 2026-05-15 | ✅ |
+| 17 | [Autodesk FBX SDK 통합 + Dragon.fbx 로드 🐉](17-fbx-loader.md) | 2026-05-18 | ✅ |
