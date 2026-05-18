@@ -56,11 +56,13 @@ namespace engine::render
             size_t idx = static_cast<size_t>(t01 * static_cast<double>(kfs.size()));
             if (idx >= kfs.size()) { idx = kfs.size() - 1; }
 
-            // animatedGlobal[b] = keyFrame.transform
-            // palette[b] = animatedGlobal[b] * offsetMatrix[b] (row-major)
+            // palette = animatedGlobal * inverseBindPose (column-major mathematical).
+            // C++ stored = math element direct (ConvertMatrix transpose 효과 + column_major HLSL 결합).
+            // XMMatrixMultiply(A, B) 가 row-major matmul 인데, element-direct 시 결과가 column-major 와 동일.
+            // 따라서 *column-major 순서대로* kf * offset 입력해야 의도된 변환.
             const XMMATRIX kfMat     = XMLoadFloat4x4(&kfs[idx].transform);
             const XMMATRIX offsetMat = XMLoadFloat4x4(&m_skeleton.Bones()[b].offsetMatrix);
-            const XMMATRIX combined  = XMMatrixMultiply(offsetMat, kfMat);
+            const XMMATRIX combined  = XMMatrixMultiply(kfMat, offsetMat);
             XMStoreFloat4x4(&m_palette[b], combined);
         }
     }

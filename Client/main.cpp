@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "core/Logger.h"
 #include "platform/Input.h"
 #include "platform/Window.h"
 #include "render/AnimClip.h"
@@ -50,7 +51,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(lpCmdLine);
     UNREFERENCED_PARAMETER(nCmdShow);
 
-    ::OutputDebugStringW(L"[portfolio_engine] boot running\n");
+    engine::core::LogInfo(L"[portfolio_engine] boot running\n");
 
     try
     {
@@ -130,13 +131,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 { 0.85f, 0.85f, 0.92f });
         std::unique_ptr<engine::render::Mesh> mainMesh = std::move(loaded.mesh);
 
-        // Animator — 스키레톤 + 첫 애니메이션 클립이 있으면 생성.
+        // Animator — 시작은 T-pose (nullptr). 키 입력으로 활성화/전환:
+        //   0 키 → T-pose (animator nullptr → identity palette)
+        //   1..4 키 → loaded.clips[0..3] 으로 활성화 / 전환
+        // 디버깅 편의: 스키닝 정확도 비교를 위해 T-pose ↔ 애니메이션 전환을 수동 제어.
         std::unique_ptr<engine::render::Animator> animator;
-        if (loaded.skeleton && !loaded.clips.empty())
-        {
-            animator = std::make_unique<engine::render::Animator>(
-                *loaded.skeleton, *loaded.clips[0]);
-        }
+        int currentClipIdx = -1;
+        engine::core::LogInfo(L"[input] 0=T-pose, 1..4=clip select. Starting in T-pose.\n");
 
         // 카메라: Dragon.fbx 가 unit cm 기준(약 ±100 박스) — Cube(±1) 보다 멀리 + far plane 확대.
         constexpr float kFovY      = DirectX::XM_PIDIV4;
@@ -169,14 +170,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         };
         static_assert(sizeof(FrameConstants) == 192, "FrameConstants 정렬 깨짐");
 
-        // 본 팔레트 cbuffer — HLSL `bones[MAX_BONES=128]` 와 1:1.
+        // 본 팔레트 cbuffer — HLSL `bones[MAX_BONES=256]` 와 1:1.
         // 매 프레임 in-flight 슬롯마다 독립 — frameCBs 와 동일 패턴.
-        constexpr std::uint32_t kMaxBones = 128;
+        // 256 본: Dragon.fbx 가 182 본이라 128 로는 인덱스 OOB → 정점 폭발 (HLSL bones[] 범위 밖 접근).
+        constexpr std::uint32_t kMaxBones = 256;
         struct BonePalette
         {
             DirectX::XMFLOAT4X4 bones[kMaxBones];
         };
         static_assert(sizeof(BonePalette) == kMaxBones * 64, "BonePalette 크기 깨짐");
+        static_assert(sizeof(BonePalette) <= 65536, "BonePalette cbuffer 64KB 한계 초과");
 
         // 프레임당 ConstantBuffer — CPU 가 frame N 의 데이터를 쓰는 동안 GPU 는 frame N-1 의 데이터를 읽음.
         std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount> frameCBs;
@@ -257,15 +260,55 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             // 프레임 dt + 누적 시간.
             const auto now = std::chrono::steady_clock::now();
             const float dt = std::chrono::duration<float>(now - prevFrame).count();
-            const float t  = std::chrono::duration<float>(now - startTime).count();
+            [[maybe_unused]] const float t  = std::chrono::duration<float>(now - startTime).count();
             prevFrame = now;
+
+            // 클립 전환 키 (1..4=clips[0..3], 0=T-pose). 다운 엣지 감지로 한 번씩.
+            {
+                static bool prevDown[5]{};
+                constexpr std::pair<uint32_t, int> kClipKeys[5] = {
+                    { static_cast<uint32_t>('0'), -1 },
+                    { static_cast<uint32_t>('1'),  0 },
+                    { static_cast<uint32_t>('2'),  1 },
+                    { static_cast<uint32_t>('3'),  2 },
+                    { static_cast<uint32_t>('4'),  3 },
+                };
+                for (size_t i = 0; i < std::size(kClipKeys); ++i)
+                {
+                    const bool cur = window.GetInput().IsKeyDown(kClipKeys[i].first);
+                    if (cur && !prevDown[i])
+                    {
+                        const int target = kClipKeys[i].second;
+                        if (target < 0 || static_cast<size_t>(target) >= loaded.clips.size())
+                        {
+                            if (currentClipIdx != -1)
+                            {
+                                animator.reset();
+                                currentClipIdx = -1;
+                                engine::core::LogInfo(L"[input] -> T-pose\n");
+                            }
+                        }
+                        else if (currentClipIdx != target && loaded.skeleton)
+                        {
+                            animator = std::make_unique<engine::render::Animator>(
+                                *loaded.skeleton, *loaded.clips[target]);
+                            currentClipIdx = target;
+                            wchar_t buf[80];
+                            std::swprintf(buf, std::size(buf),
+                                          L"[input] -> clip %d\n", target);
+                            engine::core::LogInfo(buf);
+                        }
+                    }
+                    prevDown[i] = cur;
+                }
+            }
 
             // 입력으로 카메라 갱신.
             freeCamera.Update(window.GetInput(), dt);
 
-            // World = Y축 천천히 자전 (Dragon 시각 흐름). Cube 시절보다 회전 속도 1/4.
+            // World = identity (자전 일시 제거 — 스키닝/리깅 디버깅 중 시점 고정 필요).
             using namespace DirectX;
-            const XMMATRIX world = XMMatrixRotationY(t * 0.25f);
+            const XMMATRIX world = XMMatrixIdentity();
             const XMMATRIX mvp   = world * camera.ViewProjection();
 
             FrameConstants cb{};
@@ -374,12 +417,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     }
     catch (const std::exception& e)
     {
-        ::OutputDebugStringA("[portfolio_engine] fatal: ");
-        ::OutputDebugStringA(e.what());
-        ::OutputDebugStringA("\n");
+        engine::core::LogInfoA("[portfolio_engine] fatal: ");
+        engine::core::LogInfoA(e.what());
+        engine::core::LogInfoA("\n");
         return 1;
     }
 
-    ::OutputDebugStringW(L"[portfolio_engine] exit clean\n");
+    engine::core::LogInfo(L"[portfolio_engine] exit clean\n");
     return 0;
 }

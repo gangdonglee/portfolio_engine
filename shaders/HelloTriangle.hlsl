@@ -14,11 +14,12 @@ cbuffer FrameConstants : register(b0)
 };
 
 // 본 팔레트 — bone[i] = animatedGlobal[i] * inverseBindPose[i] (Animator 가 매 프레임 계산).
-// 최대 128 본 (캐릭터 일반 한계). VS 가 BLENDINDICES 로 인덱싱.
-#define MAX_BONES 128
+// 최대 256 본 — Dragon.fbx 는 182 본이라 128 로는 인덱스 OOB → 정점이 가비지 행렬과 곱해져 폭발.
+// cbuffer 크기 256*64 = 16384 bytes (D3D12 cbuffer 64KB 한계 내).
+#define MAX_BONES 256
 cbuffer BonePalette : register(b1)
 {
-    row_major float4x4 bones[MAX_BONES];
+    column_major float4x4 bones[MAX_BONES];
 };
 
 Texture2D    g_albedo  : register(t0);

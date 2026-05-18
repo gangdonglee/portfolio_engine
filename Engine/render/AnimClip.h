@@ -9,7 +9,6 @@
 namespace engine::render
 {
     // 키프레임 1개 — 시간(초) + 본의 글로벌 변환 (animatedGlobal[bone] @ time).
-    // 학습 자료 패턴 차용: matTransform = matFromNode.Inverse() * cluster->GetLink()->EvaluateGlobalTransform(fbxTime).
     struct KeyFrame
     {
         double               timeSec = 0.0;

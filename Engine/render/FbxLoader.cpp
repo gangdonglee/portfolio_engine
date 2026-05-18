@@ -49,7 +49,7 @@ namespace engine::render::fbx_loader
             {
                 for (int col = 0; col < 4; ++col)
                 {
-                    r.m[row][col] = static_cast<float>(m.Get(col, row)); // transpose
+                    r.m[row][col] = static_cast<float>(m.Get(col, row));
                 }
             }
             return r;
@@ -122,26 +122,10 @@ namespace engine::render::fbx_loader
             return controlPointIdx;
         }
 
-        int32 ResolveUvIndex(const FbxGeometryElementUV* elem,
-                             int32 controlPointIdx,
-                             int32 polyVertexUvIdx) noexcept
-        {
-            const auto mapMode = elem->GetMappingMode();
-            const auto refMode = elem->GetReferenceMode();
-            if (mapMode == FbxGeometryElement::eByPolygonVertex)
-            {
-                return (refMode == FbxGeometryElement::eDirect)
-                    ? polyVertexUvIdx
-                    : elem->GetIndexArray().GetAt(polyVertexUvIdx);
-            }
-            if (mapMode == FbxGeometryElement::eByControlPoint)
-            {
-                return (refMode == FbxGeometryElement::eDirect)
-                    ? controlPointIdx
-                    : elem->GetIndexArray().GetAt(controlPointIdx);
-            }
-            return controlPointIdx;
-        }
+        // UV 인덱스는 FbxMesh::GetTextureUVIndex(p, j) 가 매핑/레퍼런스 모드를 내부 처리해
+        // *DirectArray 의 인덱스*를 직접 반환한다. 별도 ResolveUvIndex 로 IndexArray 를 한 번 더
+        // 거치면 eIndexToDirect 모드에서 이중 indirection 이 되어 UV 가 어긋난다.
+        // → AppendMesh 에서 GetTextureUVIndex 결과를 GetDirectArray().GetAt 에 그대로 전달.
 
         std::wstring AsciiToWide(const std::string& s)
         {
@@ -320,8 +304,15 @@ namespace engine::render::fbx_loader
             const int32 skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
             if (skinCount <= 0) { return; }
 
-            const FbxAMatrix matNodeTransform = GetGeomTransform(mesh->GetNode());
+            FbxAMatrix matReflect;
+            matReflect.SetRow(0, FbxVector4(1, 0, 0, 0));
+            matReflect.SetRow(1, FbxVector4(0, 0, 1, 0));
+            matReflect.SetRow(2, FbxVector4(0, 1, 0, 0));
+            matReflect.SetRow(3, FbxVector4(0, 0, 0, 1));
 
+            // 참조 FBXLoader::LoadAnimationData 흐름을 그대로 따른다 — cluster 단위 inline 평가.
+            // 사전 계산(invMeshNode 캐시) 최적화가 EvaluateGlobalTransform 의 내부 캐시 상태를
+            // 깨뜨려 일부 clip 의 animation 결과가 망가짐을 확인 → 참조처럼 매 frame 즉시 평가.
             for (int32 s = 0; s < skinCount; ++s)
             {
                 FbxSkin* skin = static_cast<FbxSkin*>(mesh->GetDeformer(s, FbxDeformer::eSkin));
@@ -354,42 +345,41 @@ namespace engine::render::fbx_loader
                     cluster->GetTransformMatrix(matClusterTrans);
                     cluster->GetTransformLinkMatrix(matClusterLinkTrans);
 
-                    FbxAMatrix matReflect;
-                    matReflect.SetRow(0, FbxVector4(1, 0, 0, 0));
-                    matReflect.SetRow(1, FbxVector4(0, 0, 1, 0));
-                    matReflect.SetRow(2, FbxVector4(0, 1, 0, 0));
-                    matReflect.SetRow(3, FbxVector4(0, 0, 0, 1));
-
                     FbxAMatrix matOffset = matClusterLinkTrans.Inverse() * matClusterTrans;
                     matOffset = matReflect * matOffset * matReflect;
-
                     skeleton.Bones()[boneIdx].offsetMatrix = ConvertMatrix(matOffset);
 
-                    // 3) Keyframe — 모든 clip 의 startFrame..endFrame.
-                    for (ClipMeta& cm : clipMetas)
+                    // 3) Keyframe — clip 마다 SetCurrentAnimationStack 후 매 frame inline 평가.
+                    FbxNode* linkNode = cluster->GetLink();
+                    for (size_t ci = 0; ci < clipMetas.size(); ++ci)
                     {
+                        ClipMeta& cm = clipMetas[ci];
                         if (cm.stack == nullptr) { continue; }
                         mesh->GetScene()->SetCurrentAnimationStack(cm.stack);
 
                         const FbxLongLong startFrame = cm.startTime.GetFrameCount(cm.timeMode);
                         const FbxLongLong endFrame   = cm.endTime.GetFrameCount(cm.timeMode);
+                        auto& kfBucket = cm.clip->bonesKeyFrames[boneIdx];
+                        kfBucket.reserve(kfBucket.size() + static_cast<size_t>(endFrame - startFrame));
+
                         for (FbxLongLong f = startFrame; f < endFrame; ++f)
                         {
                             FbxTime fbxTime;
                             fbxTime.SetFrame(f, cm.timeMode);
 
-                            FbxAMatrix matFromNode = mesh->GetNode()->EvaluateGlobalTransform(fbxTime);
-                            FbxAMatrix matTransform = matFromNode.Inverse() * cluster->GetLink()->EvaluateGlobalTransform(fbxTime);
+                            FbxAMatrix matFromNode  = mesh->GetNode()->EvaluateGlobalTransform(fbxTime);
+                            FbxAMatrix matTransform = matFromNode.Inverse() * linkNode->EvaluateGlobalTransform(fbxTime);
                             matTransform = matReflect * matTransform * matReflect;
 
                             KeyFrame kf;
                             kf.timeSec   = fbxTime.GetSecondDouble();
                             kf.transform = ConvertMatrix(matTransform);
-                            cm.clip->bonesKeyFrames[boneIdx].push_back(kf);
+                            kfBucket.push_back(kf);
                         }
                     }
                 }
             }
+
         }
 
         // ───────────────────────────────────────────────────────────────────────
@@ -500,8 +490,8 @@ namespace engine::render::fbx_loader
                     }
                     if (uvElem != nullptr)
                     {
-                        const int32 polyUvIdx = mesh->GetTextureUVIndex(p, j);
-                        const int32 ui = ResolveUvIndex(uvElem, cp, polyUvIdx);
+                        // GetTextureUVIndex 가 매핑/레퍼런스 모드를 내부 처리해 DirectArray 인덱스를 직접 반환.
+                        const int32 ui = mesh->GetTextureUVIndex(p, j);
                         v.uv = ConvertUv(uvElem->GetDirectArray().GetAt(ui));
                     }
                     ++vertexCounter;
