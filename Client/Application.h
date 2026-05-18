@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 struct ID3D10Blob;
 using ID3DBlob = ID3D10Blob;
@@ -60,12 +61,21 @@ namespace client
         // 메인 루프. 윈도우가 닫힐 때까지 블록.
         void Run();
 
+        // 런타임 씬 전환. SceneRuntime 폐기 + 새 .scene.json 로드 + GPU 자원 재할당.
+        // 호출 안전성:
+        //   - 메인 루프 Tick 안에서 호출 — FlushGpu 가 GPU 작업 완료 보장.
+        //   - SceneRuntime 의 기존 자산 (FBX 텍스처 SRV 등) 은 SrvHeap::Reset 으로 슬롯 재사용.
+        //   - FrameRenderer::OnResize 호출로 in-flight fence value 초기화.
+        // 실패 시 (LoadJson 예외) 기존 SceneRuntime 은 이미 폐기된 상태 — 호출자 예외 처리.
+        void ChangeScene(const std::string& scenePath);
+
     private:
         // 부트 단계 — Run() 진입 전 ctor 에서 순서대로 호출.
         void InitGraphicsCore();           // Device/Queue/Swap/Depth/SrvHeap/fallback
         void InitGraphicsPipeline();       // Shader/RootSig/PSO
         void LoadSceneAndRuntime();        // Scene JSON + SceneRuntime + 카메라 초기화
         void InitRendererAndInput();       // FrameRenderer + InputController
+        void ScanSceneSlots();             // assets/Scenes/*.scene.json 스캔 → F1..F9 매핑
 
         // 매 프레임 호출 — Run() 안에서.
         void Tick(float dt);
@@ -97,6 +107,11 @@ namespace client
         std::unique_ptr<SceneRuntime>                       m_sceneRuntime;
         std::unique_ptr<FrameRenderer>                      m_frameRenderer;
         InputController                                     m_inputController;
+
+        // F1..F9 슬롯 매핑 — assets/Scenes/*.scene.json. 최대 9 슬롯, 부팅 시 한 번 스캔.
+        // 슬롯 0 = 첫 알파벳 순. ChangeScene 호출 시 인덱싱.
+        std::vector<std::string>                            m_sceneSlots;
+        std::string                                         m_currentScenePath;
 
         // ctor 인자.
         int          m_widthPx;

@@ -42,6 +42,11 @@ namespace engine::render
         Handle Allocate();
         Handle GetHandle(uint32 index) const noexcept;
 
+        // 슬롯 카운터만 0 으로 되돌림. 디스크립터 힙 자체는 그대로 (덮어쓰기 안전).
+        // 호출자 책임: GPU 가 기존 디스크립터를 참조 중이지 않음을 보장 (CommandQueue::FlushGpu 선행).
+        // 사용처: 씬 전환 시 자산 SRV 슬롯 재사용 — Application::ChangeScene 등.
+        void Reset() noexcept { m_count = 0; }
+
         uint32 Capacity() const noexcept { return m_capacity; }
         uint32 Count()    const noexcept { return m_count; }
 
