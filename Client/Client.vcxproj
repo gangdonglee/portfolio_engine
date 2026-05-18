@@ -124,6 +124,16 @@ if exist "$(SolutionDir)Resources" (
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Application.cpp" />
+    <ClCompile Include="SceneRuntime.cpp" />
+    <ClCompile Include="FrameRenderer.cpp" />
+    <ClCompile Include="InputController.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Application.h" />
+    <ClInclude Include="SceneRuntime.h" />
+    <ClInclude Include="FrameRenderer.h" />
+    <ClInclude Include="InputController.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine\Engine.vcxproj">
