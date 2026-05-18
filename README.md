@@ -73,6 +73,7 @@ portfolio_engine/
 - [ORCHESTRATION.md](ORCHESTRATION.md) — Claude Code 서브에이전트 활용 운영 지침
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 모듈 구조와 의존성
 - [docs/CODE_STYLE.md](docs/CODE_STYLE.md) — 코드 스타일 가이드 (명명·헤더·클래스 패턴)
+- [docs/EDITOR_ROADMAP.md](docs/EDITOR_ROADMAP.md) — 맵 에디터 단계별 로드맵 (M0~M5)
 - [devlog/](devlog/) — 단계별 상세 작업 기록 (포트폴리오 PPT 원천 자료)
 
 ## 진행 상황
