@@ -146,6 +146,9 @@
     <ClInclude Include="render\ImageLoader.h">
       <Filter>render</Filter>
     </ClInclude>
+    <ClInclude Include="render\Material.h">
+      <Filter>render</Filter>
+    </ClInclude>
     <ClInclude Include="render\SrvDescriptorHeap.h">
       <Filter>render</Filter>
     </ClInclude>

@@ -134,6 +134,7 @@
     <ClInclude Include="render\ObjLoader.h" />
     <ClInclude Include="render\FbxLoader.h" />
     <ClInclude Include="render\ImageLoader.h" />
+    <ClInclude Include="render\Material.h" />
     <ClInclude Include="render\SrvDescriptorHeap.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />

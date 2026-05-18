@@ -7,33 +7,40 @@
 namespace engine::render
 {
     class Device;
+    class CommandQueue;
+    class CommandList;
+    class SrvDescriptorHeap;
     class Mesh;
 
-    // Autodesk FBX SDK 기반 .fbx 로더 (Phase A — 메시 + 머티리얼 색만).
+    // Autodesk FBX SDK 기반 .fbx 로더 (Phase A — 메시 + 머티리얼 + 디퓨즈 텍스처).
     //
     // 책임:
-    //   - FbxManager/FbxScene/FbxImporter 라이프타임 RAII (LoadFbx 호출 1회 안에 모두 처리).
-    //   - 모든 eMesh attribute 노드의 polygon 을 단일 Mesh::Vertex 컬렉션에 concat.
+    //   - FbxManager/FbxScene/FbxImporter 라이프타임 RAII.
+    //   - 모든 eMesh attribute 노드의 polygon 을 단일 vertex 컬렉션 + 머티리얼별 sub-indices 로 분리.
     //   - 좌표계 변환: FBX 기본 Y-up RH → D3D LH (Y/Z swap + face winding 반전).
-    //   - 머티리얼 Kd (diffuse 색) 를 정점 color 슬롯에 굽기 (OBJ MTL 과 동일 패턴).
+    //   - 머티리얼 Kd 색을 정점 color 슬롯에 굽기 + diffuse 텍스처 자동 로드 (WIC) + SRV 등록.
     //
     // 본 단계 제외:
-    //   - 스키닝 (bone weight / cluster) — 셰이더에 본 팔레트 cbuffer 도입 후 별도 단계.
-    //   - 애니메이션 (FbxAnimStack / 키프레임) — 스키닝 도입 후.
-    //   - 텍스처 자산 로드 — diffuseTexName 경로만 추출, 8x8 체커보드 알베도 유지.
-    //   - 탄젠트 — Vertex 에 슬롯 없음.
+    //   - 스키닝 / 애니메이션 — 셰이더 본 팔레트 cbuffer 도입 후 별도 단계.
+    //   - normal/specular map — 슬롯만 정의되어 있고 본 단계 미적용.
+    //   - 탄젠트 — Vertex 슬롯 없음.
     //
-    // 함수 형식 (free function in namespace), ObjLoader 와 동일 패턴.
+    // 결과: Mesh (다중 SubMesh, 각 SubMesh = IndexBuffer + Material).
     namespace fbx_loader
     {
-        // FBX 파일을 로드해 단일 Mesh 로 변환. 다중 메시 노드는 모두 concat.
-        // defaultColor: 머티리얼이 없거나 Kd 가 0,0,0 인 면의 폴백 색.
+        // FBX 파일 + 그 .fbm 폴더의 텍스처 자동 로드. 머티리얼별 sub-mesh 분리.
+        // queue/list 는 텍스처 업로드 1회용 (Texture ctor 와 동일 패턴).
+        // srvHeap 은 머티리얼별 텍스처 SRV 등록처 — 호출자는 충분한 capacity 보장.
+        // defaultColor: 머티리얼이 없거나 Kd 가 0,0,0 인 폴백.
         std::unique_ptr<Mesh> LoadFbx(
             Device&                  device,
+            CommandQueue&            queue,
+            CommandList&             list,
+            SrvDescriptorHeap&       srvHeap,
             const wchar_t*           absolutePath,
             const DirectX::XMFLOAT3& defaultColor);
 
-        // exe 옆 Resources\FBX\ 절대 경로 — 학습자료 폴더 구조 차용.
+        // exe 옆 Resources\FBX\ 절대 경로.
         std::wstring DefaultFbxDir();
     }
 }

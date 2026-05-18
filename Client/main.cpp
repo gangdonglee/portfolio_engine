@@ -100,31 +100,30 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.dsvFormat     = depthBuffer.Format();
         engine::render::PipelineState pso(device, psoDesc);
 
-        // === Mesh 로드 — FBX 파일에서 Dragon ===
-        // Resources/FBX/Dragon.fbx 를 FBX SDK 로 로드. 메시 + 머티리얼 Kd 색까지 추출.
-        // 스키닝/애니메이션은 본 단계 제외 (셰이더에 본 팔레트 cbuffer 미도입).
+        // === SRV 힙 + 폴백 알베도 + Dragon FBX 로드 ===
+        // SRV 힙은 FbxLoader 가 머티리얼별 텍스처를 등록할 때 추가 슬롯 사용.
+        // capacity 32 — Dragon 머티리얼 수 + 폴백 여유.
+        engine::render::SrvDescriptorHeap srvHeap(device, 32);
+
+        // 폴백 알베도 — FBX 머티리얼이 텍스처 없을 때 사용. Resources/Texture/Leather.jpg.
+        const std::wstring texDir  = engine::render::fbx_loader::DefaultFbxDir() + L"..\\Texture\\";
+        const std::wstring texPath = texDir + L"Leather.jpg";
+        const engine::render::ImageData albedoImg =
+            engine::render::image_loader::LoadImage(texPath.c_str());
+        engine::render::Texture fallbackAlbedo(
+            device, commandQueue, *cmdLists[0],
+            albedoImg.pixels.data(), albedoImg.width, albedoImg.height);
+        fallbackAlbedo.CreateSrv(device, srvHeap);   // 슬롯 0
+
+        // Dragon FBX 로드 — 머티리얼별 sub-mesh 분리 + 각자 diffuse 텍스처 자동 로드.
+        // FbxLoader 가 SrvHeap 슬롯 1+ 사용.
         const std::wstring fbxDir  = engine::render::fbx_loader::DefaultFbxDir();
         const std::wstring fbxPath = fbxDir + L"Dragon.fbx";
         std::unique_ptr<engine::render::Mesh> mainMesh =
             engine::render::fbx_loader::LoadFbx(
-                device,
+                device, commandQueue, *cmdLists[0], srvHeap,
                 fbxPath.c_str(),
                 { 0.85f, 0.85f, 0.92f });
-
-        // === 알베도 텍스처 — WIC 디코더로 Resources/Texture 의 jpg 로드 ===
-        // 체커보드 코드 제거 — 실제 자산 파이프라인.
-        // Texture 업로드는 1회성 — 메인 루프 시작 전이라 첫 슬롯 cmdLists[0] 빌려 사용.
-        const std::wstring texDir   = engine::render::fbx_loader::DefaultFbxDir() + L"..\\Texture\\";
-        const std::wstring texPath  = texDir + L"Leather.jpg";
-        const engine::render::ImageData albedoImg =
-            engine::render::image_loader::LoadImage(texPath.c_str());
-        engine::render::Texture albedoTex(
-            device, commandQueue, *cmdLists[0],
-            albedoImg.pixels.data(), albedoImg.width, albedoImg.height);
-
-        // SRV 디스크립터 힙 (shader-visible, capacity 4 — 향후 텍스처 추가 여유).
-        engine::render::SrvDescriptorHeap srvHeap(device, 4);
-        albedoTex.CreateSrv(device, srvHeap);
 
         // 카메라: Dragon.fbx 가 unit cm 기준(약 ±100 박스) — Cube(±1) 보다 멀리 + far plane 확대.
         constexpr float kFovY      = DirectX::XM_PIDIV4;
@@ -295,11 +294,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             list->SetDescriptorHeaps(1, heaps);
 
             list->SetGraphicsRootConstantBufferView(0, frameCB.GpuAddress());
-            list->SetGraphicsRootDescriptorTable(1, albedoTex.SrvGpuHandle());
-
             list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            mainMesh->Bind(list);
-            mainMesh->Draw(list);
+
+            // 머티리얼별 sub-draw — Mesh 내부가 매 SubMesh 마다 SetGraphicsRootDescriptorTable(1, ...) + DrawIndexed.
+            // 머티리얼에 텍스처 없으면 fallbackAlbedo SRV 사용.
+            mainMesh->BindVertexBuffer(list);
+            mainMesh->DrawAll(list, /*rootParamMaterialTable*/1, fallbackAlbedo.SrvGpuHandle());
 
             // RENDER_TARGET → PRESENT
             D3D12_RESOURCE_BARRIER toPresent{};
