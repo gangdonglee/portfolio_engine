@@ -33,6 +33,10 @@ namespace engine::render
         Mesh(Device&       device,
              const Vertex* vertices, uint32 vertexCount,
              const uint16* indices,  uint32 indexCount);
+        // R32 인덱스 버전 — 65535 초과 정점 메시(예: FBX 캐릭터) 용.
+        Mesh(Device&       device,
+             const Vertex* vertices, uint32 vertexCount,
+             const uint32* indices,  uint32 indexCount);
         ~Mesh();
 
         Mesh(const Mesh&)            = delete;

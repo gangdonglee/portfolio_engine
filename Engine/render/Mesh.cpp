@@ -24,6 +24,22 @@ namespace engine::render
     {
     }
 
+    Mesh::Mesh(Device&       device,
+               const Vertex* vertices, uint32 vertexCount,
+               const uint32* indices,  uint32 indexCount)
+        : m_vb(std::make_unique<VertexBuffer>(
+              device,
+              vertices,
+              static_cast<uint32>(vertexCount * sizeof(Vertex)),
+              static_cast<uint32>(sizeof(Vertex))))
+        , m_ib(std::make_unique<IndexBuffer>(
+              device,
+              indices,
+              static_cast<uint32>(indexCount * sizeof(uint32)),
+              DXGI_FORMAT_R32_UINT))
+    {
+    }
+
     Mesh::~Mesh() = default;
 
     void Mesh::Bind(ID3D12GraphicsCommandList* list) const

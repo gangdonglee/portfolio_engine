@@ -66,6 +66,9 @@
     <ClCompile Include="render\ObjLoader.cpp">
       <Filter>render</Filter>
     </ClCompile>
+    <ClCompile Include="render\FbxLoader.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="render\SrvDescriptorHeap.cpp">
       <Filter>render</Filter>
     </ClCompile>
@@ -132,6 +135,9 @@
       <Filter>render</Filter>
     </ClInclude>
     <ClInclude Include="render\ObjLoader.h">
+      <Filter>render</Filter>
+    </ClInclude>
+    <ClInclude Include="render\FbxLoader.h">
       <Filter>render</Filter>
     </ClInclude>
     <ClInclude Include="render\SrvDescriptorHeap.h">

@@ -42,7 +42,12 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="UserMacros">
+    <!-- FBX SDK 위치 — Engine.vcxproj 와 동일. 향후 third_party 이전 시 두 파일 동기 갱신 필요. -->
+    <FbxSdkRoot>D:\Things\Animation_소스코드\Library</FbxSdkRoot>
+    <FbxSdkLibDebug>$(FbxSdkRoot)\Lib\FBX\debug</FbxSdkLibDebug>
+    <FbxSdkLibRelease>$(FbxSdkRoot)\Lib\FBX\release</FbxSdkLibRelease>
+  </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\intermediate\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
@@ -64,14 +69,21 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;libfbxsdk-md.lib;libxml2-md.lib;zlib-md.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(FbxSdkLibDebug);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- LNK4099: FBX SDK / libxml2 / zlib 의 lib 파일에 PDB 미동봉 — Autodesk 배포 패키지의 정상 현상. -->
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PostBuildEvent>
       <Command>if not exist "$(OutDir)shaders" mkdir "$(OutDir)shaders"
 xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul
 if not exist "$(OutDir)assets" mkdir "$(OutDir)assets"
-xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul</Command>
-      <Message>Copying shaders + assets to output</Message>
+xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul
+if exist "$(SolutionDir)Resources" (
+  if not exist "$(OutDir)Resources" mkdir "$(OutDir)Resources"
+  xcopy /Y /D /Q /E /I "$(SolutionDir)Resources" "$(OutDir)Resources" &gt;nul
+)</Command>
+      <Message>Copying shaders + assets + Resources to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -94,14 +106,20 @@ xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul</Command>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;dxguid.lib;libfbxsdk-md.lib;libxml2-md.lib;zlib-md.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(FbxSdkLibRelease);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PostBuildEvent>
       <Command>if not exist "$(OutDir)shaders" mkdir "$(OutDir)shaders"
 xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul
 if not exist "$(OutDir)assets" mkdir "$(OutDir)assets"
-xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul</Command>
-      <Message>Copying shaders + assets to output</Message>
+xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul
+if exist "$(SolutionDir)Resources" (
+  if not exist "$(OutDir)Resources" mkdir "$(OutDir)Resources"
+  xcopy /Y /D /Q /E /I "$(SolutionDir)Resources" "$(OutDir)Resources" &gt;nul
+)</Command>
+      <Message>Copying shaders + assets + Resources to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -41,7 +41,15 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="UserMacros">
+    <!-- FBX SDK 위치 — 학습 자료(D:\Things\Animation_소스코드\Library) 의 패키지를 직접 참조.
+         800MB 라이브러리 크기 때문에 프로젝트 내 복사를 회피.
+         향후 학습 자료 폴더가 정리되면 third_party/FBX 로 이전 + 본 매크로만 갱신. -->
+    <FbxSdkRoot>D:\Things\Animation_소스코드\Library</FbxSdkRoot>
+    <FbxSdkInclude>$(FbxSdkRoot)\Include\FBX</FbxSdkInclude>
+    <FbxSdkLibDebug>$(FbxSdkRoot)\Lib\FBX\debug</FbxSdkLibDebug>
+    <FbxSdkLibRelease>$(FbxSdkRoot)\Lib\FBX\release</FbxSdkLibRelease>
+  </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\intermediate\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
@@ -57,7 +65,7 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -73,7 +81,7 @@
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -96,6 +104,7 @@
     <ClCompile Include="render\FreeCamera.cpp" />
     <ClCompile Include="render\Mesh.cpp" />
     <ClCompile Include="render\ObjLoader.cpp" />
+    <ClCompile Include="render\FbxLoader.cpp" />
     <ClCompile Include="render\SrvDescriptorHeap.cpp" />
     <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
@@ -122,6 +131,7 @@
     <ClInclude Include="render\FreeCamera.h" />
     <ClInclude Include="render\Mesh.h" />
     <ClInclude Include="render\ObjLoader.h" />
+    <ClInclude Include="render\FbxLoader.h" />
     <ClInclude Include="render\SrvDescriptorHeap.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />

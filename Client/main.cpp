@@ -16,6 +16,7 @@
 #include "platform/Window.h"
 #include "render/Camera.h"
 #include "render/CommandList.h"
+#include "render/FbxLoader.h"
 #include "render/FreeCamera.h"
 #include "render/CommandQueue.h"
 #include "render/ConstantBuffer.h"
@@ -98,16 +99,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.dsvFormat     = depthBuffer.Format();
         engine::render::PipelineState pso(device, psoDesc);
 
-        // === Mesh 로드 — OBJ 파일에서 큐브 ===
-        // 손코딩 정점/인덱스 배열 제거. assets/Cube.obj 에서 로드.
-        // 정점 색상은 흰색 — 알베도 색은 텍스처에서 가져옴.
-        const std::wstring assetsDir = engine::render::obj_loader::DefaultAssetsDir();
-        const std::wstring cubePath  = assetsDir + L"Cube.obj";
-        std::unique_ptr<engine::render::Mesh> cubeMesh =
-            engine::render::obj_loader::LoadObj(
+        // === Mesh 로드 — FBX 파일에서 Dragon ===
+        // Resources/FBX/Dragon.fbx 를 FBX SDK 로 로드. 메시 + 머티리얼 Kd 색까지 추출.
+        // 스키닝/애니메이션은 본 단계 제외 (셰이더에 본 팔레트 cbuffer 미도입).
+        const std::wstring fbxDir  = engine::render::fbx_loader::DefaultFbxDir();
+        const std::wstring fbxPath = fbxDir + L"Dragon.fbx";
+        std::unique_ptr<engine::render::Mesh> mainMesh =
+            engine::render::fbx_loader::LoadFbx(
                 device,
-                cubePath.c_str(),
-                { 1.0f, 1.0f, 1.0f });
+                fbxPath.c_str(),
+                { 0.85f, 0.85f, 0.92f });
 
         // === 체커보드 알베도 텍스처 (8x8 RGBA8) ===
         // 외부 이미지 로더 없이 셰이딩 확인용으로 코드 생성. 노랑/검정 8x8.
@@ -136,21 +137,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         engine::render::SrvDescriptorHeap srvHeap(device, 4);
         albedoTex.CreateSrv(device, srvHeap);
 
-        // 카메라: (0, 1, -5) 시작, 원점 근처. 45도 FoV.
-        constexpr float kFovY     = DirectX::XM_PIDIV4;
-        constexpr float kNearPlane = 0.1f;
-        constexpr float kFarPlane  = 100.0f;
+        // 카메라: Dragon.fbx 가 unit cm 기준(약 ±100 박스) — Cube(±1) 보다 멀리 + far plane 확대.
+        constexpr float kFovY      = DirectX::XM_PIDIV4;
+        constexpr float kNearPlane = 1.0f;
+        constexpr float kFarPlane  = 5000.0f;
         engine::render::Camera camera;
-        camera.SetPosition({ 0.0f, 1.0f, -5.0f });
-        camera.SetTarget  ({ 0.0f, 0.0f,  0.0f });
-        camera.SetUp      ({ 0.0f, 1.0f,  0.0f });
+        camera.SetPosition({ 0.0f, 100.0f, -300.0f });
+        camera.SetTarget  ({ 0.0f, 50.0f,  0.0f });
+        camera.SetUp      ({ 0.0f, 1.0f,   0.0f });
         camera.SetPerspective(
             kFovY,
             static_cast<float>(window.Width()) / static_cast<float>(window.Height()),
             kNearPlane, kFarPlane);
 
         // 자유 카메라 컨트롤러 (WASD + QE + 우클릭 hold 마우스 회전, Shift 부스트).
+        // Dragon.fbx 단위(cm) 기준이라 기본 5m/s 속도는 너무 느림 → 100 m/s.
         engine::render::FreeCamera freeCamera(camera);
+        freeCamera.SetMoveSpeed(100.0f);
 
         // 상수 버퍼: MVP + World + 카메라 위치 + 라이트.
         // 각 float3 뒤 4바이트 패딩 = HLSL 의 float3 가 16바이트 정렬되도록 보장.
@@ -241,9 +244,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             // 입력으로 카메라 갱신.
             freeCamera.Update(window.GetInput(), dt);
 
-            // World = 회전 큐브 자체 회전 (시각 흐름 유지).
+            // World = Y축 천천히 자전 (Dragon 시각 흐름). Cube 시절보다 회전 속도 1/4.
             using namespace DirectX;
-            const XMMATRIX world = XMMatrixRotationY(t) * XMMatrixRotationX(t * 0.7f);
+            const XMMATRIX world = XMMatrixRotationY(t * 0.25f);
             const XMMATRIX mvp   = world * camera.ViewProjection();
 
             FrameConstants cb{};
@@ -306,8 +309,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             list->SetGraphicsRootDescriptorTable(1, albedoTex.SrvGpuHandle());
 
             list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cubeMesh->Bind(list);
-            cubeMesh->Draw(list);
+            mainMesh->Bind(list);
+            mainMesh->Draw(list);
 
             // RENDER_TARGET → PRESENT
             D3D12_RESOURCE_BARRIER toPresent{};
