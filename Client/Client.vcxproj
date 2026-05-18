@@ -43,8 +43,8 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros">
-    <!-- FBX SDK 위치 — Engine.vcxproj 와 동일. 향후 third_party 이전 시 두 파일 동기 갱신 필요. -->
-    <FbxSdkRoot>D:\Things\Animation_소스코드\Library</FbxSdkRoot>
+    <!-- FBX SDK 위치 — Engine.vcxproj 와 동일. 프로젝트 내 Library 폴더 참조. -->
+    <FbxSdkRoot>$(SolutionDir)Library</FbxSdkRoot>
     <FbxSdkLibDebug>$(FbxSdkRoot)\Lib\FBX\debug</FbxSdkLibDebug>
     <FbxSdkLibRelease>$(FbxSdkRoot)\Lib\FBX\release</FbxSdkLibRelease>
   </PropertyGroup>
@@ -78,7 +78,7 @@
       <Command>if not exist "$(OutDir)shaders" mkdir "$(OutDir)shaders"
 xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul
 if not exist "$(OutDir)assets" mkdir "$(OutDir)assets"
-xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul
+xcopy /Y /D /Q /E /I "$(SolutionDir)assets" "$(OutDir)assets" &gt;nul
 if exist "$(SolutionDir)Resources" (
   if not exist "$(OutDir)Resources" mkdir "$(OutDir)Resources"
   xcopy /Y /D /Q /E /I "$(SolutionDir)Resources" "$(OutDir)Resources" &gt;nul
@@ -114,7 +114,7 @@ if exist "$(SolutionDir)Resources" (
       <Command>if not exist "$(OutDir)shaders" mkdir "$(OutDir)shaders"
 xcopy /Y /D /Q "$(SolutionDir)shaders\*.hlsl" "$(OutDir)shaders\" &gt;nul
 if not exist "$(OutDir)assets" mkdir "$(OutDir)assets"
-xcopy /Y /D /Q "$(SolutionDir)assets\*" "$(OutDir)assets\" &gt;nul
+xcopy /Y /D /Q /E /I "$(SolutionDir)assets" "$(OutDir)assets" &gt;nul
 if exist "$(SolutionDir)Resources" (
   if not exist "$(OutDir)Resources" mkdir "$(OutDir)Resources"
   xcopy /Y /D /Q /E /I "$(SolutionDir)Resources" "$(OutDir)Resources" &gt;nul

@@ -2,15 +2,16 @@
 #include <Windows.h>
 #include <d3d12.h>
 #include <DirectXMath.h>
-// 주의: d3dx12.h 는 본 SDK(10.0.26100) 에 미포함 — DirectX-Headers 외부 패키지로 분리됨.
-// 옵션 A 풀스크래치 원칙에 따라 외부 의존 회피, ResourceBarrier 는 D3D12_RESOURCE_BARRIER 를
-// 수기로 채워 사용한다.
 
+#include <array>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "core/Logger.h"
 #include "platform/Input.h"
@@ -35,30 +36,110 @@
 #include "render/RtvDescriptorHeap.h"
 #include "render/ShaderCompiler.h"
 #include "render/SrvDescriptorHeap.h"
+#include "render/StructuredBuffer.h"
 #include "render/SwapChain.h"
 #include "render/Texture.h"
 #include "render/VertexBuffer.h"
+#include "scene/Scene.h"
+#include "scene/SceneSerializer.h"
 
-#include <array>
-
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                      _In_opt_ HINSTANCE hPrevInstance,
-                      _In_ LPWSTR lpCmdLine,
-                      _In_ int nCmdShow)
+namespace
 {
-    UNREFERENCED_PARAMETER(hInstance);
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
-    UNREFERENCED_PARAMETER(nCmdShow);
+    // HLSL StructuredBuffer 의 element 와 1:1 — stride 정확히 일치해야 셰이더가 올바르게 인덱싱.
+    struct DirectionalLightGpu
+    {
+        DirectX::XMFLOAT3 directionWS; float _pad0;
+        DirectX::XMFLOAT3 color;       float intensity;
+    };
+    static_assert(sizeof(DirectionalLightGpu) == 32, "DirectionalLightGpu stride 깨짐");
 
+    struct PointLightGpu
+    {
+        DirectX::XMFLOAT3 positionWS; float _pad0;
+        DirectX::XMFLOAT3 color;      float intensity;
+        float             range;
+        float             _pad1[3];
+    };
+    static_assert(sizeof(PointLightGpu) == 48, "PointLightGpu stride 깨짐");
+
+    struct FrameConstants
+    {
+        DirectX::XMFLOAT4X4 mvp;
+        DirectX::XMFLOAT4X4 world;
+        DirectX::XMFLOAT3   cameraPosWS;  float _pad0;
+        DirectX::XMFLOAT3   ambient;      float _pad1;
+        std::uint32_t       dirLightCount;
+        std::uint32_t       pointLightCount;
+        std::uint32_t       _pad2[2];
+    };
+    static_assert(sizeof(FrameConstants) % 16 == 0, "FrameConstants 16바이트 정렬 깨짐");
+
+    // 본 팔레트 cbuffer — HLSL `bones[MAX_BONES=256]`.
+    constexpr std::uint32_t kMaxBones = 256;
+    struct BonePalette
+    {
+        DirectX::XMFLOAT4X4 bones[kMaxBones];
+    };
+    static_assert(sizeof(BonePalette) == kMaxBones * 64, "BonePalette 크기 깨짐");
+
+    // 라이트 capacity — Scene 마다 라이트 수가 다르지만 StructuredBuffer 는 사전 할당 필요.
+    // 한 씬에서 dir 16 + point 64 면 일반적인 인디 액션게임 수준 충분. 초과 시 throw.
+    constexpr std::uint32_t kDirLightCapacity   = 16;
+    constexpr std::uint32_t kPointLightCapacity = 64;
+
+    // Scene 의 Transform → world XMMATRIX. rotation 은 쿼터니언(xyzw).
+    DirectX::XMMATRIX ComposeWorld(const engine::scene::Transform& xform)
+    {
+        using namespace DirectX;
+        const XMVECTOR s = XMVectorSet(xform.scale.x,    xform.scale.y,    xform.scale.z,    0.0f);
+        const XMVECTOR r = XMVectorSet(xform.rotation.x, xform.rotation.y, xform.rotation.z, xform.rotation.w);
+        const XMVECTOR t = XMVectorSet(xform.position.x, xform.position.y, xform.position.z, 1.0f);
+        const XMVECTOR zero = XMVectorZero();
+        return XMMatrixAffineTransformation(s, zero, r, t);
+    }
+
+    // 디폴트 씬 — assets/Scenes/sample.scene.json 이 없을 때 폴백.
+    // Dragon 1개 + dir 1개. 라이트가 0개일 때도 셰이더가 ambient 만으로 렌더하는지 검증 목적의
+    // 변형 씬은 sample.scene.json 으로 작성.
+    engine::scene::Scene BuildDefaultScene()
+    {
+        engine::scene::Scene s;
+        s.name = "default-fallback";
+        s.ambient = { 0.15f, 0.15f, 0.18f };
+        s.cameraStart.position = { 0.0f, 100.0f, -300.0f };
+        s.cameraStart.target   = { 0.0f,  50.0f,    0.0f };
+        s.cameraStart.fovYRad  = DirectX::XM_PIDIV4;
+
+        engine::scene::MeshInstance dragon;
+        dragon.name          = "Dragon";
+        dragon.meshAssetPath = "Resources/FBX/Dragon.fbx";
+        s.meshes.push_back(std::move(dragon));
+
+        engine::scene::DirectionalLight sun;
+        sun.name        = "Sun";
+        sun.directionWS = { -0.5f, -1.0f, 0.4f };
+        sun.color       = {  1.0f,  0.97f, 0.92f };
+        sun.intensity   = 1.0f;
+        s.dirLights.push_back(std::move(sun));
+
+        return s;
+    }
+
+    // 로드된 메시 자산 캐시 — 같은 meshAssetPath 의 FBX/OBJ 를 한 번만 로드.
+    struct LoadedAsset
+    {
+        std::unique_ptr<engine::render::Mesh>                  mesh;
+        std::unique_ptr<engine::render::Skeleton>              skeleton;     // FBX 만
+        std::vector<std::unique_ptr<engine::render::AnimClip>> clips;        // FBX 만
+    };
+}
+
+int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
+{
     engine::core::LogInfo(L"[portfolio_engine] boot running\n");
 
     try
     {
-        // N프레임 in-flight: 백버퍼 수와 동일 슬롯 수 (CPU 는 GPU 보다 N-1 프레임 앞서 record).
-        // 슬롯당 보유 자원: CommandList(=allocator+list 쌍) + ConstantBuffer + fence value.
-        // 공유 자원: Device, CommandQueue, Mesh, Texture, RootSig, PSO, RTV/DSV/SRV 힙
-        //   (GPU 큐는 명령을 순차 실행 — frame N 종료 후 N+1 시작이므로 자원 공유 안전).
         constexpr std::uint32_t kFrameCount = engine::render::SwapChain::kBackBufferCount;
 
         engine::platform::Window           window(1280, 720, L"portfolio_engine");
@@ -67,7 +148,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         engine::render::RtvDescriptorHeap  rtvHeap(device, engine::render::SwapChain::kBackBufferCount);
         engine::render::SwapChain          swapChain(device, commandQueue, window, rtvHeap);
 
-        // 프레임당 CommandList — 비이동 클래스라 unique_ptr 로 슬롯 채움.
         std::array<std::unique_ptr<engine::render::CommandList>, kFrameCount> cmdLists;
         for (std::uint32_t i = 0; i < kFrameCount; ++i)
         {
@@ -80,7 +160,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             static_cast<std::uint32_t>(window.Height()),
             DXGI_FORMAT_D32_FLOAT);
 
-        // 셰이더 컴파일
         const std::wstring shaderDir  = engine::render::ShaderCompiler::DefaultShaderDir();
         const std::wstring shaderPath = shaderDir + L"HelloTriangle.hlsl";
 
@@ -89,15 +168,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         const auto psBlob = engine::render::ShaderCompiler::CompileFromFile(
             shaderPath.c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
 
-        // RootSignature: b0 CBV (All, FrameConstants) + b1 CBV (VS, BonePalette) + t0 SRV table (PS) + s0 정적 샘플러.
-        // 파라미터 순서: [0]=b0, [1]=b1, [2]=t0 table.
+        // RootSig: b0 + b1 + t0 table + t1 + t2.
+        // 슬롯 인덱스: [0]=b0 frame, [1]=b1 bones, [2]=t0 material srv, [3]=t1 dir lights, [4]=t2 point lights.
         engine::render::RootSignature::Desc rsDesc{};
         rsDesc.cbvAtB0     = engine::render::RootSignature::Desc::CbvB0::All;
         rsDesc.cbvB1Vertex = true;
         rsDesc.srvT0Pixel  = true;
+        rsDesc.srvT1Pixel  = true;
+        rsDesc.srvT2Pixel  = true;
         engine::render::RootSignature rootSig(device, rsDesc);
 
-        // PSO: 깊이 활성 + HelloTriangle 입력 레이아웃.
         engine::render::PipelineState::Desc psoDesc{};
         psoDesc.vertexShader  = vsBlob.Get();
         psoDesc.pixelShader   = psBlob.Get();
@@ -106,12 +186,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         psoDesc.dsvFormat     = depthBuffer.Format();
         engine::render::PipelineState pso(device, psoDesc);
 
-        // === SRV 힙 + 폴백 알베도 + Dragon FBX 로드 ===
-        // SRV 힙은 FbxLoader 가 머티리얼별 텍스처를 등록할 때 추가 슬롯 사용.
-        // capacity 32 — Dragon 머티리얼 수 + 폴백 여유.
-        engine::render::SrvDescriptorHeap srvHeap(device, 32);
+        // === SRV 힙 + 폴백 알베도 ===
+        engine::render::SrvDescriptorHeap srvHeap(device, 64);
 
-        // 폴백 알베도 — FBX 머티리얼이 텍스처 없을 때 사용. Resources/Texture/Leather.jpg.
         const std::wstring texDir  = engine::render::fbx_loader::DefaultFbxDir() + L"..\\Texture\\";
         const std::wstring texPath = texDir + L"Leather.jpg";
         const engine::render::ImageData albedoImg =
@@ -119,108 +196,164 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         engine::render::Texture fallbackAlbedo(
             device, commandQueue, *cmdLists[0],
             albedoImg.pixels.data(), albedoImg.width, albedoImg.height);
-        fallbackAlbedo.CreateSrv(device, srvHeap);   // 슬롯 0
+        fallbackAlbedo.CreateSrv(device, srvHeap);
 
-        // Dragon FBX 로드 — 머티리얼별 sub-mesh + 텍스처 + 스키레톤 + 애니메이션 클립.
-        const std::wstring fbxDir  = engine::render::fbx_loader::DefaultFbxDir();
-        const std::wstring fbxPath = fbxDir + L"Dragon.fbx";
-        engine::render::fbx_loader::LoadedFbxModel loaded =
-            engine::render::fbx_loader::LoadFbx(
-                device, commandQueue, *cmdLists[0], srvHeap,
-                fbxPath.c_str(),
-                { 0.85f, 0.85f, 0.92f });
-        std::unique_ptr<engine::render::Mesh> mainMesh = std::move(loaded.mesh);
+        // === Scene 로드 — assets/Scenes/sample.scene.json 시도, 없으면 디폴트 ===
+        engine::scene::Scene scene;
+        const std::string sceneRel = "assets/Scenes/sample.scene.json";
+        if (std::filesystem::exists(sceneRel))
+        {
+            try
+            {
+                scene = engine::scene::LoadJson(sceneRel);
+                engine::core::LogInfoA("[scene] loaded: ");
+                engine::core::LogInfoA(sceneRel.c_str());
+                engine::core::LogInfoA("\n");
+            }
+            catch (const std::exception& e)
+            {
+                engine::core::LogInfoA("[scene] load failed, fallback to default: ");
+                engine::core::LogInfoA(e.what());
+                engine::core::LogInfoA("\n");
+                scene = BuildDefaultScene();
+            }
+        }
+        else
+        {
+            engine::core::LogInfo(L"[scene] sample.scene.json 없음 - default Scene 사용\n");
+            scene = BuildDefaultScene();
+        }
 
-        // Animator — 시작은 T-pose (nullptr). 키 입력으로 활성화/전환:
-        //   0 키 → T-pose (animator nullptr → identity palette)
-        //   1..4 키 → loaded.clips[0..3] 으로 활성화 / 전환
-        // 디버깅 편의: 스키닝 정확도 비교를 위해 T-pose ↔ 애니메이션 전환을 수동 제어.
+        if (scene.dirLights.size() > kDirLightCapacity || scene.pointLights.size() > kPointLightCapacity)
+        {
+            throw std::runtime_error("Scene 의 라이트 개수가 capacity 초과");
+        }
+
+        // === 메시 자산 캐시 ===
+        // meshAssetPath 가 동일하면 한 번만 로드. 인스턴스 N개여도 GPU 메모리는 1배.
+        std::unordered_map<std::string, LoadedAsset> assetCache;
+        const std::wstring fbxDir = engine::render::fbx_loader::DefaultFbxDir();
+
+        for (const auto& inst : scene.meshes)
+        {
+            if (assetCache.contains(inst.meshAssetPath)) { continue; }
+
+            LoadedAsset asset;
+            const std::filesystem::path p{ inst.meshAssetPath };
+            const auto ext = p.extension().string();
+
+            if (ext == ".fbx" || ext == ".FBX")
+            {
+                // FBX 경로는 Resources/FBX/ 기준 파일명. fbx_loader 가 같은 폴더의 텍스처 자동 로드.
+                const std::wstring full = std::filesystem::absolute(p).wstring();
+                engine::render::fbx_loader::LoadedFbxModel loaded =
+                    engine::render::fbx_loader::LoadFbx(
+                        device, commandQueue, *cmdLists[0], srvHeap,
+                        full.c_str(),
+                        { 0.85f, 0.85f, 0.92f });
+                asset.mesh     = std::move(loaded.mesh);
+                asset.skeleton = std::move(loaded.skeleton);
+                asset.clips    = std::move(loaded.clips);
+            }
+            else if (ext == ".obj" || ext == ".OBJ")
+            {
+                const std::wstring full = std::filesystem::absolute(p).wstring();
+                asset.mesh = engine::render::obj_loader::LoadObj(
+                    device, full.c_str(), { 1.0f, 1.0f, 1.0f });
+            }
+            else
+            {
+                throw std::runtime_error("Unsupported mesh asset extension: " + inst.meshAssetPath);
+            }
+
+            assetCache.emplace(inst.meshAssetPath, std::move(asset));
+        }
+
+        // === Animator — 첫 번째 FBX 인스턴스의 클립을 1..4 키로 활성화 ===
+        // M1 데모 단순화: 모든 인스턴스에 동일 본 팔레트 적용 (sample scene 이 Dragon 1개라 무관).
+        // M2~ 에서 인스턴스별 Animator 로 확장.
+        engine::render::Skeleton*                         animSkeleton = nullptr;
+        const std::vector<std::unique_ptr<engine::render::AnimClip>>* animClips = nullptr;
+        for (const auto& inst : scene.meshes)
+        {
+            const auto& asset = assetCache.at(inst.meshAssetPath);
+            if (asset.skeleton && !asset.clips.empty())
+            {
+                animSkeleton = asset.skeleton.get();
+                animClips    = &asset.clips;
+                break;
+            }
+        }
         std::unique_ptr<engine::render::Animator> animator;
         int currentClipIdx = -1;
-        engine::core::LogInfo(L"[input] 0=T-pose, 1..4=clip select. Starting in T-pose.\n");
+        if (animSkeleton) { engine::core::LogInfo(L"[input] 0=T-pose, 1..4=clip select.\n"); }
 
-        // 카메라: Dragon.fbx 가 unit cm 기준(약 ±100 박스) — Cube(±1) 보다 멀리 + far plane 확대.
-        constexpr float kFovY      = DirectX::XM_PIDIV4;
+        // === 카메라 ===
         constexpr float kNearPlane = 1.0f;
         constexpr float kFarPlane  = 5000.0f;
         engine::render::Camera camera;
-        camera.SetPosition({ 0.0f, 100.0f, -300.0f });
-        camera.SetTarget  ({ 0.0f, 50.0f,  0.0f });
-        camera.SetUp      ({ 0.0f, 1.0f,   0.0f });
+        camera.SetPosition(scene.cameraStart.position);
+        camera.SetTarget  (scene.cameraStart.target);
+        camera.SetUp      ({ 0.0f, 1.0f, 0.0f });
         camera.SetPerspective(
-            kFovY,
+            scene.cameraStart.fovYRad,
             static_cast<float>(window.Width()) / static_cast<float>(window.Height()),
             kNearPlane, kFarPlane);
-
-        // 자유 카메라 컨트롤러 (WASD + QE + 우클릭 hold 마우스 회전, Shift 부스트).
-        // Dragon.fbx 단위(cm) 기준이라 기본 5m/s 속도는 너무 느림 → 100 m/s.
         engine::render::FreeCamera freeCamera(camera);
         freeCamera.SetMoveSpeed(100.0f);
 
-        // 상수 버퍼: MVP + World + 카메라 위치 + 라이트.
-        // 각 float3 뒤 4바이트 패딩 = HLSL 의 float3 가 16바이트 정렬되도록 보장.
-        struct FrameConstants
-        {
-            DirectX::XMFLOAT4X4 mvp;
-            DirectX::XMFLOAT4X4 world;
-            DirectX::XMFLOAT3   cameraPosWS;  float _pad0;
-            DirectX::XMFLOAT3   lightDirWS;   float _pad1;
-            DirectX::XMFLOAT3   lightColor;   float _pad2;
-            DirectX::XMFLOAT3   ambient;      float _pad3;
-        };
-        static_assert(sizeof(FrameConstants) == 192, "FrameConstants 정렬 깨짐");
+        // === 인스턴스마다 ConstantBuffer (FrameConstants + BonePalette) — N프레임 in-flight × M인스턴스 ===
+        // 인스턴스 i 의 ConstantBuffer 는 매 프레임 갱신되고, 같은 슬롯이 N프레임 뒤 재사용 — N개의
+        // 슬롯이 있어야 in-flight 안전.
+        const std::uint32_t instanceCount = static_cast<std::uint32_t>(scene.meshes.size());
 
-        // 본 팔레트 cbuffer — HLSL `bones[MAX_BONES=256]` 와 1:1.
-        // 매 프레임 in-flight 슬롯마다 독립 — frameCBs 와 동일 패턴.
-        // 256 본: Dragon.fbx 가 182 본이라 128 로는 인덱스 OOB → 정점 폭발 (HLSL bones[] 범위 밖 접근).
-        constexpr std::uint32_t kMaxBones = 256;
-        struct BonePalette
+        std::vector<std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount>> instFrameCBs(instanceCount);
+        std::vector<std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount>> instBoneCBs (instanceCount);
+        for (std::uint32_t i = 0; i < instanceCount; ++i)
         {
-            DirectX::XMFLOAT4X4 bones[kMaxBones];
-        };
-        static_assert(sizeof(BonePalette) == kMaxBones * 64, "BonePalette 크기 깨짐");
-        static_assert(sizeof(BonePalette) <= 65536, "BonePalette cbuffer 64KB 한계 초과");
-
-        // 프레임당 ConstantBuffer — CPU 가 frame N 의 데이터를 쓰는 동안 GPU 는 frame N-1 의 데이터를 읽음.
-        std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount> frameCBs;
-        std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount> bonePaletteCBs;
-        for (std::uint32_t i = 0; i < kFrameCount; ++i)
-        {
-            frameCBs[i] = std::make_unique<engine::render::ConstantBuffer>(
-                device, static_cast<engine::uint32>(sizeof(FrameConstants)));
-            bonePaletteCBs[i] = std::make_unique<engine::render::ConstantBuffer>(
-                device, static_cast<engine::uint32>(sizeof(BonePalette)));
+            for (std::uint32_t f = 0; f < kFrameCount; ++f)
+            {
+                instFrameCBs[i][f] = std::make_unique<engine::render::ConstantBuffer>(
+                    device, static_cast<engine::uint32>(sizeof(FrameConstants)));
+                instBoneCBs[i][f]  = std::make_unique<engine::render::ConstantBuffer>(
+                    device, static_cast<engine::uint32>(sizeof(BonePalette)));
+            }
         }
 
-        // 정적 모델용 identity 팔레트 — Animator 없을 때 cbuffer 에 한 번만 채우면 됨.
+        // === 라이트 StructuredBuffer — 프레임 슬롯당 인스턴스 ===
+        // frame-shared 데이터. 매 프레임 시작 시 갱신, draw call 마다 같은 GPU 주소로 바인딩.
+        std::array<std::unique_ptr<engine::render::StructuredBuffer>, kFrameCount> dirLightSBs;
+        std::array<std::unique_ptr<engine::render::StructuredBuffer>, kFrameCount> pointLightSBs;
+        for (std::uint32_t f = 0; f < kFrameCount; ++f)
+        {
+            dirLightSBs[f]   = std::make_unique<engine::render::StructuredBuffer>(
+                device, kDirLightCapacity,   static_cast<engine::uint32>(sizeof(DirectionalLightGpu)));
+            pointLightSBs[f] = std::make_unique<engine::render::StructuredBuffer>(
+                device, kPointLightCapacity, static_cast<engine::uint32>(sizeof(PointLightGpu)));
+        }
+
+        // identity 팔레트.
         BonePalette identityPalette{};
         for (std::uint32_t i = 0; i < kMaxBones; ++i)
         {
             DirectX::XMStoreFloat4x4(&identityPalette.bones[i], DirectX::XMMatrixIdentity());
         }
 
-        // 슬롯당 직전 제출의 fence value — 0 은 "아직 미사용 슬롯" 의미 (대기 skip).
         std::array<std::uint64_t, kFrameCount> frameFenceValues{};
         std::uint32_t frameIndex = 0;
 
-        // 뷰포트 / 시저 — 윈도우 크기 기준. 매 리사이즈마다 갱신.
         D3D12_VIEWPORT viewport{};
-        viewport.TopLeftX = 0.0f;
-        viewport.TopLeftY = 0.0f;
         viewport.Width    = static_cast<float>(window.Width());
         viewport.Height   = static_cast<float>(window.Height());
         viewport.MinDepth = 0.0f;
         viewport.MaxDepth = 1.0f;
 
         D3D12_RECT scissor{};
-        scissor.left   = 0;
-        scissor.top    = 0;
         scissor.right  = static_cast<LONG>(window.Width());
         scissor.bottom = static_cast<LONG>(window.Height());
 
         constexpr float kClearColor[4] = { 0.05f, 0.07f, 0.10f, 1.0f };
 
-        // 시간 측정.
         const auto startTime = std::chrono::steady_clock::now();
         auto       prevFrame = startTime;
 
@@ -229,17 +362,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             window.PumpMessages();
             if (!window.IsOpen()) { break; }
 
-            // 윈도우 리사이즈 처리: WM_SIZE 가 dirty 플래그 설정 → 한 번에 모든 종속 자원 갱신.
-            // 매 픽셀당 WM_SIZE 가 와도 ConsumeResize 가 직전 상태만 토대로 처리하므로 한 번만 Resize.
             if (window.ConsumeResize())
             {
-                commandQueue.FlushGpu();   // GPU 가 백버퍼/뎁스를 더 이상 참조하지 않음을 보장
-                // 모든 in-flight 슬롯이 완료된 상태 — fence 추적 값 reset.
+                commandQueue.FlushGpu();
                 for (auto& v : frameFenceValues) { v = 0; }
 
                 const auto w = static_cast<std::uint32_t>(window.Width());
                 const auto h = static_cast<std::uint32_t>(window.Height());
-
                 swapChain.Resize(device, w, h);
                 depthBuffer.Resize(device, w, h);
 
@@ -249,29 +378,27 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                 scissor.bottom  = static_cast<LONG>(h);
 
                 camera.SetPerspective(
-                    kFovY,
+                    scene.cameraStart.fovYRad,
                     static_cast<float>(w) / static_cast<float>(h),
                     kNearPlane, kFarPlane);
             }
 
-            // PumpMessages 가 마우스/키 이벤트 누적 후 — 이번 프레임 델타 확정.
             window.GetInput().BeginFrame();
 
-            // 프레임 dt + 누적 시간.
             const auto now = std::chrono::steady_clock::now();
             const float dt = std::chrono::duration<float>(now - prevFrame).count();
-            [[maybe_unused]] const float t  = std::chrono::duration<float>(now - startTime).count();
             prevFrame = now;
 
-            // 클립 전환 키 (1..4=clips[0..3], 0=T-pose). 다운 엣지 감지로 한 번씩.
+            // 클립 전환 — animSkeleton 가 있을 때만.
+            if (animSkeleton && animClips)
             {
                 static bool prevDown[5]{};
-                constexpr std::pair<uint32_t, int> kClipKeys[5] = {
-                    { static_cast<uint32_t>('0'), -1 },
-                    { static_cast<uint32_t>('1'),  0 },
-                    { static_cast<uint32_t>('2'),  1 },
-                    { static_cast<uint32_t>('3'),  2 },
-                    { static_cast<uint32_t>('4'),  3 },
+                constexpr std::pair<std::uint32_t, int> kClipKeys[5] = {
+                    { static_cast<std::uint32_t>('0'), -1 },
+                    { static_cast<std::uint32_t>('1'),  0 },
+                    { static_cast<std::uint32_t>('2'),  1 },
+                    { static_cast<std::uint32_t>('3'),  2 },
+                    { static_cast<std::uint32_t>('4'),  3 },
                 };
                 for (size_t i = 0; i < std::size(kClipKeys); ++i)
                 {
@@ -279,122 +406,134 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                     if (cur && !prevDown[i])
                     {
                         const int target = kClipKeys[i].second;
-                        if (target < 0 || static_cast<size_t>(target) >= loaded.clips.size())
+                        if (target < 0 || static_cast<size_t>(target) >= animClips->size())
                         {
-                            if (currentClipIdx != -1)
-                            {
-                                animator.reset();
-                                currentClipIdx = -1;
-                                engine::core::LogInfo(L"[input] -> T-pose\n");
-                            }
+                            if (currentClipIdx != -1) { animator.reset(); currentClipIdx = -1; }
                         }
-                        else if (currentClipIdx != target && loaded.skeleton)
+                        else if (currentClipIdx != target)
                         {
                             animator = std::make_unique<engine::render::Animator>(
-                                *loaded.skeleton, *loaded.clips[target]);
+                                *animSkeleton, *(*animClips)[target]);
                             currentClipIdx = target;
-                            wchar_t buf[80];
-                            std::swprintf(buf, std::size(buf),
-                                          L"[input] -> clip %d\n", target);
-                            engine::core::LogInfo(buf);
                         }
                     }
                     prevDown[i] = cur;
                 }
             }
 
-            // 입력으로 카메라 갱신.
             freeCamera.Update(window.GetInput(), dt);
 
-            // World = identity (자전 일시 제거 — 스키닝/리깅 디버깅 중 시점 고정 필요).
-            using namespace DirectX;
-            const XMMATRIX world = XMMatrixIdentity();
-            const XMMATRIX mvp   = world * camera.ViewProjection();
+            // === 라이트 데이터 → StructuredBuffer 업로드 (frame-shared) ===
+            std::vector<DirectionalLightGpu> dirGpu;
+            dirGpu.reserve(scene.dirLights.size());
+            for (const auto& d : scene.dirLights)
+            {
+                DirectionalLightGpu g{};
+                g.directionWS = d.directionWS;
+                g.color       = d.color;
+                g.intensity   = d.intensity;
+                dirGpu.push_back(g);
+            }
+            std::vector<PointLightGpu> pointGpu;
+            pointGpu.reserve(scene.pointLights.size());
+            for (const auto& p : scene.pointLights)
+            {
+                PointLightGpu g{};
+                g.positionWS = p.positionWS;
+                g.color      = p.color;
+                g.intensity  = p.intensity;
+                g.range      = p.range;
+                pointGpu.push_back(g);
+            }
 
-            FrameConstants cb{};
-            XMStoreFloat4x4(&cb.mvp,   mvp);
-            XMStoreFloat4x4(&cb.world, world);
-            cb.cameraPosWS = camera.Position();
-            // 라이트는 사선 위에서 내려오는 방향광. 정규화된 단위 벡터.
-            const XMVECTOR lightDir = XMVector3Normalize(XMVectorSet(-0.5f, -1.0f, 0.4f, 0.0f));
-            XMStoreFloat3(&cb.lightDirWS, lightDir);
-            cb.lightColor = { 1.0f, 0.97f, 0.92f };  // 약간 따뜻한 흰색
-            cb.ambient    = { 0.15f, 0.15f, 0.18f }; // 약간 푸른 앰비언트
-
-            // === N프레임 in-flight: 이 슬롯의 직전 제출 완료 대기 ===
-            // frameFenceValues[i] == 0 은 "아직 사용 안 한 슬롯" — 첫 N프레임은 wait skip.
-            // GPU 가 이미 완료한 값에 WaitForFenceValue 호출은 즉시 반환 (CommandQueue 내부 GetCompletedValue 분기).
+            // === N프레임 in-flight 대기 ===
             if (frameFenceValues[frameIndex] != 0)
             {
                 commandQueue.WaitForFenceValue(frameFenceValues[frameIndex]);
             }
 
-            // 이 슬롯의 자원 — allocator+list 쌍, 자기 영역의 cbuffer.
-            engine::render::CommandList&    cmdList     = *cmdLists[frameIndex];
-            engine::render::ConstantBuffer& frameCB     = *frameCBs[frameIndex];
-            engine::render::ConstantBuffer& bonePalette = *bonePaletteCBs[frameIndex];
-            frameCB.Update(&cb, sizeof(cb));
+            dirLightSBs[frameIndex]->UpdateRange(
+                dirGpu.empty()  ? nullptr : dirGpu.data(),
+                static_cast<engine::uint32>(dirGpu.size()));
+            pointLightSBs[frameIndex]->UpdateRange(
+                pointGpu.empty() ? nullptr : pointGpu.data(),
+                static_cast<engine::uint32>(pointGpu.size()));
 
-            // 본 팔레트 갱신 — Animator 있으면 매 프레임 계산, 없으면 identity.
-            BonePalette palette = identityPalette;   // 모두 identity 초기화
+            // === Animator 본 팔레트 갱신 — 단일 공유 ===
+            BonePalette palette = identityPalette;
             if (animator)
             {
                 animator->Update(dt);
                 const auto& src = animator->Palette();
                 const size_t n = (src.size() < kMaxBones) ? src.size() : kMaxBones;
-                for (size_t i = 0; i < n; ++i)
-                {
-                    palette.bones[i] = src[i];
-                }
+                for (size_t i = 0; i < n; ++i) { palette.bones[i] = src[i]; }
             }
-            bonePalette.Update(&palette, sizeof(palette));
 
-            // === 매 프레임 명령 기록 ===
+            engine::render::CommandList& cmdList = *cmdLists[frameIndex];
             cmdList.Reset();
             ID3D12GraphicsCommandList* list = cmdList.Native();
 
             ID3D12Resource* const backBuffer = swapChain.CurrentBackBuffer();
 
-            // PRESENT → RENDER_TARGET
             D3D12_RESOURCE_BARRIER toRenderTarget{};
             toRenderTarget.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            toRenderTarget.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             toRenderTarget.Transition.pResource   = backBuffer;
             toRenderTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             toRenderTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
             toRenderTarget.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
             list->ResourceBarrier(1, &toRenderTarget);
 
-            // RTV + DSV 바인딩 + 클리어
             const D3D12_CPU_DESCRIPTOR_HANDLE rtv = swapChain.CurrentRtv();
             const D3D12_CPU_DESCRIPTOR_HANDLE dsv = depthBuffer.DsvHandle();
             list->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
             list->ClearRenderTargetView(rtv, kClearColor, 0, nullptr);
             list->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-            // 파이프라인 + 큐브 그리기
             list->RSSetViewports(1, &viewport);
             list->RSSetScissorRects(1, &scissor);
             list->SetGraphicsRootSignature(rootSig.Native());
             list->SetPipelineState(pso.Native());
 
-            // SRV 힙은 한 번에 하나만 바인딩. SetDescriptorHeaps → root table 바인딩.
             ID3D12DescriptorHeap* heaps[] = { srvHeap.Native() };
             list->SetDescriptorHeaps(1, heaps);
 
-            // RootParam: [0]=b0 FrameConstants, [1]=b1 BonePalette, [2]=t0 SRV table.
-            list->SetGraphicsRootConstantBufferView(0, frameCB.GpuAddress());
-            list->SetGraphicsRootConstantBufferView(1, bonePalette.GpuAddress());
+            // frame-shared SRV (라이트) — 모든 인스턴스에 동일.
+            list->SetGraphicsRootShaderResourceView(3, dirLightSBs  [frameIndex]->GpuAddress());
+            list->SetGraphicsRootShaderResourceView(4, pointLightSBs[frameIndex]->GpuAddress());
+
             list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            // 머티리얼별 sub-draw — Mesh 가 매 SubMesh 마다 SetGraphicsRootDescriptorTable(2, ...) + DrawIndexed.
-            mainMesh->BindVertexBuffer(list);
-            mainMesh->DrawAll(list, /*rootParamMaterialTable*/2, fallbackAlbedo.SrvGpuHandle());
+            // === 인스턴스 루프 ===
+            using namespace DirectX;
+            const XMMATRIX vp = camera.ViewProjection();
+            for (std::uint32_t i = 0; i < instanceCount; ++i)
+            {
+                const auto& inst   = scene.meshes[i];
+                const auto& asset  = assetCache.at(inst.meshAssetPath);
 
-            // RENDER_TARGET → PRESENT
+                const XMMATRIX world = ComposeWorld(inst.transform);
+                const XMMATRIX mvp   = world * vp;
+
+                FrameConstants cb{};
+                XMStoreFloat4x4(&cb.mvp,   mvp);
+                XMStoreFloat4x4(&cb.world, world);
+                cb.cameraPosWS     = camera.Position();
+                cb.ambient         = scene.ambient;
+                cb.dirLightCount   = static_cast<std::uint32_t>(scene.dirLights.size());
+                cb.pointLightCount = static_cast<std::uint32_t>(scene.pointLights.size());
+
+                instFrameCBs[i][frameIndex]->Update(&cb, sizeof(cb));
+                instBoneCBs [i][frameIndex]->Update(&palette, sizeof(palette));
+
+                list->SetGraphicsRootConstantBufferView(0, instFrameCBs[i][frameIndex]->GpuAddress());
+                list->SetGraphicsRootConstantBufferView(1, instBoneCBs [i][frameIndex]->GpuAddress());
+
+                asset.mesh->BindVertexBuffer(list);
+                asset.mesh->DrawAll(list, /*rootParamMaterialTable*/2, fallbackAlbedo.SrvGpuHandle());
+            }
+
             D3D12_RESOURCE_BARRIER toPresent{};
             toPresent.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            toPresent.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             toPresent.Transition.pResource   = backBuffer;
             toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -405,14 +544,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             commandQueue.Execute(cmdList);
             swapChain.Present();
 
-            // 이 슬롯의 fence value 갱신 — 다음에 같은 슬롯이 돌아왔을 때 대기 기준.
             frameFenceValues[frameIndex] = commandQueue.Signal();
-
-            // 다음 슬롯으로 회전. SwapChain 의 백버퍼 인덱스 회전과 같은 cadence.
             frameIndex = (frameIndex + 1) % kFrameCount;
         }
 
-        // 마지막 GPU 작업 완료 대기 (소멸 순서 안전).
         commandQueue.FlushGpu();
     }
     catch (const std::exception& e)

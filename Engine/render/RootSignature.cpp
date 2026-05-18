@@ -17,8 +17,8 @@ namespace engine::render
 
     RootSignature::RootSignature(Device& device, const Desc& desc)
     {
-        // 루트 파라미터 구성: 최대 3개 (b0 CBV + b1 CBV + t0 SRV table).
-        D3D12_ROOT_PARAMETER  params[3]{};
+        // 루트 파라미터 구성: 최대 5개 (b0 CBV + b1 CBV + t0 SRV table + t1 SRV root + t2 SRV root).
+        D3D12_ROOT_PARAMETER  params[5]{};
         UINT                  paramCount = 0;
 
         // [0] b0 CBV root descriptor
@@ -58,6 +58,26 @@ namespace engine::render
             params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
             params[paramCount].DescriptorTable.pDescriptorRanges   = &srvRange;
             params[paramCount].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_PIXEL;
+            ++paramCount;
+        }
+
+        // [3] t1 SRV root descriptor (PS 가시) — StructuredBuffer 가상주소 직접 바인딩.
+        if (desc.srvT1Pixel)
+        {
+            params[paramCount].ParameterType             = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            params[paramCount].Descriptor.ShaderRegister = 1;   // t1
+            params[paramCount].Descriptor.RegisterSpace  = 0;
+            params[paramCount].ShaderVisibility          = D3D12_SHADER_VISIBILITY_PIXEL;
+            ++paramCount;
+        }
+
+        // [4] t2 SRV root descriptor (PS 가시) — 두 번째 StructuredBuffer.
+        if (desc.srvT2Pixel)
+        {
+            params[paramCount].ParameterType             = D3D12_ROOT_PARAMETER_TYPE_SRV;
+            params[paramCount].Descriptor.ShaderRegister = 2;   // t2
+            params[paramCount].Descriptor.RegisterSpace  = 0;
+            params[paramCount].ShaderVisibility          = D3D12_SHADER_VISIBILITY_PIXEL;
             ++paramCount;
         }
 

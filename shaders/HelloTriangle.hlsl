@@ -1,5 +1,6 @@
 // HelloTriangle.hlsl
-// Phong 조명(앰비언트 + 디퓨즈 + Blinn-Phong 스페큘러) + 알베도 텍스처 + 본 팔레트 스키닝.
+// Phong 조명(앰비언트 + 디퓨즈 + Blinn-Phong 스페큘러) + 알베도 텍스처 + 본 팔레트 스키닝
+// + 다중 라이트 (Scene 의 가변 길이 dir/point 배열을 StructuredBuffer 로 받음).
 // 정점 입력: POSITION + NORMAL + TEXCOORD + COLOR + BLENDINDICES + BLENDWEIGHT.
 // 행렬은 row-major (DirectXMath 와 일치, CPU 측 transpose 정책: FBX 측 column-major 는 로딩 시 transpose).
 
@@ -7,11 +8,28 @@ cbuffer FrameConstants : register(b0)
 {
     row_major float4x4 mvp;
     row_major float4x4 world;
-    float3 cameraPosWS;   float _pad0;
-    float3 lightDirWS;    float _pad1;   // 라이트가 빛을 쏘는 방향(표면→라이트 와 반대)
-    float3 lightColor;    float _pad2;
-    float3 ambient;       float _pad3;
+    float3 cameraPosWS;     float _pad0;
+    float3 ambient;         float _pad1;
+    uint   dirLightCount;
+    uint   pointLightCount;
+    uint2  _pad2;
 };
+
+// 가변 길이 라이트 — Scene 의 std::vector 가 그대로 GPU 로 올라옴. 캡 없음.
+// CPU 측 stride 일치 필수 (DirectionalLightGpu / PointLightGpu 구조체).
+struct DirectionalLightGpu
+{
+    float3 directionWS;   float _pad0;
+    float3 color;         float intensity;
+};
+struct PointLightGpu
+{
+    float3 positionWS;    float _pad0;
+    float3 color;         float intensity;
+    float  range;         float3 _pad1;
+};
+StructuredBuffer<DirectionalLightGpu> g_dirLights   : register(t1);
+StructuredBuffer<PointLightGpu>       g_pointLights : register(t2);
 
 // 본 팔레트 — bone[i] = animatedGlobal[i] * inverseBindPose[i] (Animator 가 매 프레임 계산).
 // 최대 256 본 — Dragon.fbx 는 182 본이라 128 로는 인덱스 OOB → 정점이 가비지 행렬과 곱해져 폭발.
@@ -83,19 +101,43 @@ VSOutput VSMain(VSInput input)
 float4 PSMain(VSOutput input) : SV_Target
 {
     const float3 N = normalize(input.normalWS);
-    const float3 L = normalize(-lightDirWS);
     const float3 V = normalize(cameraPosWS - input.positionWS);
-    const float3 H = normalize(L + V);
-
-    const float  NdotL  = saturate(dot(N, L));
-    const float  NdotH  = saturate(dot(N, H));
     const float  shininess = 32.0;
 
     const float3 albedo = g_albedo.Sample(g_sampler, input.uv).rgb * input.color;
 
-    const float3 ambientLit = ambient    * albedo;
-    const float3 diffuse    = NdotL      * lightColor * albedo;
-    const float3 specular   = pow(NdotH, shininess) * lightColor * 0.5;
+    float3 lit = ambient * albedo;
 
-    return float4(ambientLit + diffuse + specular, 1.0);
+    // 방향광 — directionWS 가 "빛이 향하는 방향" 이므로 표면→라이트 = -directionWS.
+    for (uint i = 0; i < dirLightCount; ++i)
+    {
+        const DirectionalLightGpu dl = g_dirLights[i];
+        const float3 L      = normalize(-dl.directionWS);
+        const float3 H      = normalize(L + V);
+        const float  NdotL  = saturate(dot(N, L));
+        const float  NdotH  = saturate(dot(N, H));
+        const float3 lightC = dl.color * dl.intensity;
+        lit += NdotL * lightC * albedo;
+        lit += pow(NdotH, shininess) * lightC * 0.5;
+    }
+
+    // 점광 — range 외부는 falloff 0. 거리 기반 smooth attenuation (inverse-square 보다 안정).
+    for (uint j = 0; j < pointLightCount; ++j)
+    {
+        const PointLightGpu pl = g_pointLights[j];
+        const float3 toLight = pl.positionWS - input.positionWS;
+        const float  dist    = length(toLight);
+        if (dist > pl.range || pl.range <= 0.0) { continue; }
+        const float3 L      = toLight / max(dist, 1e-4);
+        const float3 H      = normalize(L + V);
+        const float  NdotL  = saturate(dot(N, L));
+        const float  NdotH  = saturate(dot(N, H));
+        const float  k      = saturate(1.0 - dist / pl.range);
+        const float  atten  = k * k;
+        const float3 lightC = pl.color * pl.intensity * atten;
+        lit += NdotL * lightC * albedo;
+        lit += pow(NdotH, shininess) * lightC * 0.5;
+    }
+
+    return float4(lit, 1.0);
 }

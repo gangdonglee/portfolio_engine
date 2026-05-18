@@ -65,7 +65,7 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);$(SolutionDir)external\nlohmann_json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -81,7 +81,7 @@
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);$(SolutionDir)external\nlohmann_json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -109,9 +109,11 @@
     <ClCompile Include="render\Skeleton.cpp" />
     <ClCompile Include="render\Animator.cpp" />
     <ClCompile Include="render\SrvDescriptorHeap.cpp" />
+    <ClCompile Include="render\StructuredBuffer.cpp" />
     <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
+    <ClCompile Include="scene\SceneSerializer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\HrCheck.h" />
@@ -141,8 +143,11 @@
     <ClInclude Include="render\AnimClip.h" />
     <ClInclude Include="render\Animator.h" />
     <ClInclude Include="render\SrvDescriptorHeap.h" />
+    <ClInclude Include="render\StructuredBuffer.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />
+    <ClInclude Include="scene\Scene.h" />
+    <ClInclude Include="scene\SceneSerializer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

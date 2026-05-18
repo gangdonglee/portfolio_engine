@@ -10,6 +10,9 @@
     <Filter Include="core">
       <UniqueIdentifier>{F1000003-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
+    <Filter Include="scene">
+      <UniqueIdentifier>{F1000004-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="platform\Window.cpp">
@@ -81,6 +84,9 @@
     <ClCompile Include="render\SrvDescriptorHeap.cpp">
       <Filter>render</Filter>
     </ClCompile>
+    <ClCompile Include="render\StructuredBuffer.cpp">
+      <Filter>render</Filter>
+    </ClCompile>
     <ClCompile Include="render\Texture.cpp">
       <Filter>render</Filter>
     </ClCompile>
@@ -89,6 +95,9 @@
     </ClCompile>
     <ClCompile Include="core\Logger.cpp">
       <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="scene\SceneSerializer.cpp">
+      <Filter>scene</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -167,6 +176,9 @@
     <ClInclude Include="render\SrvDescriptorHeap.h">
       <Filter>render</Filter>
     </ClInclude>
+    <ClInclude Include="render\StructuredBuffer.h">
+      <Filter>render</Filter>
+    </ClInclude>
     <ClInclude Include="render\Texture.h">
       <Filter>render</Filter>
     </ClInclude>
@@ -178,6 +190,12 @@
     </ClInclude>
     <ClInclude Include="core\Types.h">
       <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\Scene.h">
+      <Filter>scene</Filter>
+    </ClInclude>
+    <ClInclude Include="scene\SceneSerializer.h">
+      <Filter>scene</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

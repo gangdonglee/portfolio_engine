@@ -1,17 +1,21 @@
-// portfolio_engine Editor — M0 골격
-//   목표: ImGui Win32+DX12 부트 + 도킹 활성화 + 빈 패널 3개(Hierarchy/Inspector/Viewport).
-//   씬 데이터/뷰포트 렌더는 M1 이후 단계에서 추가.
+// portfolio_engine Editor — M0 골격 + M1 Scene Save 동작
+//   M0: ImGui Win32+DX12 부트 + 도킹 활성화 + 빈 패널 3개.
+//   M1: File→Save 시 하드코딩 Scene 을 JSON 으로 저장 — Scene/Serializer 라운드트립 검증.
 
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgiformat.h>
+#include <DirectXMath.h>
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
+#include "core/Logger.h"
 #include "platform/Window.h"
 #include "render/CommandList.h"
 #include "render/CommandQueue.h"
@@ -19,6 +23,8 @@
 #include "render/RtvDescriptorHeap.h"
 #include "render/SrvDescriptorHeap.h"
 #include "render/SwapChain.h"
+#include "scene/Scene.h"
+#include "scene/SceneSerializer.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
@@ -53,6 +59,51 @@ namespace
             // no-op (bump). 동일 슬롯은 재할당되지 않음.
         }
     };
+
+    // 하드코딩 Scene — File→Save 클릭 시 이걸 JSON 으로 저장.
+    // M2 에서 Hierarchy/Inspector 패널이 실제 편집을 지원하면 이 함수는 사라지고
+    // 에디터 상태(activeScene) 를 직접 저장.
+    engine::scene::Scene BuildHardcodedScene()
+    {
+        engine::scene::Scene s;
+        s.name = "from_editor";
+        s.ambient = { 0.10f, 0.12f, 0.15f };
+        s.cameraStart.position = { 0.0f, 120.0f, -320.0f };
+        s.cameraStart.target   = { 0.0f,  60.0f,    0.0f };
+        s.cameraStart.fovYRad  = DirectX::XM_PIDIV4;
+
+        engine::scene::MeshInstance dragon;
+        dragon.name          = "Dragon";
+        dragon.meshAssetPath = "Resources/FBX/Dragon.fbx";
+        s.meshes.push_back(std::move(dragon));
+
+        engine::scene::DirectionalLight sun;
+        sun.name        = "Sun";
+        sun.directionWS = { -0.4f, -1.0f,  0.3f };
+        sun.color       = {  1.0f,  0.95f, 0.85f };
+        sun.intensity   = 1.0f;
+        s.dirLights.push_back(std::move(sun));
+
+        engine::scene::PointLight rim;
+        rim.name       = "RimLight";
+        rim.positionWS = { 150.0f, 100.0f, -100.0f };
+        rim.color      = { 0.3f,   0.7f,    1.0f };
+        rim.intensity  = 2.5f;
+        rim.range      = 500.0f;
+        s.pointLights.push_back(std::move(rim));
+
+        return s;
+    }
+
+    // 저장 위치: $(OutDir)assets/Scenes/from_editor.scene.json.
+    // OutDir 은 Client 와 동일 — PostBuild 가 assets/ 폴더를 복사하므로 OutDir 기준 같은 트리.
+    std::filesystem::path EditorSaveScenePath()
+    {
+        std::filesystem::path dir = std::filesystem::current_path() / "assets" / "Scenes";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        return dir / "from_editor.scene.json";
+    }
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
@@ -122,6 +173,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 
         constexpr float kClearColor[4] = { 0.10f, 0.11f, 0.13f, 1.0f };
 
+        // Save 결과 상태 — Inspector 패널에 마지막 저장 결과 표시.
+        std::string lastSaveStatus = "(아직 저장 안 함)";
+
         while (window.IsOpen())
         {
             window.PumpMessages();
@@ -150,9 +204,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             {
                 if (ImGui::BeginMenu("File"))
                 {
-                    if (ImGui::MenuItem("New Scene"))  { /* M1 */ }
-                    if (ImGui::MenuItem("Open Scene")) { /* M1 */ }
-                    if (ImGui::MenuItem("Save Scene")) { /* M1 */ }
+                    if (ImGui::MenuItem("New Scene"))  { /* M2 */ }
+                    if (ImGui::MenuItem("Open Scene")) { /* M2 */ }
+                    if (ImGui::MenuItem("Save Scene"))
+                    {
+                        // M1 검증용 — 하드코딩 Scene 을 JSON 으로 저장.
+                        // M2 에서 패널 편집 결과를 저장하도록 교체.
+                        const std::filesystem::path savePath = EditorSaveScenePath();
+                        try
+                        {
+                            engine::scene::SaveJson(BuildHardcodedScene(), savePath.string());
+                            lastSaveStatus = "Saved: " + savePath.string();
+                            engine::core::LogInfoA("[editor] ");
+                            engine::core::LogInfoA(lastSaveStatus.c_str());
+                            engine::core::LogInfoA("\n");
+                        }
+                        catch (const std::exception& e)
+                        {
+                            lastSaveStatus = std::string{"Save FAILED: "} + e.what();
+                            engine::core::LogInfoA("[editor] ");
+                            engine::core::LogInfoA(lastSaveStatus.c_str());
+                            engine::core::LogInfoA("\n");
+                        }
+                    }
                     ImGui::Separator();
                     if (ImGui::MenuItem("Exit")) { ::PostMessageW(window.NativeHwnd(), WM_CLOSE, 0, 0); }
                     ImGui::EndMenu();
@@ -160,16 +234,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                 ImGui::EndMainMenuBar();
             }
 
-            // 빈 패널 3개 — M1 부터 내용 채움.
+            // 패널 3개 — M2 에서 본격 편집 가능 패널로 채움.
             if (ImGui::Begin("Hierarchy"))
             {
-                ImGui::TextDisabled("(M1 에서 씬 트리)");
+                ImGui::TextDisabled("(M2 에서 씬 트리)");
             }
             ImGui::End();
 
             if (ImGui::Begin("Inspector"))
             {
-                ImGui::TextDisabled("(M2 에서 트랜스폼/속성 편집)");
+                ImGui::TextWrapped("M1: File > Save Scene 으로 하드코딩 씬을 JSON 저장.");
+                ImGui::Separator();
+                ImGui::TextWrapped("Last save:");
+                ImGui::TextWrapped("%s", lastSaveStatus.c_str());
             }
             ImGui::End();
 

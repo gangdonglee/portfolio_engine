@@ -33,8 +33,16 @@ namespace engine::render
             bool srvT0Pixel = false;
 
             // true 이면 b1 슬롯에 CBV root descriptor (Vertex 가시) 추가 — 본 팔레트용.
-            // 자리 순서: [b0?] [b1?] [t0 table?] — 비어있는 슬롯은 건너뜀.
+            // 자리 순서: [b0?] [b1?] [t0 table?] [t1?] [t2?] — 비어있는 슬롯은 건너뜀.
             bool cbvB1Vertex = false;
+
+            // true 이면 t1 슬롯에 SRV root descriptor (PS 가시) 추가.
+            // StructuredBuffer 등 매 프레임 갱신되는 가변 길이 데이터 — 디스크립터 힙 없이
+            // GPU 가상주소 직접 바인딩 (SetGraphicsRootShaderResourceView). 라이트 배열 용도.
+            bool srvT1Pixel = false;
+
+            // true 이면 t2 슬롯에 SRV root descriptor (PS 가시) 추가. 두 번째 라이트 배열 등.
+            bool srvT2Pixel = false;
         };
 
         // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그는 항상 켜짐.
