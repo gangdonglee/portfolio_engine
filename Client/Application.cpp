@@ -179,9 +179,10 @@ namespace client
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(scene));
 
-        // 부트 전용 임시 CommandList — Scene 로드 끝나면 즉시 폐기.
-        // 메인 루프의 FrameRenderer 가 자체 in-flight CommandList 슬롯을 따로 보유.
-        m_bootCmdList.reset();
+        // 부트 전용 CommandList — Scene 로드 끝나도 Application 라이프타임 유지.
+        // GPU 가 fallback texture / FBX 업로드 명령을 처리하는 동안 CommandList COM 객체가
+        // 살아있어야 안전. 즉시 reset 시 GPU 가 invalid pointer 참조 위험.
+        // (FrameRenderer 는 별도 in-flight CommandList 슬롯을 자체 보유 — 충돌 없음.)
     }
 
     void Application::InitRendererAndInput()

@@ -1,11 +1,14 @@
-// portfolio_engine Editor — M0 골격 + M1 Scene Save 동작
+// portfolio_engine Editor — M2 본 작업
 //   M0: ImGui Win32+DX12 부트 + 도킹 활성화 + 빈 패널 3개.
-//   M1: File→Save 시 하드코딩 Scene 을 JSON 으로 저장 — Scene/Serializer 라운드트립 검증.
+//   M1: File→Save 로 하드코딩 Scene → JSON 라운드트립 검증.
+//   M2: 활성 Scene 보유 + Hierarchy/Inspector 패널 실제 편집 + File New/Open/Save 다이얼로그.
 
 #include <Windows.h>
+#include <ShObjIdl.h>      // IFileDialog
 #include <d3d12.h>
 #include <dxgiformat.h>
 #include <DirectXMath.h>
+#include <wrl/client.h>
 
 #include <array>
 #include <cstdint>
@@ -14,6 +17,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "Panels.h"
 
 #include "core/Logger.h"
 #include "platform/Window.h"
@@ -35,19 +40,24 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 
 namespace
 {
-    // SRV 디스크립터 힙을 bump-allocate. M0 는 font 1개만 할당하지만 1.92+ 의 동적 텍스처 API
-    // 가 추가 슬롯을 요구할 수 있어 알로케이터를 정식 제공한다. free 는 no-op (툴 수명 동안 누적).
-    // 자산 수가 본격적으로 늘면 free-list 로 전환.
-    struct ImGuiSrvAllocator
+    // SRV 디스크립터 힙 bump-allocator — ImGui 1.92+ 의 동적 텍스처 API 대응.
+    // 비소유 참조 (m_heap) — heap 은 외부 lifetime, 본 객체는 콜백 어댑터 역할만.
+    class ImGuiSrvAllocator final
     {
-        engine::render::SrvDescriptorHeap* heap = nullptr;
+    public:
+        explicit ImGuiSrvAllocator(engine::render::SrvDescriptorHeap& heap) : m_heap(heap) {}
+
+        ImGuiSrvAllocator(const ImGuiSrvAllocator&)            = delete;
+        ImGuiSrvAllocator& operator=(const ImGuiSrvAllocator&) = delete;
+        ImGuiSrvAllocator(ImGuiSrvAllocator&&)                 = delete;
+        ImGuiSrvAllocator& operator=(ImGuiSrvAllocator&&)      = delete;
 
         static void Alloc(ImGui_ImplDX12_InitInfo* info,
                           D3D12_CPU_DESCRIPTOR_HANDLE* outCpu,
                           D3D12_GPU_DESCRIPTOR_HANDLE* outGpu)
         {
             auto* self = static_cast<ImGuiSrvAllocator*>(info->UserData);
-            const auto handle = self->heap->Allocate();
+            const auto handle = self->m_heap.Allocate();
             *outCpu = handle.cpu;
             *outGpu = handle.gpu;
         }
@@ -56,20 +66,49 @@ namespace
                          D3D12_CPU_DESCRIPTOR_HANDLE /*cpu*/,
                          D3D12_GPU_DESCRIPTOR_HANDLE /*gpu*/)
         {
-            // no-op (bump). 동일 슬롯은 재할당되지 않음.
+            // no-op.
         }
+
+    private:
+        engine::render::SrvDescriptorHeap& m_heap;
     };
 
-    // 하드코딩 Scene — File→Save 클릭 시 이걸 JSON 으로 저장.
-    // M2 에서 Hierarchy/Inspector 패널이 실제 편집을 지원하면 이 함수는 사라지고
-    // 에디터 상태(activeScene) 를 직접 저장.
-    engine::scene::Scene BuildHardcodedScene()
+    // CoInitializeEx 라이프타임 RAII — IFileDialog 사용 전 필요.
+    class ComScope final
+    {
+    public:
+        ComScope()
+        {
+            const HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            m_initialized = SUCCEEDED(hr);
+            if (!m_initialized && hr != RPC_E_CHANGED_MODE)
+            {
+                engine::core::LogInfoA("[editor] CoInitializeEx 실패 — IFileDialog 비활성\n");
+            }
+        }
+        ~ComScope()
+        {
+            if (m_initialized) { ::CoUninitialize(); }
+        }
+        ComScope(const ComScope&)            = delete;
+        ComScope& operator=(const ComScope&) = delete;
+        ComScope(ComScope&&)                 = delete;
+        ComScope& operator=(ComScope&&)      = delete;
+
+        bool IsInitialized() const noexcept { return m_initialized; }
+
+    private:
+        bool m_initialized = false;
+    };
+
+    // 부팅 폴백 Scene — sample.scene.json 미존재 시. Dragon 1 + dir 1.
+    engine::scene::Scene BuildDefaultScene()
     {
         engine::scene::Scene s;
-        s.name = "from_editor";
-        s.ambient = { 0.10f, 0.12f, 0.15f };
-        s.cameraStart.position = { 0.0f, 120.0f, -320.0f };
-        s.cameraStart.target   = { 0.0f,  60.0f,    0.0f };
+        s.name = "untitled";
+        s.ambient = { 0.12f, 0.13f, 0.16f };
+        s.cameraStart.position = { 0.0f, 100.0f, -300.0f };
+        s.cameraStart.target   = { 0.0f,  50.0f,    0.0f };
         s.cameraStart.fovYRad  = DirectX::XM_PIDIV4;
 
         engine::scene::MeshInstance dragon;
@@ -79,36 +118,81 @@ namespace
 
         engine::scene::DirectionalLight sun;
         sun.name        = "Sun";
-        sun.directionWS = { -0.4f, -1.0f,  0.3f };
-        sun.color       = {  1.0f,  0.95f, 0.85f };
+        sun.directionWS = { -0.5f, -1.0f, 0.4f };
+        sun.color       = {  1.0f,  0.97f, 0.92f };
         sun.intensity   = 1.0f;
         s.dirLights.push_back(std::move(sun));
-
-        engine::scene::PointLight rim;
-        rim.name       = "RimLight";
-        rim.positionWS = { 150.0f, 100.0f, -100.0f };
-        rim.color      = { 0.3f,   0.7f,    1.0f };
-        rim.intensity  = 2.5f;
-        rim.range      = 500.0f;
-        s.pointLights.push_back(std::move(rim));
 
         return s;
     }
 
-    // 저장 위치: $(OutDir)assets/Scenes/from_editor.scene.json.
-    // OutDir 은 Client 와 동일 — PostBuild 가 assets/ 폴더를 복사하므로 OutDir 기준 같은 트리.
-    std::filesystem::path EditorSaveScenePath()
+    // 디폴트 씬 디렉토리 ($(OutDir)assets/Scenes).
+    std::filesystem::path DefaultScenesDir()
     {
         std::filesystem::path dir = std::filesystem::current_path() / "assets" / "Scenes";
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
-        return dir / "from_editor.scene.json";
+        return dir;
+    }
+
+    // IFileDialog 한 번 띄움. save=true=SaveDialog, false=OpenDialog. 사용자 취소면 false.
+    bool ShowSceneFileDialog(HWND parent, bool save, std::wstring& outPath)
+    {
+        Microsoft::WRL::ComPtr<IFileDialog> dlg;
+        const CLSID clsid = save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog;
+        if (FAILED(::CoCreateInstance(clsid, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
+        {
+            return false;
+        }
+
+        const COMDLG_FILTERSPEC filter[] = {
+            { L"Scene JSON (*.scene.json)", L"*.scene.json" },
+            { L"All files (*.*)",            L"*.*" },
+        };
+        dlg->SetFileTypes(2, filter);
+        dlg->SetDefaultExtension(L"scene.json");
+        dlg->SetTitle(save ? L"Save Scene" : L"Open Scene");
+
+        // 기본 폴더 = $(OutDir)assets/Scenes.
+        Microsoft::WRL::ComPtr<IShellItem> defaultFolder;
+        const std::wstring defaultDir = DefaultScenesDir().wstring();
+        if (SUCCEEDED(::SHCreateItemFromParsingName(defaultDir.c_str(), nullptr, IID_PPV_ARGS(&defaultFolder))))
+        {
+            dlg->SetFolder(defaultFolder.Get());
+        }
+
+        // Show 가 사용자 취소 시 HRESULT_FROM_WIN32(ERROR_CANCELLED) 반환 — false 처리.
+        if (FAILED(dlg->Show(parent))) { return false; }
+
+        Microsoft::WRL::ComPtr<IShellItem> item;
+        if (FAILED(dlg->GetResult(&item))) { return false; }
+
+        PWSTR pszPath = nullptr;
+        if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &pszPath))) { return false; }
+        outPath.assign(pszPath);
+        ::CoTaskMemFree(pszPath);
+        return true;
+    }
+
+    // wstring → utf-8 string (SceneSerializer 가 std::string_view 받음).
+    std::string ToUtf8(const std::wstring& w)
+    {
+        if (w.empty()) { return {}; }
+        const int n = ::WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string out(static_cast<std::size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1)
+        {
+            ::WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, out.data(), n, nullptr, nullptr);
+        }
+        return out;
     }
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 {
     ::OutputDebugStringW(L"[editor] boot running\n");
+
+    ComScope com{};   // IFileDialog 사용 전 CoInitializeEx.
 
     try
     {
@@ -120,9 +204,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
         engine::render::CommandQueue       commandQueue(device);
         engine::render::RtvDescriptorHeap  rtvHeap(device, engine::render::SwapChain::kBackBufferCount);
         engine::render::SwapChain          swapChain(device, commandQueue, window, rtvHeap);
-
-        // ImGui 폰트 + 향후 동적 텍스처용 shader-visible SRV 힙. 용량은 여유 있게 64.
-        engine::render::SrvDescriptorHeap srvHeap(device, 64);
+        engine::render::SrvDescriptorHeap  srvHeap(device, 64);
 
         std::array<std::unique_ptr<engine::render::CommandList>, kFrameCount> cmdLists;
         for (std::uint32_t i = 0; i < kFrameCount; ++i)
@@ -143,38 +225,64 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             throw std::runtime_error("ImGui_ImplWin32_Init failed");
         }
 
-        ImGuiSrvAllocator srvAllocator{ &srvHeap };
-
+        ImGuiSrvAllocator srvAllocator{ srvHeap };
         ImGui_ImplDX12_InitInfo dxInit{};
         dxInit.Device               = device.Native();
         dxInit.CommandQueue         = commandQueue.Native();
         dxInit.NumFramesInFlight    = static_cast<int>(kFrameCount);
         dxInit.RTVFormat            = kRtvFormat;
-        dxInit.DSVFormat            = DXGI_FORMAT_UNKNOWN; // M0 는 뎁스 미사용
+        dxInit.DSVFormat            = DXGI_FORMAT_UNKNOWN;
         dxInit.SrvDescriptorHeap    = srvHeap.Native();
         dxInit.SrvDescriptorAllocFn = &ImGuiSrvAllocator::Alloc;
         dxInit.SrvDescriptorFreeFn  = &ImGuiSrvAllocator::Free;
         dxInit.UserData             = &srvAllocator;
-
         if (!ImGui_ImplDX12_Init(&dxInit))
         {
             throw std::runtime_error("ImGui_ImplDX12_Init failed");
         }
 
-        // Window 의 WndProc 흐름에 ImGui Win32 핸들러를 끼워 넣음.
         window.SetWndProcHook(
             [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT
             {
                 return ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam);
             });
 
+        // === 활성 Scene 상태 ===
+        // 부팅 시 OutDir/assets/Scenes/sample.scene.json 자동 로드 시도. 없으면 default.
+        engine::scene::Scene activeScene;
+        std::string          activeScenePath;
+        bool                 modified = false;
+        {
+            const std::filesystem::path bootPath = DefaultScenesDir() / "sample.scene.json";
+            if (std::filesystem::exists(bootPath))
+            {
+                try
+                {
+                    activeScene = engine::scene::LoadJson(bootPath.string());
+                    activeScenePath = bootPath.string();
+                }
+                catch (const std::exception& e)
+                {
+                    engine::core::LogInfoA("[editor] sample 로드 실패, default 사용: ");
+                    engine::core::LogInfoA(e.what());
+                    engine::core::LogInfoA("\n");
+                    activeScene = BuildDefaultScene();
+                }
+            }
+            else
+            {
+                activeScene = BuildDefaultScene();
+            }
+        }
+        editor::panels::Selection selection{};
+
         std::array<std::uint64_t, kFrameCount> frameFenceValues{};
         std::uint32_t frameIndex = 0;
 
         constexpr float kClearColor[4] = { 0.10f, 0.11f, 0.13f, 1.0f };
-
-        // Save 결과 상태 — Inspector 패널에 마지막 저장 결과 표시.
-        std::string lastSaveStatus = "(아직 저장 안 함)";
+        std::string lastStatus = activeScenePath.empty()
+            ? std::string{"(부팅: default scene)"}
+            : ("Opened: " + activeScenePath);
 
         while (window.IsOpen())
         {
@@ -196,67 +304,137 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
 
-            // 메인 뷰포트 전체에 도킹 공간 — Unity/Unreal 스타일 도킹 영역.
             ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
-            // 메인 메뉴바.
+            // 메뉴 클릭은 이번 프레임에 처리할 의도만 플래그로 기록 — 다이얼로그를 ImGui::Render
+            // 이전에 띄우면 modal block 시 그 프레임 ImGui 출력이 멈출 수 있어 안전.
+            bool wantNew = false, wantOpen = false, wantSave = false, wantSaveAs = false;
+
             if (ImGui::BeginMainMenuBar())
             {
                 if (ImGui::BeginMenu("File"))
                 {
-                    if (ImGui::MenuItem("New Scene"))  { /* M2 */ }
-                    if (ImGui::MenuItem("Open Scene")) { /* M2 */ }
-                    if (ImGui::MenuItem("Save Scene"))
-                    {
-                        // M1 검증용 — 하드코딩 Scene 을 JSON 으로 저장.
-                        // M2 에서 패널 편집 결과를 저장하도록 교체.
-                        const std::filesystem::path savePath = EditorSaveScenePath();
-                        try
-                        {
-                            engine::scene::SaveJson(BuildHardcodedScene(), savePath.string());
-                            lastSaveStatus = "Saved: " + savePath.string();
-                            engine::core::LogInfoA("[editor] ");
-                            engine::core::LogInfoA(lastSaveStatus.c_str());
-                            engine::core::LogInfoA("\n");
-                        }
-                        catch (const std::exception& e)
-                        {
-                            lastSaveStatus = std::string{"Save FAILED: "} + e.what();
-                            engine::core::LogInfoA("[editor] ");
-                            engine::core::LogInfoA(lastSaveStatus.c_str());
-                            engine::core::LogInfoA("\n");
-                        }
-                    }
+                    if (ImGui::MenuItem("New Scene"))               { wantNew     = true; }
+                    if (ImGui::MenuItem("Open Scene..."))           { wantOpen    = true; }
+                    if (ImGui::MenuItem("Save",         "Ctrl+S",
+                                        false,
+                                        /*enabled*/ !activeScenePath.empty()))     { wantSave   = true; }
+                    if (ImGui::MenuItem("Save As..."))              { wantSaveAs  = true; }
                     ImGui::Separator();
                     if (ImGui::MenuItem("Exit")) { ::PostMessageW(window.NativeHwnd(), WM_CLOSE, 0, 0); }
                     ImGui::EndMenu();
                 }
+                // 우측에 modified 표시.
+                if (modified)
+                {
+                    ImGui::SameLine(ImGui::GetWindowWidth() - 80.0f);
+                    ImGui::TextColored(ImVec4{1.0f, 0.7f, 0.3f, 1.0f}, "[modified]");
+                }
                 ImGui::EndMainMenuBar();
             }
 
-            // 패널 3개 — M2 에서 본격 편집 가능 패널로 채움.
+            // === Hierarchy 패널 ===
             if (ImGui::Begin("Hierarchy"))
             {
-                ImGui::TextDisabled("(M2 에서 씬 트리)");
+                if (editor::panels::DrawHierarchy(activeScene, selection))
+                {
+                    modified = true;
+                }
             }
             ImGui::End();
 
+            // === Inspector 패널 ===
             if (ImGui::Begin("Inspector"))
             {
-                ImGui::TextWrapped("M1: File > Save Scene 으로 하드코딩 씬을 JSON 저장.");
-                ImGui::Separator();
-                ImGui::TextWrapped("Last save:");
-                ImGui::TextWrapped("%s", lastSaveStatus.c_str());
+                if (editor::panels::DrawInspector(activeScene, selection))
+                {
+                    modified = true;
+                }
             }
             ImGui::End();
 
+            // === Viewport 패널 (M4 에서 실제 3D 렌더) ===
             if (ImGui::Begin("Viewport"))
             {
-                ImGui::TextDisabled("(M2 이후 뷰포트 렌더 텍스처)");
+                ImGui::TextDisabled("(M4 이후 3D 뷰포트 렌더)");
+                ImGui::Separator();
+                ImGui::TextWrapped("Status: %s", lastStatus.c_str());
             }
             ImGui::End();
 
             ImGui::Render();
+
+            // === 메뉴 액션 처리 (ImGui::Render 후 — 다이얼로그 modal 안전) ===
+            // 다이얼로그 동작이 있으면 modal 동안 in-flight fence 가 묶이지 않도록
+            // 미리 GPU 작업 완료 + frame 슬롯 wait 분기 skip 표시.
+            const bool willModal = wantOpen || wantSaveAs;
+            if (willModal)
+            {
+                commandQueue.FlushGpu();
+                for (auto& v : frameFenceValues) { v = 0; }
+            }
+
+            if (wantNew)
+            {
+                activeScene = engine::scene::Scene{};
+                activeScene.name = "untitled";
+                activeScenePath.clear();
+                selection = {};
+                modified = false;
+                lastStatus = "New empty scene";
+            }
+            if (wantOpen)
+            {
+                std::wstring picked;
+                if (ShowSceneFileDialog(window.NativeHwnd(), /*save*/false, picked))
+                {
+                    const std::string path = ToUtf8(picked);
+                    try
+                    {
+                        activeScene = engine::scene::LoadJson(path);
+                        activeScenePath = path;
+                        selection = {};
+                        modified = false;
+                        lastStatus = "Opened: " + path;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        lastStatus = std::string{"Open FAILED: "} + e.what();
+                    }
+                }
+            }
+            if (wantSave && !activeScenePath.empty())
+            {
+                try
+                {
+                    engine::scene::SaveJson(activeScene, activeScenePath);
+                    modified = false;
+                    lastStatus = "Saved: " + activeScenePath;
+                }
+                catch (const std::exception& e)
+                {
+                    lastStatus = std::string{"Save FAILED: "} + e.what();
+                }
+            }
+            if (wantSaveAs)
+            {
+                std::wstring picked;
+                if (ShowSceneFileDialog(window.NativeHwnd(), /*save*/true, picked))
+                {
+                    const std::string path = ToUtf8(picked);
+                    try
+                    {
+                        engine::scene::SaveJson(activeScene, path);
+                        activeScenePath = path;
+                        modified = false;
+                        lastStatus = "Saved As: " + path;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        lastStatus = std::string{"Save As FAILED: "} + e.what();
+                    }
+                }
+            }
 
             // === 이 슬롯 fence 대기 → 명령 기록 ===
             if (frameFenceValues[frameIndex] != 0)
@@ -270,14 +448,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 
             ID3D12Resource* const backBuffer = swapChain.CurrentBackBuffer();
 
-            D3D12_RESOURCE_BARRIER toRenderTarget{};
-            toRenderTarget.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            toRenderTarget.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            toRenderTarget.Transition.pResource   = backBuffer;
-            toRenderTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            toRenderTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-            toRenderTarget.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            list->ResourceBarrier(1, &toRenderTarget);
+            D3D12_RESOURCE_BARRIER toRT{};
+            toRT.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            toRT.Transition.pResource   = backBuffer;
+            toRT.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            toRT.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+            toRT.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            list->ResourceBarrier(1, &toRT);
 
             const D3D12_CPU_DESCRIPTOR_HANDLE rtv = swapChain.CurrentRtv();
             list->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
@@ -290,7 +467,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 
             D3D12_RESOURCE_BARRIER toPresent{};
             toPresent.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            toPresent.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             toPresent.Transition.pResource   = backBuffer;
             toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -305,7 +481,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             frameIndex = (frameIndex + 1) % kFrameCount;
         }
 
-        // 종료 — GPU 작업 완료 후 ImGui shutdown.
         commandQueue.FlushGpu();
         window.SetWndProcHook(nullptr);
         ImGui_ImplDX12_Shutdown();

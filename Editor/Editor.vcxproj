@@ -109,6 +109,7 @@ xcopy /Y /D /Q /E /I "$(SolutionDir)assets" "$(OutDir)assets" &gt;nul</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Panels.cpp" />
     <ClCompile Include="$(ImGuiRoot)\imgui.cpp">
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <ConformanceMode>false</ConformanceMode>
@@ -139,6 +140,7 @@ xcopy /Y /D /Q /E /I "$(SolutionDir)assets" "$(OutDir)assets" &gt;nul</Command>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Panels.h" />
     <ClInclude Include="$(ImGuiRoot)\imgui.h" />
     <ClInclude Include="$(ImGuiRoot)\imgui_internal.h" />
     <ClInclude Include="$(ImGuiRoot)\imconfig.h" />
