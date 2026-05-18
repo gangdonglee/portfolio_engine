@@ -3,12 +3,11 @@
 // WIN32_LEAN_AND_MEAN / NOMINMAX 는 vcxproj 전역 PreprocessorDefinitions 에서 정의.
 #include <Windows.h>
 
+#include <functional>
 #include <string>
 #include <string_view>
 
 #include "platform/Input.h"
-
-namespace engine::render { class SwapChain; }  // Window::NativeHwnd 친구 접근용
 
 namespace engine::platform
 {
@@ -46,23 +45,28 @@ namespace engine::platform
         // SIZE_MINIMIZED 와 0x0 크기는 dirty 를 켜지 않는다 (ResizeBuffers 가 거부).
         bool ConsumeResize() noexcept;
 
-        // HWND 외부 노출은 의도적으로 차단.
-        // OS 핸들이 필요한 구성요소(현재 engine::render::SwapChain)는 friend 선언을 통해
-        // 아래 private NativeHwnd() 만 호출 가능. 공개 API 에는 HWND 가 등장하지 않는다.
+        // 외부(예: ImGui Win32 backend) 가 WndProc 메시지를 가로채야 할 때 사용.
+        // 반환값이 0 이 아니면 메시지가 처리된 것으로 간주하고 Window 의 핸들러를 스킵한다.
+        // 입력 메시지를 가로챈 경우 ImGui 가 키/마우스를 먹어 게임 입력으로 흘러가지 않게 됨.
+        // 단일 훅 — 마지막 등록자가 우선. nullptr 로 해제.
+        using WndProcHook = std::function<LRESULT(HWND, UINT, WPARAM, LPARAM)>;
+        void SetWndProcHook(WndProcHook hook) { m_wndProcHook = std::move(hook); }
 
-    private:
-        friend class engine::render::SwapChain;
+        // HWND 노출 — Editor/Tool 빌드에서 ImGui Win32 backend 가 직접 필요로 함.
+        // 게임 코드(Client) 는 이 핸들을 사용하지 않도록 — engine::render::SwapChain 만 friend 로 접근.
         HWND NativeHwnd() const noexcept { return m_hwnd; }
 
+    private:
         static void EnsureClassRegistered();
         static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-        HWND  m_hwnd         = nullptr;
-        int   m_width        = 0;
-        int   m_height       = 0;
-        bool  m_isOpen       = false;
-        bool  m_resizeDirty  = false;
-        Input m_input;
+        HWND        m_hwnd         = nullptr;
+        int         m_width        = 0;
+        int         m_height       = 0;
+        bool        m_isOpen       = false;
+        bool        m_resizeDirty  = false;
+        Input       m_input;
+        WndProcHook m_wndProcHook;  // Editor/Tool 전용 — 평소엔 비어 있음.
     };
 }

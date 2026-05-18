@@ -134,6 +134,20 @@ namespace engine::platform
 
     LRESULT Window::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
+        // 외부 훅(ImGui 등) 이 먼저 메시지를 본다. 0 이외의 반환값은 "처리 완료" 로 해석.
+        // 단, 시스템 메시지(WM_CLOSE/WM_DESTROY/WM_SIZE) 는 Window 가 직접 처리해야
+        // 라이프사이클·리사이즈 추적이 깨지지 않으므로 훅을 우회한다.
+        const bool isSystemMsg =
+            (msg == WM_CLOSE) || (msg == WM_DESTROY) || (msg == WM_SIZE) || (msg == WM_NCCREATE);
+        if (!isSystemMsg && m_wndProcHook)
+        {
+            const LRESULT hookResult = m_wndProcHook(hwnd, msg, wParam, lParam);
+            if (hookResult != 0)
+            {
+                return hookResult;
+            }
+        }
+
         switch (msg)
         {
             case WM_SIZE:

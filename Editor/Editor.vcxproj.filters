@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="external">
+      <UniqueIdentifier>{a0000001-1111-2222-3333-444444444444}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="external\imgui">
+      <UniqueIdentifier>{a0000002-1111-2222-3333-444444444444}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="external\imgui\backends">
+      <UniqueIdentifier>{a0000003-1111-2222-3333-444444444444}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="$(SolutionDir)external\imgui\imgui.cpp">
+      <Filter>external\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(SolutionDir)external\imgui\imgui_demo.cpp">
+      <Filter>external\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(SolutionDir)external\imgui\imgui_draw.cpp">
+      <Filter>external\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(SolutionDir)external\imgui\imgui_tables.cpp">
+      <Filter>external\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(SolutionDir)external\imgui\imgui_widgets.cpp">
+      <Filter>external\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(SolutionDir)external\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>external\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="$(SolutionDir)external\imgui\backends\imgui_impl_dx12.cpp">
+      <Filter>external\imgui\backends</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(SolutionDir)external\imgui\imgui.h">
+      <Filter>external\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="$(SolutionDir)external\imgui\imgui_internal.h">
+      <Filter>external\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="$(SolutionDir)external\imgui\imconfig.h">
+      <Filter>external\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="$(SolutionDir)external\imgui\backends\imgui_impl_win32.h">
+      <Filter>external\imgui\backends</Filter>
+    </ClInclude>
+    <ClInclude Include="$(SolutionDir)external\imgui\backends\imgui_impl_dx12.h">
+      <Filter>external\imgui\backends</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
