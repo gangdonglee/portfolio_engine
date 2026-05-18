@@ -42,7 +42,7 @@ portfolio_engine.sln
 |---|---|---|---|
 | **M0** | Editor.exe 골격 — ImGui DX12+Win32 부트 + 도킹 활성 + 빈 패널 3개 (Hierarchy/Inspector/Viewport) | Editor.exe 가 부팅되어 도킹 가능한 빈 패널 3개 + MainMenuBar 표시. 충돌 없이 종료. | ✅ |
 | **M1** | Scene 데이터 모델 + JSON I/O + 다중 라이트 셰이더 + Client 가 `.scene.json` 로드 | Editor 가 만든 `.scene.json` 을 Client 가 로드해서 같은 화면. 라이트는 dir N + point N 동적. | ✅ |
-| **M2** | Hierarchy 패널(트리) + Inspector 패널(Transform/color/intensity DragFloat3) + File→New/Open 다이얼로그 + 라이트 추가/제거 버튼 | Editor 안에서 메시 위치/회전 + 라이트 색/방향 편집 → Save → Client 가 변경 반영. | ⏳ |
+| **M2** | Hierarchy 패널(트리) + Inspector 패널(Transform/color/intensity DragFloat3) + File→New/Open 다이얼로그 + 라이트 추가/제거 버튼 | Editor 안에서 메시 위치/회전 + 라이트 색/방향 편집 → Save → Client 가 변경 반영. | ✅ |
 | **M3** | Asset Browser 패널 (`assets/` 폴더 스캔 + 드래그앤드롭으로 씬에 메시 추가) + 메시 캐시 정식화 | 새 OBJ/FBX 를 assets 폴더에 떨구면 Editor 브라우저에 등장. 드래그로 씬 배치. | ⏳ |
 | **M4** | 3D Gizmo (Translate/Rotate/Scale 직접 조작 핸들, ImGuizmo vendored) + 뷰포트에 실제 3D 렌더 | Editor 뷰포트가 빈 패널이 아니라 씬 미리보기. 마우스로 객체 잡고 끌어 이동. | ⏳ |
 | **M5+** | 라이트 시각화 기즈모, 그리드/스내핑, Undo/Redo, 멀티 선택, 카메라 프리셋, 씬 저장 안 한 변경 경고 | UX 강화. 우선순위는 데모 영상 일정에 따라 사용자 결정. | ⏳ |
@@ -70,6 +70,7 @@ ImGui / ImGuizmo (M4+) 는 Editor.exe 전용 — Engine.lib 오염 금지.
 |---|---|---|
 | M0 | [17-editor-skeleton.md](../devlog/17-editor-skeleton.md) | `external/imgui` vendored, Editor.vcxproj, WndProc 훅, 도킹 패널 3개 |
 | M1 | [22-scene-json-multi-light.md](../devlog/22-scene-json-multi-light.md) | `engine::scene` 모듈, SceneSerializer, StructuredBuffer, RootSig 5슬롯, sample.scene.json |
+| M2 | [26-editor-panels-m2.md](../devlog/26-editor-panels-m2.md) | Hierarchy/Inspector 패널 (`editor::panels`), File New/Open/Save IFileDialog, 라이트/메시 +/- 버튼, 활성 Scene 상태 + modified 플래그 |
 
 ---
 
