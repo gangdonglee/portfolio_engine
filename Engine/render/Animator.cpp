@@ -14,6 +14,7 @@ namespace engine::render
     using DirectX::XMMatrixMultiply;
     using DirectX::XMLoadFloat4x4;
     using DirectX::XMStoreFloat4x4;
+    using DirectX::XMVectorLerp;
 
     Animator::Animator(const Skeleton& skeleton, const AnimClip& clip)
         : m_skeleton(skeleton), m_clip(clip)
@@ -51,16 +52,27 @@ namespace engine::render
                 continue;
             }
 
-            // 시간 → 키프레임 인덱스. nearest (floor).
-            const double t01 = m_currentSec / duration;
-            size_t idx = static_cast<size_t>(t01 * static_cast<double>(kfs.size()));
-            if (idx >= kfs.size()) { idx = kfs.size() - 1; }
+            // 시간 → 두 인접 frame 의 element-wise lerp.
+            // (정밀한 Slerp 는 reflect (det=-1) matrix 의 SQT 분해 부정확 문제로 보류.
+            //  matrix element-wise lerp 는 회전 부분이 약간 non-orthogonal 이지만 24fps frame
+            //  간격 ~41ms 이라 시각적 차이 거의 없음. CPU 한 본당 +4 vector lerp.)
+            const double t01     = m_currentSec / duration;
+            const double frameF  = t01 * static_cast<double>(kfs.size());
+            const size_t kfCount = kfs.size();
+            size_t idxA          = static_cast<size_t>(frameF);
+            if (idxA >= kfCount) { idxA = kfCount - 1; }
+            const size_t idxB    = (idxA + 1 < kfCount) ? idxA + 1 : idxA;
+            const float  blend   = static_cast<float>(frameF - static_cast<double>(idxA));
 
-            // palette = animatedGlobal * inverseBindPose (column-major mathematical).
-            // C++ stored = math element direct (ConvertMatrix transpose 효과 + column_major HLSL 결합).
-            // XMMatrixMultiply(A, B) 가 row-major matmul 인데, element-direct 시 결과가 column-major 와 동일.
-            // 따라서 *column-major 순서대로* kf * offset 입력해야 의도된 변환.
-            const XMMATRIX kfMat     = XMLoadFloat4x4(&kfs[idx].transform);
+            const XMMATRIX A = XMLoadFloat4x4(&kfs[idxA].transform);
+            const XMMATRIX B = XMLoadFloat4x4(&kfs[idxB].transform);
+            XMMATRIX kfMat;
+            kfMat.r[0] = XMVectorLerp(A.r[0], B.r[0], blend);
+            kfMat.r[1] = XMVectorLerp(A.r[1], B.r[1], blend);
+            kfMat.r[2] = XMVectorLerp(A.r[2], B.r[2], blend);
+            kfMat.r[3] = XMVectorLerp(A.r[3], B.r[3], blend);
+
+            // palette = animatedGlobal * inverseBindPose (column-major mathematical, element-direct + column_major HLSL).
             const XMMATRIX offsetMat = XMLoadFloat4x4(&m_skeleton.Bones()[b].offsetMatrix);
             const XMMATRIX combined  = XMMatrixMultiply(kfMat, offsetMat);
             XMStoreFloat4x4(&m_palette[b], combined);

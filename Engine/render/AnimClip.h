@@ -8,11 +8,14 @@
 
 namespace engine::render
 {
-    // 키프레임 1개 — 시간(초) + 본의 글로벌 변환 (animatedGlobal[bone] @ time).
+    // 키프레임 1개 — 시간(초) + 본의 글로벌 변환 matrix.
+    // Animator 가 frame N/N+1 의 matrix 를 element-wise lerp (rotation 부분이 짧은 frame
+    // 간격에서는 근사 정확). 정밀 Slerp 는 reflect (det=-1) matrix 의 quaternion 분해 부정확
+    // 문제로 보류 — 추후 reflect 적용 전 SQT 추출 또는 quaternion 일관성 보정으로 도입.
     struct KeyFrame
     {
         double               timeSec = 0.0;
-        DirectX::XMFLOAT4X4  transform;   // row-major (FBX 측 column → 로딩 시 transpose)
+        DirectX::XMFLOAT4X4  transform;
     };
 
     // 한 애니메이션 클립 — perBone keyframes.
