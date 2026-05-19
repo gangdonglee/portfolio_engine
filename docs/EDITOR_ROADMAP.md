@@ -47,6 +47,18 @@ portfolio_engine.sln
 | **M4** | 3D Gizmo (Translate/Rotate/Scale 직접 조작 핸들, ImGuizmo vendored) + 뷰포트에 실제 3D 렌더 | Editor 뷰포트가 빈 패널이 아니라 씬 미리보기. 마우스로 객체 잡고 끌어 이동. | ⏳ |
 | **M5+** | 라이트 시각화 기즈모, 그리드/스내핑, Undo/Redo, 멀티 선택, 카메라 프리셋, 씬 저장 안 한 변경 경고 | UX 강화. 우선순위는 데모 영상 일정에 따라 사용자 결정. | ⏳ |
 
+## Phase 5 — Animator System (Unity Mecanim 풍)
+
+엔진 자산 (메시 + 클립) 위에 *데이터 주도 스테이트 머신* 을 얹어 캐릭터 행동 제어. Editor 의 그래프 UI 로 시각 편집 + Client 의 런타임 평가.
+
+| 단계 | 목표 | 산출 / 검증 기준 | 상태 |
+|---|---|---|---|
+| **5-M0** | `engine::anim::AnimatorController` POD + JSON I/O + `MeshInstance.animatorControllerPath` 필드 | Editor 의 Inspector 가 controller path 편집 + Save → Client 가 controller 로드 + 로그 (states/transitions/params 카운트) | ✅ |
+| **5-M1** | State Machine 런타임 (State/Transition/Parameter + Crossfade) | Client 키 입력 → parameter 변경 → state 전환 → 클립 변경 (idle→walk→run) | ⏳ |
+| **5-M2** | Blend Tree 1D | Speed float 파라미터 → idle/walk/run weight 가중 평균 보간 | ⏳ |
+| **5-M3** | Editor 그래프 UI (ImNodes vendored) | 노드 시각 편집 → Save → Client 반영 | ⏳ |
+| **5-M4+** | Layer + Avatar Mask (상체/하체 분리), Root Motion 추출 | 상체 공격 + 하체 이동 같이 | ⏳ |
+
 ---
 
 ## 4. 의존성 방향 (불변)
@@ -71,6 +83,7 @@ ImGui / ImGuizmo (M4+) 는 Editor.exe 전용 — Engine.lib 오염 금지.
 | M0 | [17-editor-skeleton.md](../devlog/17-editor-skeleton.md) | `external/imgui` vendored, Editor.vcxproj, WndProc 훅, 도킹 패널 3개 |
 | M1 | [22-scene-json-multi-light.md](../devlog/22-scene-json-multi-light.md) | `engine::scene` 모듈, SceneSerializer, StructuredBuffer, RootSig 5슬롯, sample.scene.json |
 | M2 | [26-editor-panels-m2.md](../devlog/26-editor-panels-m2.md) | Hierarchy/Inspector 패널 (`editor::panels`), File New/Open/Save IFileDialog, 라이트/메시 +/- 버튼, 활성 Scene 상태 + modified 플래그 |
+| 5-M0 | [29-animator-controller-m0.md](../devlog/29-animator-controller-m0.md) | `engine::anim` POD + AnimatorSerializer, Scene.MeshInstance.animatorControllerPath, Editor Inspector 위젯, sample `xbot.animator.json` (Idle/Walk/Run/Jump) |
 
 ---
 
