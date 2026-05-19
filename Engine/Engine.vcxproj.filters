@@ -123,6 +123,9 @@
     <ClCompile Include="anim\AnimatorSerializer.cpp">
       <Filter>anim</Filter>
     </ClCompile>
+    <ClCompile Include="anim\AnimatorRuntime.cpp">
+      <Filter>anim</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
@@ -225,6 +228,9 @@
       <Filter>anim</Filter>
     </ClInclude>
     <ClInclude Include="anim\AnimatorSerializer.h">
+      <Filter>anim</Filter>
+    </ClInclude>
+    <ClInclude Include="anim\AnimatorRuntime.h">
       <Filter>anim</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,6 +1,7 @@
 #include "SceneRuntime.h"
 
 #include "anim/AnimatorController.h"
+#include "anim/AnimatorRuntime.h"
 #include "anim/AnimatorSerializer.h"
 #include "core/Logger.h"
 #include "render/AnimClip.h"
@@ -142,23 +143,73 @@ namespace client
             m_assetCache.emplace(inst.meshAssetPath, std::move(asset));
         }
 
-        // M0: animatorControllerPath 가 있는 인스턴스가 있으면 그 .animator.json 로드 + 로그만.
-        //   런타임 평가 (state machine) 는 M1 단계에서 추가. 현재는 데이터 모델 검증 + 사용자
-        //   가시화 (Editor 가 만든 controller 를 Client 가 정확히 읽는지) 목적.
+        // M1: animatorControllerPath 가 있는 *첫 번째* 인스턴스의 controller 활성화.
+        //   - 베이스 스켈레톤 = 그 인스턴스의 meshAssetPath 의 skeleton.
+        //   - controller 의 모든 state.motionClipPath 를 m_controllerClipCache 에 사전 로드.
+        //   - AnimatorRuntime 인스턴스 생성.
         for (const auto& inst : m_scene.meshes)
         {
             if (inst.animatorControllerPath.empty()) { continue; }
+            const auto& asset = m_assetCache.at(inst.meshAssetPath);
+            if (!asset.skeleton)
+            {
+                engine::core::LogInfoA("[anim] controller skip — base mesh has no skeleton: ");
+                engine::core::LogInfoA(inst.meshAssetPath.c_str());
+                engine::core::LogInfoA("\n");
+                continue;
+            }
+
             try
             {
-                const std::string path = std::filesystem::absolute(inst.animatorControllerPath).string();
-                engine::anim::AnimatorController c = engine::anim::LoadJson(path);
-                wchar_t buf[400];
-                std::swprintf(buf, std::size(buf),
-                              L"[anim] controller loaded: %hs (states=%zu, transitions=%zu, params=%zu, default=%hs)\n",
-                              inst.animatorControllerPath.c_str(),
-                              c.states.size(), c.transitions.size(), c.parameters.size(),
-                              c.defaultStateName.c_str());
-                engine::core::LogInfo(buf);
+                const std::string controllerPath =
+                    std::filesystem::absolute(inst.animatorControllerPath).string();
+                auto controller = std::make_unique<engine::anim::AnimatorController>(
+                    engine::anim::LoadJson(controllerPath));
+
+                // 모든 state.motionClipPath 사전 로드 + clipMap 구축.
+                engine::anim::AnimatorRuntime::ClipMap clipMap;
+                for (const auto& state : controller->states)
+                {
+                    if (state.motionClipPath.empty()) { continue; }
+                    if (m_controllerClipCache.contains(state.motionClipPath))
+                    {
+                        const auto& cached = m_controllerClipCache.at(state.motionClipPath);
+                        if (!cached.empty())
+                        {
+                            clipMap.emplace(state.motionClipPath, cached[0].get());
+                        }
+                        continue;
+                    }
+                    const std::wstring clipWpath =
+                        std::filesystem::absolute(state.motionClipPath).wstring();
+                    engine::render::fbx_loader::LoadedFbxAnimation loaded =
+                        engine::render::fbx_loader::LoadFbxAnimationOnly(
+                            clipWpath.c_str(), *asset.skeleton);
+                    if (!loaded.clips.empty())
+                    {
+                        clipMap.emplace(state.motionClipPath, loaded.clips[0].get());
+                    }
+                    m_controllerClipCache.emplace(state.motionClipPath, std::move(loaded.clips));
+                }
+
+                m_loadedController = std::move(controller);
+                m_animatorRuntime = std::make_unique<engine::anim::AnimatorRuntime>(
+                    *m_loadedController, *asset.skeleton, std::move(clipMap));
+
+                m_animSkeleton = asset.skeleton.get();   // RecordDraw 가 skeleton 본 수 참조에 사용.
+
+                engine::core::LogInfoA("[anim] AnimatorRuntime active: states=");
+                {
+                    char buf[64];
+                    std::snprintf(buf, sizeof(buf), "%zu, transitions=%zu, params=%zu, default=",
+                                  m_loadedController->states.size(),
+                                  m_loadedController->transitions.size(),
+                                  m_loadedController->parameters.size());
+                    engine::core::LogInfoA(buf);
+                }
+                engine::core::LogInfoA(m_animatorRuntime->CurrentStateName().c_str());
+                engine::core::LogInfoA("\n");
+                break;   // 첫 controller-using 인스턴스만
             }
             catch (const std::exception& e)
             {
@@ -248,7 +299,35 @@ namespace client
 
     void SceneRuntime::Tick(float dt)
     {
-        if (m_animator) { m_animator->Update(dt); }
+        // AnimatorRuntime (M1+) 가 활성이면 그것 우선. 폴백은 단일 클립 Animator (M0 호환).
+        if (m_animatorRuntime) { m_animatorRuntime->Update(dt); }
+        else if (m_animator)   { m_animator->Update(dt); }
+    }
+
+    bool SceneRuntime::HasAnimatorRuntime() const noexcept
+    {
+        return m_animatorRuntime != nullptr;
+    }
+
+    void SceneRuntime::SetAnimatorFloat(std::string_view name, float value)
+    {
+        if (m_animatorRuntime) { m_animatorRuntime->SetFloat(name, value); }
+    }
+
+    void SceneRuntime::SetAnimatorBool(std::string_view name, bool value)
+    {
+        if (m_animatorRuntime) { m_animatorRuntime->SetBool(name, value); }
+    }
+
+    void SceneRuntime::SetAnimatorTrigger(std::string_view name)
+    {
+        if (m_animatorRuntime) { m_animatorRuntime->SetTrigger(name); }
+    }
+
+    std::string SceneRuntime::CurrentAnimatorStateName() const
+    {
+        if (m_animatorRuntime) { return m_animatorRuntime->CurrentStateName(); }
+        return {};
     }
 
     void SceneRuntime::SetActiveClip(int clipIdx)
@@ -316,9 +395,15 @@ namespace client
         list->SetGraphicsRootShaderResourceView(3, m_dirLightSBs  [frameIndex]->GpuAddress());
         list->SetGraphicsRootShaderResourceView(4, m_pointLightSBs[frameIndex]->GpuAddress());
 
-        // 본 팔레트 — Animator 있으면 갱신값, 없으면 identity.
+        // 본 팔레트 — AnimatorRuntime(M1+) 우선, 폴백 Animator(M0), 없으면 identity.
         BonePalette palette = IdentityPalette();
-        if (m_animator)
+        if (m_animatorRuntime)
+        {
+            const auto& src = m_animatorRuntime->Palette();
+            const size_t n = (src.size() < kMaxBones) ? src.size() : kMaxBones;
+            for (size_t i = 0; i < n; ++i) { palette.bones[i] = src[i]; }
+        }
+        else if (m_animator)
         {
             const auto& src = m_animator->Palette();
             const size_t n = (src.size() < kMaxBones) ? src.size() : kMaxBones;

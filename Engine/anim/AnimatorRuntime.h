@@ -1,0 +1,110 @@
+#pragma once
+
+#include "anim/AnimatorController.h"
+#include "core/Types.h"
+
+#include <DirectXMath.h>
+
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+namespace engine::render
+{
+    class Skeleton;
+    class AnimClip;
+}
+
+namespace engine::anim
+{
+    // Animator Controller 런타임 평가 — Unity Mecanim 의 *Animator* 컴포넌트 등가.
+    //
+    // 입력:
+    //   - controller: 데이터 (states / transitions / parameters).
+    //   - skeleton:   본 트리 + offsetMatrix (베이스 메시 자산).
+    //   - clipMap:    motionClipPath → AnimClip* (호출자가 사전 로드 + 라이프타임 보장).
+    //                 controller 의 모든 state.motionClipPath 가 키로 등록되어야 함.
+    //                 없는 키는 *T-pose* (해당 state 활성 시 본 transform = identity).
+    //
+    // 매 프레임 흐름 (Update(dt)):
+    //   ① transitioning 이면 crossfade 진행 — 끝나면 currentState ← targetState.
+    //   ② 현재 state 의 시간 진행 + (loop ? wrap : clamp).
+    //   ③ transition 평가 — fromState == current OR ""(Any), conditions AND, hasExitTime.
+    //   ④ Trigger 자동 reset (평가 후).
+    //   ⑤ 본 팔레트 계산 — currentState 클립 + (transitioning 시) targetState 클립 weight lerp.
+    //
+    // API:
+    //   - SetBool/Int/Float(name, val), SetTrigger(name): parameter 슬롯 설정.
+    //   - Update(dt): 위 흐름.
+    //   - Palette(): 매 Update 후 갱신된 본 팔레트 (HLSL b1 cbuffer).
+    //
+    // 단일 layer 가정 (Phase 5-M4 에서 다중 Layer 도입). Blend Tree 없음 (5-M2).
+    //
+    // 단일 소유 (복사·이동 금지).
+    class AnimatorRuntime final
+    {
+    public:
+        using ClipMap = std::unordered_map<std::string, const engine::render::AnimClip*>;
+
+        AnimatorRuntime(const AnimatorController&        controller,
+                        const engine::render::Skeleton&  skeleton,
+                        ClipMap                          clipMap);
+        ~AnimatorRuntime();
+
+        AnimatorRuntime(const AnimatorRuntime&)            = delete;
+        AnimatorRuntime& operator=(const AnimatorRuntime&) = delete;
+        AnimatorRuntime(AnimatorRuntime&&)                 = delete;
+        AnimatorRuntime& operator=(AnimatorRuntime&&)      = delete;
+
+        void Update(float dt);
+
+        // Parameter 설정 — name 미존재 시 silent skip (Editor 에서 typo 흔함).
+        void SetBool   (std::string_view name, bool  value);
+        void SetInt    (std::string_view name, engine::int32 value);
+        void SetFloat  (std::string_view name, float value);
+        void SetTrigger(std::string_view name);
+
+        // 현재 state 의 인덱스 / 이름 (디버그 / Editor 표시용).
+        size_t             CurrentStateIndex() const noexcept { return m_currentStateIndex; }
+        const std::string& CurrentStateName() const noexcept;
+
+        // transitioning 진행도 (0..1). 비활성 시 0.
+        float CrossfadeProgress01() const noexcept;
+
+        // 본 팔레트 — 매 Update 후 갱신.
+        const std::vector<DirectX::XMFLOAT4X4>& Palette() const noexcept { return m_palette; }
+        size_t                                  PaletteSize() const noexcept { return m_palette.size(); }
+
+    private:
+        // parameter 이름 → m_paramValues 인덱스 (없으면 -1).
+        engine::int32 FindParamIndex(std::string_view name) const noexcept;
+
+        // state 이름 → m_controller.states 인덱스 (없으면 -1).
+        engine::int32 FindStateIndex(std::string_view name) const noexcept;
+
+        // 모든 condition AND 만족?
+        bool AllConditionsMet(const std::vector<TransitionCondition>& conds) const noexcept;
+
+        // 본 팔레트 채움.
+        void BuildPalette();
+
+        const AnimatorController&        m_controller;
+        const engine::render::Skeleton&  m_skeleton;
+        ClipMap                          m_clipMap;
+
+        std::vector<float>                          m_paramValues;
+        std::unordered_map<std::string, std::size_t> m_paramNameToIndex;
+
+        size_t  m_currentStateIndex = 0;
+        double  m_currentStateTime  = 0.0;
+
+        bool    m_transitioning     = false;
+        size_t  m_targetStateIndex  = 0;
+        double  m_targetStateTime   = 0.0;
+        float   m_crossfadeDuration = 0.0f;
+        float   m_crossfadeElapsed  = 0.0f;
+
+        std::vector<DirectX::XMFLOAT4X4> m_palette;
+    };
+}

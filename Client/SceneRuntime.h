@@ -13,6 +13,12 @@
 #include <unordered_map>
 #include <vector>
 
+namespace engine::anim
+{
+    struct AnimatorController;
+    class  AnimatorRuntime;
+}
+
 namespace engine::render
 {
     class AnimClip;
@@ -79,6 +85,16 @@ namespace client
         // 카메라 초기 위치/대상 (Scene 의 CameraStart). Application 이 첫 Camera 구성에 사용.
         const engine::scene::CameraStart& InitialCameraStart() const noexcept { return m_scene.cameraStart; }
 
+        // AnimatorRuntime passthrough — Application 이 키 입력에 응답해 호출.
+        // AnimatorRuntime 가 활성이 아니면 silent no-op.
+        bool HasAnimatorRuntime() const noexcept;
+        void SetAnimatorFloat   (std::string_view name, float value);
+        void SetAnimatorBool    (std::string_view name, bool  value);
+        void SetAnimatorTrigger (std::string_view name);
+
+        // 디버그 — 현재 state 이름 (UI 표시용).
+        std::string CurrentAnimatorStateName() const;
+
     private:
         struct LoadedAsset
         {
@@ -102,6 +118,19 @@ namespace client
         const std::vector<std::unique_ptr<engine::render::AnimClip>>*          m_animClips    = nullptr;
         std::unique_ptr<engine::render::Animator>                              m_animator;
         int                                                                    m_currentClipIdx = -1;
+
+        // Animator Controller 런타임 — Phase 5-M1.
+        // animatorControllerPath 가 있는 *첫 번째* MeshInstance 의 controller 만 활성.
+        // controller 의 모든 state.motionClipPath 는 m_controllerClipCache 안에 사전 로드되어
+        // AnimatorRuntime 에 clipMap (path → AnimClip*) 으로 전달됨.
+        //
+        // **append-only**: AnimatorRuntime 의 ClipMap 이 m_controllerClipCache 의 unique_ptr 의
+        //   raw 포인터(get())를 보유. erase / 재할당 도입 시 dangling 위험.
+        //   다중 controller 또는 동적 자산 언로드 도입 시 weak_ptr 또는 핸들 ID 로 격상.
+        std::unique_ptr<engine::anim::AnimatorController>                      m_loadedController;
+        std::unordered_map<std::string,
+            std::vector<std::unique_ptr<engine::render::AnimClip>>>            m_controllerClipCache;
+        std::unique_ptr<engine::anim::AnimatorRuntime>                         m_animatorRuntime;
 
         // 인스턴스별 cbuffer (FrameConstants + BonePalette). 슬롯당 N프레임 in-flight.
         // SwapChain::kBackBufferCount 와 1소스 통일 — FrameRenderer 와의 frameIndex 정합 보장.

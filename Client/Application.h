@@ -113,6 +113,9 @@ namespace client
         std::vector<std::string>                            m_sceneSlots;
         std::string                                         m_currentScenePath;
 
+        // AnimatorRuntime 입력용 키 다운 엣지 추적 (Space → Jump 트리거).
+        bool                                                m_prevJumpDown = false;
+
         // ctor 인자.
         int          m_widthPx;
         int          m_heightPx;

@@ -431,6 +431,30 @@ namespace client
             m_sceneRuntime->SetActiveClip(clipChange);
         }
 
+        // AnimatorRuntime parameter 입력 (Phase 5-M1 데모 매핑):
+        //   W       → Speed = 0.6 (Walk)
+        //   Shift+W → Speed = 1.0 (Run)
+        //   안 누름  → Speed = 0.0 (Idle)
+        //   Space (down edge) → Jump trigger
+        // controller 의 transitions 가 Speed/Jump 평가 → state 전환.
+        if (m_sceneRuntime->HasAnimatorRuntime())
+        {
+            const auto& input = m_window->GetInput();
+            float speed = 0.0f;
+            if (input.IsKeyDown(static_cast<std::uint32_t>('W')))
+            {
+                speed = input.IsKeyDown(static_cast<std::uint32_t>(VK_SHIFT)) ? 1.0f : 0.6f;
+            }
+            m_sceneRuntime->SetAnimatorFloat("Speed", speed);
+
+            const bool curJump = input.IsKeyDown(static_cast<std::uint32_t>(VK_SPACE));
+            if (curJump && !m_prevJumpDown)
+            {
+                m_sceneRuntime->SetAnimatorTrigger("Jump");
+            }
+            m_prevJumpDown = curJump;
+        }
+
         // 카메라 + Scene tick + 렌더.
         m_freeCamera->Update(m_window->GetInput(), dt);
         m_sceneRuntime->Tick(dt);
