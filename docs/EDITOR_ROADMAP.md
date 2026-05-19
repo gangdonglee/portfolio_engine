@@ -54,7 +54,7 @@ portfolio_engine.sln
 | 단계 | 목표 | 산출 / 검증 기준 | 상태 |
 |---|---|---|---|
 | **5-M0** | `engine::anim::AnimatorController` POD + JSON I/O + `MeshInstance.animatorControllerPath` 필드 | Editor 의 Inspector 가 controller path 편집 + Save → Client 가 controller 로드 + 로그 (states/transitions/params 카운트) | ✅ |
-| **5-M1** | State Machine 런타임 (State/Transition/Parameter + Crossfade) | Client 키 입력 → parameter 변경 → state 전환 → 클립 변경 (idle→walk→run) | ⏳ |
+| **5-M1** | State Machine 런타임 (State/Transition/Parameter + Crossfade) | Client 키 입력 → parameter 변경 → state 전환 → 클립 변경 (idle→walk→run) | ✅ |
 | **5-M2** | Blend Tree 1D | Speed float 파라미터 → idle/walk/run weight 가중 평균 보간 | ⏳ |
 | **5-M3** | Editor 그래프 UI (ImNodes vendored) | 노드 시각 편집 → Save → Client 반영 | ⏳ |
 | **5-M4+** | Layer + Avatar Mask (상체/하체 분리), Root Motion 추출 | 상체 공격 + 하체 이동 같이 | ⏳ |
@@ -84,6 +84,7 @@ ImGui / ImGuizmo (M4+) 는 Editor.exe 전용 — Engine.lib 오염 금지.
 | M1 | [22-scene-json-multi-light.md](../devlog/22-scene-json-multi-light.md) | `engine::scene` 모듈, SceneSerializer, StructuredBuffer, RootSig 5슬롯, sample.scene.json |
 | M2 | [26-editor-panels-m2.md](../devlog/26-editor-panels-m2.md) | Hierarchy/Inspector 패널 (`editor::panels`), File New/Open/Save IFileDialog, 라이트/메시 +/- 버튼, 활성 Scene 상태 + modified 플래그 |
 | 5-M0 | [29-animator-controller-m0.md](../devlog/29-animator-controller-m0.md) | `engine::anim` POD + AnimatorSerializer, Scene.MeshInstance.animatorControllerPath, Editor Inspector 위젯, sample `xbot.animator.json` (Idle/Walk/Run/Jump) |
+| 5-M1 | [30-animator-runtime-m1.md](../devlog/30-animator-runtime-m1.md) | `engine::anim::AnimatorRuntime` (Tick + transition + crossfade palette), SceneRuntime 의 controller 사전 로드 + ClipMap 구축, Application 키 입력 (W/Shift+W/Space) → Speed/Jump |
 
 ---
 
