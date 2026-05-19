@@ -393,6 +393,16 @@ namespace client
             engine::core::LogInfoA(buf);
         }
         if (sceneSlot != InputController::kNoSceneSwitch
+            && static_cast<size_t>(sceneSlot) >= m_sceneSlots.size())
+        {
+            // OOB — 슬롯 수보다 큰 F-키. 조용히 skip 하면 사용자 혼란.
+            char buf[120];
+            std::snprintf(buf, sizeof(buf),
+                          "[input] slot %d (F%d) ignored — only %zu slot(s) available\n",
+                          sceneSlot, sceneSlot + 1, m_sceneSlots.size());
+            engine::core::LogInfoA(buf);
+        }
+        if (sceneSlot != InputController::kNoSceneSwitch
             && static_cast<size_t>(sceneSlot) < m_sceneSlots.size())
         {
             const std::string& path = m_sceneSlots[static_cast<size_t>(sceneSlot)];
