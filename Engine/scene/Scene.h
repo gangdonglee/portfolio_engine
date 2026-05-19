@@ -32,9 +32,12 @@ namespace engine::scene
     //   사용 예 (Mixamo without-skin): meshAssetPath="X Bot.fbx" + animationClipPath="Running.fbx".
     struct MeshInstance
     {
-        std::string name;                // 에디터 표시용 (Hierarchy/Inspector).
-        std::string meshAssetPath;       // assets/ 또는 Resources/ 기준 상대 경로.
-        std::string animationClipPath;   // 선택 — 별도 클립 FBX. 빈 문자열 = 미사용.
+        std::string name;                    // 에디터 표시용 (Hierarchy/Inspector).
+        std::string meshAssetPath;           // assets/ 또는 Resources/ 기준 상대 경로.
+        std::string animationClipPath;       // 선택 — 별도 클립 FBX (M0 호환). 빈 문자열 = 미사용.
+        std::string animatorControllerPath;  // 선택 — .animator.json 경로. 비어있지 않으면
+                                             //   animationClipPath 보다 우선 (스테이트 머신 평가).
+                                             //   M0: 데이터만 로드 + 로그. M1: 런타임 평가.
         Transform   transform;
     };
 

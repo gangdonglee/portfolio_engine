@@ -114,6 +114,7 @@
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
     <ClCompile Include="scene\SceneSerializer.cpp" />
+    <ClCompile Include="anim\AnimatorSerializer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\HrCheck.h" />
@@ -148,6 +149,8 @@
     <ClInclude Include="core\Types.h" />
     <ClInclude Include="scene\Scene.h" />
     <ClInclude Include="scene\SceneSerializer.h" />
+    <ClInclude Include="anim\AnimatorController.h" />
+    <ClInclude Include="anim\AnimatorSerializer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

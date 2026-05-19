@@ -9,8 +9,9 @@
   "meshes": [
     {
       "name": "XBot",
-      "meshAssetPath":      "Resources/FBX/X Bot.fbx",
-      "animationClipPath":  "Resources/FBX/Running.fbx",
+      "meshAssetPath":          "Resources/FBX/X Bot.fbx",
+      "animationClipPath":      "Resources/FBX/Running.fbx",
+      "animatorControllerPath": "assets/Animators/xbot.animator.json",
       "transform": {
         "position": [0.0, 0.0, 0.0],
         "rotation": [0.0, 0.0, 0.0, 1.0],

@@ -1,5 +1,8 @@
 #include "SceneRuntime.h"
 
+#include "anim/AnimatorController.h"
+#include "anim/AnimatorSerializer.h"
+#include "core/Logger.h"
 #include "render/AnimClip.h"
 #include "render/Animator.h"
 #include "render/Camera.h"
@@ -137,6 +140,34 @@ namespace client
             }
 
             m_assetCache.emplace(inst.meshAssetPath, std::move(asset));
+        }
+
+        // M0: animatorControllerPath 가 있는 인스턴스가 있으면 그 .animator.json 로드 + 로그만.
+        //   런타임 평가 (state machine) 는 M1 단계에서 추가. 현재는 데이터 모델 검증 + 사용자
+        //   가시화 (Editor 가 만든 controller 를 Client 가 정확히 읽는지) 목적.
+        for (const auto& inst : m_scene.meshes)
+        {
+            if (inst.animatorControllerPath.empty()) { continue; }
+            try
+            {
+                const std::string path = std::filesystem::absolute(inst.animatorControllerPath).string();
+                engine::anim::AnimatorController c = engine::anim::LoadJson(path);
+                wchar_t buf[400];
+                std::swprintf(buf, std::size(buf),
+                              L"[anim] controller loaded: %hs (states=%zu, transitions=%zu, params=%zu, default=%hs)\n",
+                              inst.animatorControllerPath.c_str(),
+                              c.states.size(), c.transitions.size(), c.parameters.size(),
+                              c.defaultStateName.c_str());
+                engine::core::LogInfo(buf);
+            }
+            catch (const std::exception& e)
+            {
+                engine::core::LogInfoA("[anim] controller load FAILED (");
+                engine::core::LogInfoA(inst.animatorControllerPath.c_str());
+                engine::core::LogInfoA("): ");
+                engine::core::LogInfoA(e.what());
+                engine::core::LogInfoA("\n");
+            }
         }
 
         // Animator 데모용 — 첫 번째 *애니메이션 가능* 인스턴스 선택.

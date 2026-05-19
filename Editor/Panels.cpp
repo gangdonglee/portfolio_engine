@@ -220,6 +220,17 @@ namespace editor::panels
                 {
                     ImGui::TextDisabled("(Client F0 = T-pose, 1..4 = clip select)");
                 }
+                changed |= InputStdString("animatorControllerPath", m.animatorControllerPath);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("clear##animator"))
+                {
+                    m.animatorControllerPath.clear();
+                    changed = true;
+                }
+                if (!m.animatorControllerPath.empty())
+                {
+                    ImGui::TextDisabled("(M0: 로드 + 로그. M1+ 에서 런타임 평가.)");
+                }
                 ImGui::Separator();
                 ImGui::Text("Transform");
                 changed |= ImGui::DragFloat3("position", &m.transform.position.x, 1.0f);

@@ -13,6 +13,9 @@
     <Filter Include="scene">
       <UniqueIdentifier>{F1000004-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
+    <Filter Include="anim">
+      <UniqueIdentifier>{F1000010-2222-3333-4444-555555555555}</UniqueIdentifier>
+    </Filter>
     <Filter Include="render\core">
       <UniqueIdentifier>{F1000005-2222-3333-4444-555555555555}</UniqueIdentifier>
     </Filter>
@@ -117,6 +120,9 @@
     <ClCompile Include="scene\SceneSerializer.cpp">
       <Filter>scene</Filter>
     </ClCompile>
+    <ClCompile Include="anim\AnimatorSerializer.cpp">
+      <Filter>anim</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform\Window.h">
@@ -214,6 +220,12 @@
     </ClInclude>
     <ClInclude Include="scene\SceneSerializer.h">
       <Filter>scene</Filter>
+    </ClInclude>
+    <ClInclude Include="anim\AnimatorController.h">
+      <Filter>anim</Filter>
+    </ClInclude>
+    <ClInclude Include="anim\AnimatorSerializer.h">
+      <Filter>anim</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
