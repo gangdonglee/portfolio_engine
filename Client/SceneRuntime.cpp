@@ -139,16 +139,53 @@ namespace client
             m_assetCache.emplace(inst.meshAssetPath, std::move(asset));
         }
 
-        // 첫 번째 FBX 자산의 skeleton/clips — Animator 데모용.
+        // Animator 데모용 — 첫 번째 *애니메이션 가능* 인스턴스 선택.
+        // 우선순위:
+        //   ① animationClipPath 지정된 인스턴스: 베이스 메시의 스켈레톤 + 별도 클립 FBX 의 클립.
+        //      자동으로 첫 클립 활성화 (Editor 에서 미리보기 의도).
+        //   ② 그게 없으면 메시 FBX 자체에 클립이 있는 인스턴스 (기존 동작, T-pose 시작).
+        // 첫 매칭 인스턴스 발견 즉시 break — 멀티 캐릭터 씬에서 첫 캐릭터 기준.
+        bool autoActivateClip = false;
         for (const auto& inst : m_scene.meshes)
         {
             const auto& asset = m_assetCache.at(inst.meshAssetPath);
-            if (asset.skeleton && !asset.clips.empty())
+            if (!asset.skeleton) { continue; }
+
+            if (!inst.animationClipPath.empty())
+            {
+                // 캐시에 없으면 LoadFbxAnimationOnly — 메시 없이 클립만 추출.
+                if (!m_clipOnlyCache.contains(inst.animationClipPath))
+                {
+                    const std::wstring wpath =
+                        std::filesystem::absolute(inst.animationClipPath).wstring();
+                    engine::render::fbx_loader::LoadedFbxAnimation loaded =
+                        engine::render::fbx_loader::LoadFbxAnimationOnly(
+                            wpath.c_str(), *asset.skeleton);
+                    m_clipOnlyCache.emplace(inst.animationClipPath, std::move(loaded.clips));
+                }
+                const auto& clipVec = m_clipOnlyCache.at(inst.animationClipPath);
+                if (!clipVec.empty())
+                {
+                    m_animSkeleton    = asset.skeleton.get();
+                    m_animClips       = &clipVec;
+                    autoActivateClip  = true;
+                    break;
+                }
+            }
+            else if (!asset.clips.empty())
             {
                 m_animSkeleton = asset.skeleton.get();
                 m_animClips    = &asset.clips;
                 break;
             }
+        }
+
+        // animationClipPath 명시 → 첫 클립 자동 활성화 (Editor 미리보기 흐름).
+        if (autoActivateClip && m_animSkeleton && m_animClips && !m_animClips->empty())
+        {
+            m_animator = std::make_unique<engine::render::Animator>(
+                *m_animSkeleton, *(*m_animClips)[0]);
+            m_currentClipIdx = 0;
         }
 
         // 인스턴스 × frame ConstantBuffer.

@@ -25,10 +25,16 @@ namespace engine::scene
 
     // 한 메시 자산(.obj/.fbx)이 씬에 배치된 한 인스턴스.
     // 같은 meshAssetPath 가 N번 등장 가능 — 런타임 측 Mesh 캐시가 중복 로드를 방지.
+    //
+    // animationClipPath: 선택적 — 메시와 별개의 FBX 에서 *애니메이션 클립만* 로드.
+    //   비어있으면 메시 FBX 의 내장 클립 사용 (또는 T-pose).
+    //   설정 시 메시의 스켈레톤 본 이름과 *문자열 매칭* 으로 키프레임 매핑.
+    //   사용 예 (Mixamo without-skin): meshAssetPath="X Bot.fbx" + animationClipPath="Running.fbx".
     struct MeshInstance
     {
-        std::string name;            // 에디터 표시용 (Hierarchy/Inspector).
-        std::string meshAssetPath;   // assets/ 또는 Resources/ 기준 상대 경로.
+        std::string name;                // 에디터 표시용 (Hierarchy/Inspector).
+        std::string meshAssetPath;       // assets/ 또는 Resources/ 기준 상대 경로.
+        std::string animationClipPath;   // 선택 — 별도 클립 FBX. 빈 문자열 = 미사용.
         Transform   transform;
     };
 

@@ -90,6 +90,12 @@ namespace client
         engine::scene::Scene                                m_scene;
         std::unordered_map<std::string, LoadedAsset>        m_assetCache;
 
+        // 별도 클립 FBX 캐시 — Mixamo without-skin 등 메시 없이 클립만 있는 자산.
+        // 키: MeshInstance.animationClipPath (빈 문자열이면 미사용).
+        // 값: 베이스 메시의 스켈레톤 본 이름으로 매핑된 키프레임을 가진 AnimClip 들.
+        std::unordered_map<std::string, std::vector<std::unique_ptr<engine::render::AnimClip>>>
+            m_clipOnlyCache;
+
         // Animator 는 *첫 번째 FBX 인스턴스* 의 skeleton/clips 를 참조.
         // 본 단계 단순화 — 모든 인스턴스에 동일 palette 적용.
         engine::render::Skeleton*                                              m_animSkeleton = nullptr;

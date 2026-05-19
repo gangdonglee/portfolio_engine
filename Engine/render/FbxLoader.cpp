@@ -564,6 +564,18 @@ namespace engine::render::fbx_loader
                           skeleton, clipMetas);
             }
         }
+        // FbxManager 라이프타임 RAII — LoadFbx / LoadFbxAnimationOnly 공용.
+        // Manager 가 Scene/Importer 도 소유하므로 별도 가드 불필요 (SDK 패턴).
+        struct FbxManagerGuard final
+        {
+            FbxManager* m = nullptr;
+            explicit FbxManagerGuard(FbxManager* mgr) : m(mgr) {}
+            ~FbxManagerGuard() { if (m) { m->Destroy(); } }
+            FbxManagerGuard(const FbxManagerGuard&)            = delete;
+            FbxManagerGuard& operator=(const FbxManagerGuard&) = delete;
+            FbxManagerGuard(FbxManagerGuard&&)                 = delete;
+            FbxManagerGuard& operator=(FbxManagerGuard&&)      = delete;
+        };
     } // anonymous
 
     LoadedFbxModel LoadFbx(
@@ -574,9 +586,14 @@ namespace engine::render::fbx_loader
         const wchar_t*           absolutePath,
         const DirectX::XMFLOAT3& defaultColor)
     {
+        {
+            wchar_t buf[400];
+            std::swprintf(buf, std::size(buf), L"[fbx] LoadFbx begin: %ls\n", absolutePath);
+            engine::core::LogInfo(buf);
+        }
         FbxManager* manager = FbxManager::Create();
         if (manager == nullptr) { throw std::runtime_error("FbxManager::Create 실패"); }
-        struct ManagerGuard { FbxManager* m; ~ManagerGuard() { if (m) m->Destroy(); } } guard{ manager };
+        FbxManagerGuard guard{ manager };
 
         FbxIOSettings* ios = FbxIOSettings::Create(manager, IOSROOT);
         manager->SetIOSettings(ios);
@@ -604,8 +621,10 @@ namespace engine::render::fbx_loader
         }
 
         FbxAxisSystem::DirectX.ConvertScene(scene);
+        engine::core::LogInfo(L"[fbx]   imported, triangulating...\n");
         FbxGeometryConverter geomConv(manager);
         geomConv.Triangulate(scene, /*replace*/true);
+        engine::core::LogInfo(L"[fbx]   triangulated, loading bones...\n");
 
         const std::wstring fbmDir = ComputeFbmDir(absolutePath);
 
@@ -616,12 +635,22 @@ namespace engine::render::fbx_loader
                      /*currentIdx*/0,
                      /*parentIdx*/-1,
                      *result.skeleton);
+        {
+            wchar_t buf[160];
+            std::swprintf(buf, std::size(buf), L"[fbx]   bones loaded: %zu\n", result.skeleton->BoneCount());
+            engine::core::LogInfo(buf);
+        }
 
         // 2) 애니메이션 메타 (clips skeleton 의 본 수에 맞춰 keyFrames 컨테이너 사전 할당).
         std::vector<ClipMeta> clipMetas;
         if (result.skeleton->BoneCount() > 0)
         {
             clipMetas = LoadAnimationInfo(scene, result.skeleton->BoneCount());
+        }
+        {
+            wchar_t buf[160];
+            std::swprintf(buf, std::size(buf), L"[fbx]   anim stacks: %zu, parsing nodes...\n", clipMetas.size());
+            engine::core::LogInfo(buf);
         }
 
         // 3) ParseNode — 메시 + 머티리얼 + 텍스처 + 스키닝 정점 + 키프레임.
@@ -668,6 +697,170 @@ namespace engine::render::fbx_loader
         }
         if (result.skeleton->BoneCount() == 0) { result.skeleton.reset(); }
 
+        return result;
+    }
+
+    namespace
+    {
+        // 클립 FBX 의 본 노드 트리 순회 — 이름 → FbxNode* 매핑.
+        // LoadBonesRec 는 Skeleton 구조 채움 위주라 FbxNode 포인터를 따로 보관하지 않음.
+        // 본 함수는 클립 FBX 의 본 transform 평가에 필요한 FbxNode* 만 수집.
+        void CollectBoneNodesRec(FbxNode* node, std::unordered_map<std::string, FbxNode*>& outMap)
+        {
+            if (node == nullptr) { return; }
+            FbxNodeAttribute* attr = node->GetNodeAttribute();
+            if (attr != nullptr && attr->GetAttributeType() == FbxNodeAttribute::eSkeleton)
+            {
+                outMap.emplace(std::string{ node->GetName() }, node);
+            }
+            const int32 childCount = node->GetChildCount();
+            for (int32 i = 0; i < childCount; ++i)
+            {
+                CollectBoneNodesRec(node->GetChild(i), outMap);
+            }
+        }
+    }
+
+    LoadedFbxAnimation LoadFbxAnimationOnly(
+        const wchar_t*  absolutePath,
+        const Skeleton& baseSkeleton)
+    {
+        LoadedFbxAnimation result;
+
+        FbxManager* manager = FbxManager::Create();
+        if (manager == nullptr) { throw std::runtime_error("FbxManager::Create 실패"); }
+        FbxManagerGuard guard{ manager };
+
+        FbxIOSettings* ios = FbxIOSettings::Create(manager, IOSROOT);
+        manager->SetIOSettings(ios);
+
+        FbxScene*    scene    = FbxScene::Create(manager, "");
+        FbxImporter* importer = FbxImporter::Create(manager, "");
+
+        const int utf8Len = ::WideCharToMultiByte(CP_UTF8, 0, absolutePath, -1, nullptr, 0, nullptr, nullptr);
+        std::string utf8Path(utf8Len > 0 ? utf8Len - 1 : 0, '\0');
+        if (utf8Len > 0)
+        {
+            ::WideCharToMultiByte(CP_UTF8, 0, absolutePath, -1, utf8Path.data(), utf8Len, nullptr, nullptr);
+        }
+
+        if (!importer->Initialize(utf8Path.c_str(), -1, manager->GetIOSettings()))
+        {
+            char buf[512];
+            std::snprintf(buf, sizeof(buf), "FbxImporter::Initialize(animOnly) 실패: %s",
+                          importer->GetStatus().GetErrorString());
+            throw std::runtime_error(buf);
+        }
+        if (!importer->Import(scene))
+        {
+            throw std::runtime_error("FbxImporter::Import(animOnly) 실패");
+        }
+
+        FbxAxisSystem::DirectX.ConvertScene(scene);
+
+        // 클립 FBX 의 본 노드 이름 → FbxNode* 매핑.
+        std::unordered_map<std::string, FbxNode*> boneNodeMap;
+        CollectBoneNodesRec(scene->GetRootNode(), boneNodeMap);
+
+        if (boneNodeMap.empty())
+        {
+            throw std::runtime_error("FBX(animOnly): 본 노드 없음 — 애니메이션 트랙 0");
+        }
+
+        const size_t baseBoneCount = baseSkeleton.BoneCount();
+        if (baseBoneCount == 0)
+        {
+            throw std::runtime_error("LoadFbxAnimationOnly: baseSkeleton 이 비어있음");
+        }
+
+        // 베이스 본 인덱스 → 클립 FBX 의 FbxNode* (없으면 nullptr — 그 본의 키프레임 skip).
+        // 본 이름 변환은 WideCharToMultiByte UTF-8 — LoadFbx 의 utf8Path 변환과 동일 정책.
+        // 비-ASCII 본 이름 (예: 한글) 도 안전 매칭 (Mixamo 외 자산 대응).
+        std::vector<FbxNode*> baseIdxToClipNode(baseBoneCount, nullptr);
+        for (size_t i = 0; i < baseBoneCount; ++i)
+        {
+            const std::wstring& wname = baseSkeleton.Bones()[i].name;
+            const int nameLen = ::WideCharToMultiByte(CP_UTF8, 0,
+                                                     wname.c_str(), static_cast<int>(wname.size()),
+                                                     nullptr, 0, nullptr, nullptr);
+            std::string utf8Name(static_cast<size_t>(nameLen > 0 ? nameLen : 0), '\0');
+            if (nameLen > 0)
+            {
+                ::WideCharToMultiByte(CP_UTF8, 0,
+                                      wname.c_str(), static_cast<int>(wname.size()),
+                                      utf8Name.data(), nameLen, nullptr, nullptr);
+            }
+            if (auto it = boneNodeMap.find(utf8Name); it != boneNodeMap.end())
+            {
+                baseIdxToClipNode[i] = it->second;
+            }
+        }
+
+        // AnimStack 메타 — baseSkeleton 의 본 수에 맞춰 keyFrames 슬롯 사전 할당.
+        std::vector<ClipMeta> clipMetas = LoadAnimationInfo(scene, baseBoneCount);
+        if (clipMetas.empty())
+        {
+            throw std::runtime_error("FBX(animOnly): AnimStack 없음 — 애니메이션 0");
+        }
+
+        FbxAMatrix matReflect;
+        matReflect.SetRow(0, FbxVector4(1, 0, 0, 0));
+        matReflect.SetRow(1, FbxVector4(0, 0, 1, 0));
+        matReflect.SetRow(2, FbxVector4(0, 1, 0, 0));
+        matReflect.SetRow(3, FbxVector4(0, 0, 0, 1));
+
+        // 각 AnimStack 활성화 → 각 본 인덱스마다 키프레임 평가.
+        for (ClipMeta& cm : clipMetas)
+        {
+            if (cm.stack == nullptr) { continue; }
+            scene->SetCurrentAnimationStack(cm.stack);
+
+            const FbxLongLong startFrame = cm.startTime.GetFrameCount(cm.timeMode);
+            const FbxLongLong endFrame   = cm.endTime.GetFrameCount(cm.timeMode);
+            // takeInfo 비정상 (startTime >= endTime) 가드 — 음수 reserve / 무한 loop 방지.
+            if (endFrame <= startFrame) { continue; }
+
+            const size_t frameCount = static_cast<size_t>(endFrame - startFrame);
+            for (size_t boneIdx = 0; boneIdx < baseBoneCount; ++boneIdx)
+            {
+                FbxNode* linkNode = baseIdxToClipNode[boneIdx];
+                if (linkNode == nullptr) { continue; }
+
+                auto& kfBucket = cm.clip->bonesKeyFrames[boneIdx];
+                kfBucket.reserve(kfBucket.size() + frameCount);
+
+                for (FbxLongLong f = startFrame; f < endFrame; ++f)
+                {
+                    FbxTime fbxTime;
+                    fbxTime.SetFrame(f, cm.timeMode);
+
+                    // 메시 노드 변환 없음 — 클립 FBX 에 메시가 없다고 가정. 본 노드의 글로벌
+                    // transform 자체가 mesh-local 변환 역할 (Mixamo without-skin 표준).
+                    FbxAMatrix matBone = linkNode->EvaluateGlobalTransform(fbxTime);
+                    FbxAMatrix matTransform = matReflect * matBone * matReflect;
+
+                    KeyFrame kf;
+                    kf.timeSec   = fbxTime.GetSecondDouble();
+                    kf.transform = ConvertMatrix(matTransform);
+                    kfBucket.push_back(kf);
+                }
+            }
+        }
+
+        wchar_t logLine[300];
+        std::swprintf(logLine, std::size(logLine),
+                      L"[render] FBX animation-only loaded: clips=%zu, bones-matched=%zu/%zu (path: %ls)\n",
+                      clipMetas.size(),
+                      static_cast<size_t>(std::count_if(baseIdxToClipNode.begin(), baseIdxToClipNode.end(),
+                                                       [](FbxNode* p) { return p != nullptr; })),
+                      baseBoneCount,
+                      absolutePath);
+        engine::core::LogInfo(logLine);
+
+        for (ClipMeta& cm : clipMetas)
+        {
+            if (cm.clip) { result.clips.push_back(std::move(cm.clip)); }
+        }
         return result;
     }
 

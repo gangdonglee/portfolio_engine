@@ -64,6 +64,10 @@ namespace engine::scene
             json e;
             e["name"]          = m.name;
             e["meshAssetPath"] = m.meshAssetPath;
+            if (!m.animationClipPath.empty())
+            {
+                e["animationClipPath"] = m.animationClipPath;
+            }
             e["transform"]     = std::move(t);
             meshes.push_back(std::move(e));
         }
@@ -147,8 +151,9 @@ namespace engine::scene
             for (const auto& e : *it)
             {
                 MeshInstance m;
-                if (auto nit = e.find("name");          nit != e.end() && nit->is_string()) { m.name = nit->get<std::string>(); }
-                if (auto pit = e.find("meshAssetPath"); pit != e.end() && pit->is_string()) { m.meshAssetPath = pit->get<std::string>(); }
+                if (auto nit = e.find("name");              nit != e.end() && nit->is_string()) { m.name = nit->get<std::string>(); }
+                if (auto pit = e.find("meshAssetPath");     pit != e.end() && pit->is_string()) { m.meshAssetPath = pit->get<std::string>(); }
+                if (auto cit = e.find("animationClipPath"); cit != e.end() && cit->is_string()) { m.animationClipPath = cit->get<std::string>(); }
                 if (auto tit = e.find("transform"); tit != e.end() && tit->is_object())
                 {
                     m.transform.position = Get<DirectX::XMFLOAT3>(*tit, "position", m.transform.position,

@@ -50,6 +50,26 @@ namespace engine::render
             const wchar_t*           absolutePath,
             const DirectX::XMFLOAT3& defaultColor);
 
+        // Mixamo "Without Skin" 등 메시 없이 *애니메이션 트랙만* 담긴 FBX 의 클립 추출.
+        // baseSkeleton 은 호출 측의 메시 자산 스켈레톤 — 클립 FBX 의 본 이름과 *문자열 매칭*
+        // 으로 인덱스 매핑. 베이스에 없는 본의 키프레임은 무시.
+        //
+        // 동작:
+        //   - FbxScene 부팅 + LoadBonesRec 으로 임시 스켈레톤 추출 (FbxNode 포인터 동반).
+        //   - LoadAnimationInfo 로 AnimStack 메타 (clip 별 name/duration/keyFrames container).
+        //   - 각 AnimStack 활성화 후 본 노드의 EvaluateGlobalTransform(t) 평가 →
+        //     베이스 스켈레톤 본 인덱스 슬롯에 키프레임 push.
+        //   - 좌표계: RH↔LH reflect (LoadAnimationData 와 동일 매트릭스).
+        //
+        // 메시/머티리얼/텍스처 로드 0건 — Device/Queue/SrvHeap 인자 불필요.
+        struct LoadedFbxAnimation
+        {
+            std::vector<std::unique_ptr<AnimClip>> clips;
+        };
+        LoadedFbxAnimation LoadFbxAnimationOnly(
+            const wchar_t*  absolutePath,
+            const Skeleton& baseSkeleton);
+
         // exe 옆 Resources\FBX\ 절대 경로.
         std::wstring DefaultFbxDir();
     }

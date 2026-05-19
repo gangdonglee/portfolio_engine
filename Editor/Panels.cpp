@@ -207,8 +207,19 @@ namespace editor::panels
                 auto& m = scene.meshes[sel.index];
                 ImGui::Text("MeshInstance [%zu]", sel.index);
                 ImGui::Separator();
-                changed |= InputStdString("name",          m.name);
-                changed |= InputStdString("meshAssetPath", m.meshAssetPath);
+                changed |= InputStdString("name",              m.name);
+                changed |= InputStdString("meshAssetPath",     m.meshAssetPath);
+                changed |= InputStdString("animationClipPath", m.animationClipPath);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("clear##anim"))
+                {
+                    m.animationClipPath.clear();
+                    changed = true;
+                }
+                if (!m.animationClipPath.empty())
+                {
+                    ImGui::TextDisabled("(Client F0 = T-pose, 1..4 = clip select)");
+                }
                 ImGui::Separator();
                 ImGui::Text("Transform");
                 changed |= ImGui::DragFloat3("position", &m.transform.position.x, 1.0f);
