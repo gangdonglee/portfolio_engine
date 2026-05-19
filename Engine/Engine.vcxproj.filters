@@ -84,6 +84,9 @@
     <ClCompile Include="render\StructuredBuffer.cpp">
       <Filter>render\resource</Filter>
     </ClCompile>
+    <ClCompile Include="render\DebugRenderer.cpp">
+      <Filter>render\pipeline</Filter>
+    </ClCompile>
     <ClCompile Include="render\Texture.cpp">
       <Filter>render\resource</Filter>
     </ClCompile>
@@ -175,6 +178,9 @@
     </ClInclude>
     <ClInclude Include="render\StructuredBuffer.h">
       <Filter>render\resource</Filter>
+    </ClInclude>
+    <ClInclude Include="render\DebugRenderer.h">
+      <Filter>render\pipeline</Filter>
     </ClInclude>
     <ClInclude Include="render\Texture.h">
       <Filter>render\resource</Filter>

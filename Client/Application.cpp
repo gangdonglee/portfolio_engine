@@ -470,5 +470,25 @@ namespace client
         scissor.bottom = static_cast<LONG>(m_window->Height());
 
         m_frameRenderer->Render(*m_sceneRuntime, *m_camera, viewport, scissor);
+
+        // 타이틀바 디버그 정보 — 100ms 주기로 갱신 (매 프레임은 SetWindowTextW 비용 + 깜빡임 우려).
+        m_titleUpdateAccum += dt;
+        if (m_titleUpdateAccum >= 0.1f)
+        {
+            m_titleUpdateAccum = 0.0f;
+            const auto camPos = m_camera->Position();
+            const auto camTgt = m_camera->Target();
+            const std::string& curState = m_sceneRuntime->HasAnimatorRuntime()
+                ? m_sceneRuntime->CurrentAnimatorStateName()
+                : std::string{};
+            wchar_t buf[256];
+            std::swprintf(buf, std::size(buf),
+                          L"portfolio_engine | cam=(%.0f, %.0f, %.0f) look=(%.0f, %.0f, %.0f)%hs%hs",
+                          camPos.x, camPos.y, camPos.z,
+                          camTgt.x, camTgt.y, camTgt.z,
+                          curState.empty() ? "" : " | state=",
+                          curState.c_str());
+            m_window->SetTitle(buf);
+        }
     }
 }

@@ -116,6 +116,9 @@ namespace client
         // AnimatorRuntime 입력용 키 다운 엣지 추적 (Space → Jump 트리거).
         bool                                                m_prevJumpDown = false;
 
+        // 타이틀바 디버그 정보 갱신 throttle — 매 프레임 SetWindowTextW 호출 시 CPU 비용 + 깜빡임 우려.
+        float                                               m_titleUpdateAccum = 0.0f;
+
         // ctor 인자.
         int          m_widthPx;
         int          m_heightPx;

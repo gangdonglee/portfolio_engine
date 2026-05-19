@@ -15,6 +15,7 @@ namespace engine::render
     class Camera;
     class CommandList;
     class CommandQueue;
+    class DebugRenderer;
     class DepthStencilBuffer;
     class Device;
     class PipelineState;
@@ -99,5 +100,8 @@ namespace client
 
         std::array<std::unique_ptr<engine::render::CommandList>, kFrameCount> m_cmdLists;
         std::array<std::uint64_t,                                kFrameCount> m_frameFenceValues{};
+
+        // 디버그 라인 렌더러 — 원점 좌표축 그리기. SceneRuntime.RecordDraw 직후 호출.
+        std::unique_ptr<engine::render::DebugRenderer>                        m_debugRenderer;
     };
 }

@@ -5,6 +5,7 @@
 #include "render/Camera.h"
 #include "render/CommandList.h"
 #include "render/CommandQueue.h"
+#include "render/DebugRenderer.h"
 #include "render/DepthStencilBuffer.h"
 #include "render/Device.h"
 #include "render/PipelineState.h"
@@ -49,6 +50,10 @@ namespace client
         {
             m_cmdLists[f] = std::make_unique<engine::render::CommandList>(m_device);
         }
+
+        // 디버그 렌더러 — 메인 PSO 와 같은 RTV 포맷 + DSV 포맷 사용 (depth-test 자체는 OFF).
+        m_debugRenderer = std::make_unique<engine::render::DebugRenderer>(
+            m_device, DXGI_FORMAT_R8G8B8A8_UNORM, m_depthBuffer.Format());
     }
 
     FrameRenderer::~FrameRenderer() = default;
@@ -112,6 +117,13 @@ namespace client
 
         // ⑤ SceneRuntime — 인스턴스 cb 갱신 + draw.
         sceneRuntime.RecordDraw(list, fi, m_fallbackAlbedo);
+
+        // ⑤b 디버그 라인 (원점 좌표축) — RTV/DSV 그대로 사용. PSO/RootSig 만 자체 교체.
+        //    depth-test OFF 이므로 X-Bot 메시 뒤에 있어도 가시.
+        if (m_debugRenderer)
+        {
+            m_debugRenderer->DrawAxes(list, fi, camera.ViewProjection(), 100.0f);
+        }
 
         // ⑥ Barrier RT→PRESENT → Close → Execute → Present.
         D3D12_RESOURCE_BARRIER toPresent{};

@@ -110,6 +110,7 @@
     <ClCompile Include="render\Animator.cpp" />
     <ClCompile Include="render\SrvDescriptorHeap.cpp" />
     <ClCompile Include="render\StructuredBuffer.cpp" />
+    <ClCompile Include="render\DebugRenderer.cpp" />
     <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
@@ -146,6 +147,7 @@
     <ClInclude Include="render\Animator.h" />
     <ClInclude Include="render\SrvDescriptorHeap.h" />
     <ClInclude Include="render\StructuredBuffer.h" />
+    <ClInclude Include="render\DebugRenderer.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />
     <ClInclude Include="scene\Scene.h" />
