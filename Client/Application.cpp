@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <stdexcept>
 
@@ -226,6 +227,18 @@ namespace client
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(scene));
 
+        // 부팅 씬 타이틀 표시.
+        if (!m_currentScenePath.empty())
+        {
+            const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, m_currentScenePath.c_str(), -1, nullptr, 0);
+            std::wstring wpath(static_cast<size_t>(wlen > 0 ? wlen - 1 : 0), L'\0');
+            if (wlen > 0)
+            {
+                ::MultiByteToWideChar(CP_UTF8, 0, m_currentScenePath.c_str(), -1, wpath.data(), wlen);
+            }
+            m_window->SetTitle(L"portfolio_engine - " + wpath);
+        }
+
         // 부트 전용 CommandList — Scene 로드 끝나도 Application 라이프타임 유지.
         // GPU 가 fallback texture / FBX 업로드 명령을 처리하는 동안 CommandList COM 객체가
         // 살아있어야 안전. 즉시 reset 시 GPU 가 invalid pointer 참조 위험.
@@ -257,6 +270,21 @@ namespace client
 
     void Application::ChangeScene(const std::string& scenePath)
     {
+        engine::core::LogInfoA("[scene] ChangeScene begin: ");
+        engine::core::LogInfoA(scenePath.c_str());
+        engine::core::LogInfoA("\n");
+
+        // 로딩 진행 즉시 가시화 — 타이틀바에 "Loading: <path>".
+        {
+            const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, scenePath.c_str(), -1, nullptr, 0);
+            std::wstring wpath(static_cast<size_t>(wlen > 0 ? wlen - 1 : 0), L'\0');
+            if (wlen > 0)
+            {
+                ::MultiByteToWideChar(CP_UTF8, 0, scenePath.c_str(), -1, wpath.data(), wlen);
+            }
+            m_window->SetTitle(L"portfolio_engine - Loading: " + wpath);
+        }
+
         // === Build phase (실패 무손실) ===
         // LoadJson 이 가장 깨지기 쉬운 step (파일 부재 / 파싱 오류). 기존 SceneRuntime 폐기 *전*
         // 에 시도 — 실패 시 throw 가 기존 자산을 보존한 채 호출자로 전파됨 (강한 예외 보장).
@@ -292,6 +320,18 @@ namespace client
         m_frameRenderer->OnResize();
 
         m_currentScenePath = scenePath;
+
+        // 타이틀바 갱신 — Loading 표시 제거.
+        {
+            const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, scenePath.c_str(), -1, nullptr, 0);
+            std::wstring wpath(static_cast<size_t>(wlen > 0 ? wlen - 1 : 0), L'\0');
+            if (wlen > 0)
+            {
+                ::MultiByteToWideChar(CP_UTF8, 0, scenePath.c_str(), -1, wpath.data(), wlen);
+            }
+            m_window->SetTitle(L"portfolio_engine - " + wpath);
+        }
+
         engine::core::LogInfoA("[scene] switched to: ");
         engine::core::LogInfoA(scenePath.c_str());
         engine::core::LogInfoA("\n");
@@ -345,6 +385,13 @@ namespace client
         // 씬 전환은 클립 전환보다 먼저 처리 — SceneRuntime 가 폐기·재생성되므로 그 후의 클립 전환은
         // 새 SceneRuntime 에 적용. 같은 프레임에 F1+1 동시 누름은 자연스럽게 새 씬 + clip 0 로 끝남.
         const int sceneSlot = m_inputController.ConsumeSceneSwitch();
+        if (sceneSlot != InputController::kNoSceneSwitch)
+        {
+            char buf[80];
+            std::snprintf(buf, sizeof(buf), "[input] scene switch requested: slot %d (F%d)\n",
+                          sceneSlot, sceneSlot + 1);
+            engine::core::LogInfoA(buf);
+        }
         if (sceneSlot != InputController::kNoSceneSwitch
             && static_cast<size_t>(sceneSlot) < m_sceneSlots.size())
         {

@@ -92,6 +92,11 @@ namespace engine::platform
         m_hwnd = nullptr;
     }
 
+    void Window::SetTitle(const std::wstring& title)
+    {
+        if (m_hwnd != nullptr) { ::SetWindowTextW(m_hwnd, title.c_str()); }
+    }
+
     bool Window::ConsumeResize() noexcept
     {
         if (!m_resizeDirty) { return false; }

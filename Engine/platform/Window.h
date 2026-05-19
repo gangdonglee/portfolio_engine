@@ -56,6 +56,10 @@ namespace engine::platform
         // 게임 코드(Client) 는 이 핸들을 사용하지 않도록 — engine::render::SwapChain 만 friend 로 접근.
         HWND NativeHwnd() const noexcept { return m_hwnd; }
 
+        // 타이틀바 텍스트 갱신 — 씬 전환 / 로딩 진행 등 즉시 시각 피드백 용도.
+        // SetWindowTextW 호출. HWND 가 nullptr 이면 no-op.
+        void SetTitle(const std::wstring& title);
+
     private:
         static void EnsureClassRegistered();
         static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
