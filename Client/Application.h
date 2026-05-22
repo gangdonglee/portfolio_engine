@@ -115,6 +115,15 @@ namespace client
 
         // AnimatorRuntime 입력용 키 다운 엣지 추적 (Space → Jump 트리거).
         bool                                                m_prevJumpDown = false;
+        // Blend Tree 의 Speed 파라미터 보간용 누적 값.
+        //   1 키를 떼면 target speed 가 즉시 0.0 이 되는데, 그대로 SetAnimatorFloat 하면
+        //   blend tree 가 paramVal 따라 점프해 Idle 클립으로 시각적으로 끊긴다.
+        //   m_currentSpeed 를 target 으로 *시간 보간* 해 부드럽게 전환.
+        float                                               m_currentSpeed = 0.0f;
+
+        // 점프 Y 는 Application::Tick 에서 *Animator state time 의 포물선 함수* 로 매 frame
+        // 평가 (Mixamo Without-Skin 자산이 Hips Y translation 없는 한계 우회). 자체 timer 멤버
+        // 불필요 — Animator state 가 진실의 단일 출처.
 
         // 타이틀바 디버그 정보 갱신 throttle — 매 프레임 SetWindowTextW 호출 시 CPU 비용 + 깜빡임 우려.
         float                                               m_titleUpdateAccum = 0.0f;

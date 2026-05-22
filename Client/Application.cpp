@@ -430,17 +430,23 @@ namespace client
             m_sceneRuntime->SetActiveClip(clipChange);
         }
 
-        // AnimatorRuntime parameter 입력 (Phase 5-M1 데모 매핑):
-        //   1       → Speed = 0.3 (Walk 강제 — Walk transition 임계값 0.1 초과)
-        //   안 누름  → Speed = 0.0 (Idle)
+        // AnimatorRuntime parameter 입력 (5-M2 Blend Tree 매핑):
+        //   1       → target Speed = 0.3 (Idle+Walk blend)
+        //   안 누름  → target Speed = 0.0 (Idle)
         //   Space (down edge) → Jump trigger
         // W 는 FreeCamera 의 카메라 이동 키로만 사용 — animator 측은 무영향.
-        // controller 의 transitions 가 Speed/Jump 평가 → state 전환.
+        //
+        // Blend Tree 에서 Speed 즉시 변경은 paramVal 점프 → 클립 hard cut.
+        // m_currentSpeed 를 target 으로 *지수 보간* 으로 부드럽게 전환.
         if (m_sceneRuntime->HasAnimatorRuntime())
         {
             const auto& input = m_window->GetInput();
-            const float speed = input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f : 0.0f;
-            m_sceneRuntime->SetAnimatorFloat("Speed", speed);
+            const float target = input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f : 0.0f;
+            // smoothing rate 8/s — 0.125 s 시상수. 키 누름/뗌 ≈ 0.25 s 안에 완전 도달.
+            const float smoothingRate = 8.0f;
+            const float alpha = std::min(1.0f, dt * smoothingRate);
+            m_currentSpeed += (target - m_currentSpeed) * alpha;
+            m_sceneRuntime->SetAnimatorFloat("Speed", m_currentSpeed);
 
             const bool curJump = input.IsKeyDown(static_cast<std::uint32_t>(VK_SPACE));
             if (curJump && !m_prevJumpDown)
@@ -448,6 +454,9 @@ namespace client
                 m_sceneRuntime->SetAnimatorTrigger("Jump");
             }
             m_prevJumpDown = curJump;
+
+            // 코드 측 점프 Y 변환은 비활성 — Animator 클립 자체의 본 회전 동작만으로
+            // 시각화 검증 중. 새 Jump.fbx 자산이 회전만으로 충분한 점프 표현이 되는지 확인.
         }
 
         // 카메라 + Scene tick + 렌더.
