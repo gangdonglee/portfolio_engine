@@ -168,28 +168,36 @@ namespace client
 
                 // 모든 state.motionClipPath 사전 로드 + clipMap 구축.
                 engine::anim::AnimatorRuntime::ClipMap clipMap;
-                for (const auto& state : controller->states)
+                // 단일 clip + blend tree entry 의 모든 motionClipPath 를 한 곳으로 묶어 로드.
+                auto loadClipIntoMap = [&](const std::string& path)
                 {
-                    if (state.motionClipPath.empty()) { continue; }
-                    if (m_controllerClipCache.contains(state.motionClipPath))
+                    if (path.empty()) { return; }
+                    if (m_controllerClipCache.contains(path))
                     {
-                        const auto& cached = m_controllerClipCache.at(state.motionClipPath);
+                        const auto& cached = m_controllerClipCache.at(path);
                         if (!cached.empty())
                         {
-                            clipMap.emplace(state.motionClipPath, cached[0].get());
+                            clipMap.emplace(path, cached[0].get());
                         }
-                        continue;
+                        return;
                     }
-                    const std::wstring clipWpath =
-                        std::filesystem::absolute(state.motionClipPath).wstring();
+                    const std::wstring clipWpath = std::filesystem::absolute(path).wstring();
                     engine::render::fbx_loader::LoadedFbxAnimation loaded =
                         engine::render::fbx_loader::LoadFbxAnimationOnly(
                             clipWpath.c_str(), *asset.skeleton);
                     if (!loaded.clips.empty())
                     {
-                        clipMap.emplace(state.motionClipPath, loaded.clips[0].get());
+                        clipMap.emplace(path, loaded.clips[0].get());
                     }
-                    m_controllerClipCache.emplace(state.motionClipPath, std::move(loaded.clips));
+                    m_controllerClipCache.emplace(path, std::move(loaded.clips));
+                };
+                for (const auto& state : controller->states)
+                {
+                    loadClipIntoMap(state.motionClipPath);
+                    for (const auto& entry : state.blendTree)
+                    {
+                        loadClipIntoMap(entry.motionClipPath);
+                    }
                 }
 
                 m_loadedController = std::move(controller);
@@ -307,6 +315,36 @@ namespace client
     bool SceneRuntime::HasAnimatorRuntime() const noexcept
     {
         return m_animatorRuntime != nullptr;
+    }
+
+    engine::scene::Transform* SceneRuntime::AnimatorInstanceTransform() noexcept
+    {
+        for (auto& inst : m_scene.meshes)
+        {
+            if (!inst.animatorControllerPath.empty())
+            {
+                return &inst.transform;
+            }
+        }
+        return nullptr;
+    }
+
+    float SceneRuntime::AnimatorStateDuration(std::string_view stateName) const noexcept
+    {
+        if (!m_animatorRuntime) { return 0.0f; }
+        return static_cast<float>(m_animatorRuntime->StateDuration(stateName));
+    }
+
+    std::string SceneRuntime::AnimatorCurrentStateName() const
+    {
+        if (!m_animatorRuntime) { return {}; }
+        return m_animatorRuntime->CurrentStateName();
+    }
+
+    float SceneRuntime::AnimatorCurrentStateTime() const noexcept
+    {
+        if (!m_animatorRuntime) { return 0.0f; }
+        return static_cast<float>(m_animatorRuntime->CurrentStateTime());
     }
 
     void SceneRuntime::SetAnimatorFloat(std::string_view name, float value)

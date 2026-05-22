@@ -85,6 +85,18 @@ namespace client
         // 카메라 초기 위치/대상 (Scene 의 CameraStart). Application 이 첫 Camera 구성에 사용.
         const engine::scene::CameraStart& InitialCameraStart() const noexcept { return m_scene.cameraStart; }
 
+        // 게임 코드 측에서 점프 등 *임시 위치 오버라이드* 를 위해 mesh 인스턴스의 transform 에
+        // write 권한 부여. Animator 활성 인스턴스 (= 첫 animatorControllerPath 인스턴스) 의
+        // transform 을 반환 — 없으면 nullptr.
+        engine::scene::Transform* AnimatorInstanceTransform() noexcept;
+
+        // Animator 의 state 대표 duration (점프 물리 동기화 등). state 없거나 매핑 실패 → 0.
+        float AnimatorStateDuration(std::string_view stateName) const noexcept;
+
+        // 현재 Animator state 이름 / 현재 state 진행 시간 (sec).
+        std::string AnimatorCurrentStateName() const;
+        float       AnimatorCurrentStateTime() const noexcept;
+
         // AnimatorRuntime passthrough — Application 이 키 입력에 응답해 호출.
         // AnimatorRuntime 가 활성이 아니면 silent no-op.
         bool HasAnimatorRuntime() const noexcept;

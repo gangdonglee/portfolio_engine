@@ -15,6 +15,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace engine::render
 {
@@ -45,6 +46,27 @@ namespace engine::render
                 { { 0.0f, 0.0f, 0.0f }, { 0.3f, 0.5f, 1.0f } },   // Z 시작
                 { { 0.0f, 0.0f,  len }, { 0.3f, 0.5f, 1.0f } },   // Z 끝
             }};
+        }
+
+        // XZ 평면 (Y=0) 격자 — ±halfExtent 범위, step 간격. 회색 톤.
+        //   X 평행 라인 ((-h, 0, z) → (+h, 0, z)) + Z 평행 라인 ((x, 0, -h) → (x, 0, +h)).
+        std::vector<DebugVertex> BuildGrid(float halfExtent, float step)
+        {
+            std::vector<DebugVertex> verts;
+            const DirectX::XMFLOAT3 color{ 0.40f, 0.40f, 0.45f };
+            // Z 방향 평행 라인 (각 x 위치).
+            for (float x = -halfExtent; x <= halfExtent + 0.001f; x += step)
+            {
+                verts.push_back({ { x, 0.0f, -halfExtent }, color });
+                verts.push_back({ { x, 0.0f,  halfExtent }, color });
+            }
+            // X 방향 평행 라인 (각 z 위치).
+            for (float z = -halfExtent; z <= halfExtent + 0.001f; z += step)
+            {
+                verts.push_back({ { -halfExtent, 0.0f, z }, color });
+                verts.push_back({ {  halfExtent, 0.0f, z }, color });
+            }
+            return verts;
         }
     }
 
@@ -154,13 +176,22 @@ namespace engine::render
             static_cast<std::uint32_t>(sizeof(DebugVertex)));
         m_currentAxisLength = kInitialLen;
 
+        // Grid VB — ±500, step 50 (X-Bot 키 ~180 의 ~3배 범위 + 적당한 밀도).
+        const auto gridVerts = BuildGrid(500.0f, 50.0f);
+        m_gridVB = std::make_unique<VertexBuffer>(
+            device,
+            gridVerts.data(),
+            static_cast<std::uint32_t>(gridVerts.size() * sizeof(DebugVertex)),
+            static_cast<std::uint32_t>(sizeof(DebugVertex)));
+        m_gridVertexCount = static_cast<engine::uint32>(gridVerts.size());
+
         for (engine::uint32 f = 0; f < kFrameCount; ++f)
         {
             m_cbs[f] = std::make_unique<ConstantBuffer>(
                 device, static_cast<engine::uint32>(sizeof(DirectX::XMFLOAT4X4)));
         }
 
-        engine::core::LogInfo(L"[debug] DebugRenderer ready (axes LineList, depth-off)\n");
+        engine::core::LogInfo(L"[debug] DebugRenderer ready (axes + grid LineList, depth-off)\n");
     }
 
     DebugRenderer::~DebugRenderer() = default;
@@ -196,5 +227,28 @@ namespace engine::render
         list->SetGraphicsRootConstantBufferView(0, m_cbs[frameIndex]->GpuAddress());
 
         list->DrawInstanced(6, 1, 0, 0);   // 6 정점 = 3 라인
+    }
+
+    void DebugRenderer::DrawGrid(ID3D12GraphicsCommandList*       list,
+                                 engine::uint32                   frameIndex,
+                                 const DirectX::XMMATRIX&         viewProj)
+    {
+        if (list == nullptr || frameIndex >= kFrameCount) { return; }
+        if (m_gridVertexCount == 0) { return; }
+
+        // CB 업데이트 — DrawAxes 와 동일 cb 슬롯 사용. DrawAxes 가 이미 같은 viewProj 로 갱신했어도
+        // 멱등 (재기록만 한 번 더 — 비용 미미).
+        DirectX::XMFLOAT4X4 vpStored;
+        DirectX::XMStoreFloat4x4(&vpStored, viewProj);
+        m_cbs[frameIndex]->Update(&vpStored, static_cast<engine::uint32>(sizeof(vpStored)));
+
+        list->SetGraphicsRootSignature(m_rootSig.Get());
+        list->SetPipelineState(m_pso.Get());
+        list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+
+        m_gridVB->Bind(list, 0);
+        list->SetGraphicsRootConstantBufferView(0, m_cbs[frameIndex]->GpuAddress());
+
+        list->DrawInstanced(m_gridVertexCount, 1, 0, 0);
     }
 }

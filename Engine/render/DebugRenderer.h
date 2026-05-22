@@ -59,12 +59,20 @@ namespace engine::render
                       const DirectX::XMMATRIX&         viewProj,
                       float                            axisLength = 100.0f);
 
+        // XZ 평면 (Y=0) 의 격자 라인. Jump 등 Y 변동 모션의 *바닥 참조* 용.
+        //   ctor 에서 만든 사전 grid VB 를 사용. viewProj 만 매 프레임 갱신.
+        void DrawGrid(ID3D12GraphicsCommandList*       list,
+                      engine::uint32                   frameIndex,
+                      const DirectX::XMMATRIX&         viewProj);
+
     private:
         static constexpr engine::uint32 kFrameCount = engine::render::SwapChain::kBackBufferCount;
 
         Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSig;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pso;
         std::unique_ptr<VertexBuffer>               m_axesVB;
+        std::unique_ptr<VertexBuffer>               m_gridVB;
+        engine::uint32                              m_gridVertexCount = 0;
         float                                       m_currentAxisLength = -1.0f;  // VB 재업로드 트리거
         std::array<std::unique_ptr<ConstantBuffer>, kFrameCount> m_cbs;
     };

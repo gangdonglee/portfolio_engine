@@ -118,10 +118,12 @@ namespace client
         // ⑤ SceneRuntime — 인스턴스 cb 갱신 + draw.
         sceneRuntime.RecordDraw(list, fi, m_fallbackAlbedo);
 
-        // ⑤b 디버그 라인 (원점 좌표축) — RTV/DSV 그대로 사용. PSO/RootSig 만 자체 교체.
-        //    depth-test OFF 이므로 X-Bot 메시 뒤에 있어도 가시.
+        // ⑤b 디버그 라인 (원점 좌표축 + 바닥 grid) — RTV/DSV 그대로 사용. PSO/RootSig 만 자체 교체.
+        //    depth-test OFF 이므로 X-Bot 메시 뒤에 있어도 가시. Grid 는 Jump 등 Y 변동 모션
+        //    의 *바닥 참조* 용.
         if (m_debugRenderer)
         {
+            m_debugRenderer->DrawGrid(list, fi, camera.ViewProjection());
             m_debugRenderer->DrawAxes(list, fi, camera.ViewProjection(), 100.0f);
         }
 
