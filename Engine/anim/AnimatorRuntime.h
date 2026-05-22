@@ -76,6 +76,14 @@ namespace engine::anim
         const std::vector<DirectX::XMFLOAT4X4>& Palette() const noexcept { return m_palette; }
         size_t                                  PaletteSize() const noexcept { return m_palette.size(); }
 
+        // *bone joint 의 mesh-local 위치* (currentBone × (0,0,0,1) 의 translation Y).
+        //   자동 floor 정렬 등 — bone palette 의 translation 과 다름 (mesh origin 변환과 혼동 X).
+        //   BuildPalette 내부에서 m_boneMeshLocalY 갱신.
+        float BoneMeshLocalY(size_t boneIdx) const noexcept
+        {
+            return (boneIdx < m_boneMeshLocalY.size()) ? m_boneMeshLocalY[boneIdx] : 0.0f;
+        }
+
     private:
         // parameter 이름 → m_paramValues 인덱스 (없으면 -1).
         engine::int32 FindParamIndex(std::string_view name) const noexcept;
@@ -109,6 +117,15 @@ namespace engine::anim
         // 현재 state 의 진행 시간 (sec). transition 중에는 *from state 의 시간*.
         double CurrentStateTime() const noexcept { return m_currentStateTime; }
 
+        // 디버그 — 시간 진행 일시정지 (Update 의 dt 누적 중단).
+        //   transition 도 진행 중단 → state 가 freeze.
+        bool IsPaused() const noexcept     { return m_paused; }
+        void SetPaused(bool paused) noexcept { m_paused = paused; }
+
+        // 디버그 — 현재 state 의 stateTime 직접 설정 (frame slider 용).
+        //   transition 중이 아니라고 가정 (slider 조작은 보통 paused 상태에서).
+        void SetCurrentStateTime(double t) noexcept { m_currentStateTime = t; }
+
     private:
         const AnimatorController&        m_controller;
         const engine::render::Skeleton&  m_skeleton;
@@ -127,5 +144,9 @@ namespace engine::anim
         float   m_crossfadeElapsed  = 0.0f;
 
         std::vector<DirectX::XMFLOAT4X4> m_palette;
+        // *currentBone 의 translation Y* per bone — 자동 floor 정렬용.
+        std::vector<float>               m_boneMeshLocalY;
+
+        bool    m_paused = false;
     };
 }

@@ -93,6 +93,7 @@ namespace engine::anim
         }
 
         m_palette.resize(skeleton.BoneCount());
+        m_boneMeshLocalY.assign(skeleton.BoneCount(), 0.0f);
         const XMFLOAT4X4 identity = []{
             XMFLOAT4X4 m;
             XMStoreFloat4x4(&m, XMMatrixIdentity());
@@ -259,6 +260,8 @@ namespace engine::anim
     void AnimatorRuntime::Update(float dt)
     {
         if (m_controller.states.empty() || m_palette.empty()) { return; }
+        // 디버그 일시정지 — 시간 진행만 멈추고 BuildPalette 는 그대로 (slider 조작 반영).
+        if (m_paused) { BuildPalette(); return; }
 
         // ① transitioning 진행
         if (m_transitioning)
@@ -405,6 +408,13 @@ namespace engine::anim
             const XMMATRIX offsetMat = XMLoadFloat4x4(&m_skeleton.Bones()[b].offsetMatrix);
             const XMMATRIX combined  = XMMatrixMultiply(boneGlobal, offsetMat);
             XMStoreFloat4x4(&m_palette[b], combined);
+
+            // currentBone (= boneGlobal) 의 translation Y — bone joint 의 mesh-local 위치.
+            //   XMMatrixMultiply 는 column-vector convention 으로 동작 — translation 은 m[1][3].
+            //   (XMMATRIX 자체 저장은 row-major 지만 의미는 col-vec convention; r[3] 의 y component).
+            XMFLOAT4X4 stored;
+            XMStoreFloat4x4(&stored, boneGlobal);
+            m_boneMeshLocalY[b] = stored.m[1][3];
         }
     }
 }

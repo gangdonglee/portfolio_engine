@@ -883,6 +883,46 @@ namespace engine::render::fbx_loader
             }
         }
 
+        // 진단 — *발 본 (LeftFoot)* 의 frame 별 GlobalT.y range 측정.
+        //   Jump 클립의 도움닫기 시 발이 hip 보다 얼마나 위로 올라가는지 → 코드 jumpY 의
+        //   kCrouchDepth 필요값 자동 추정. baseSkeleton 측 본 인덱스로 키프레임 의 m[3][1].
+        size_t footBoneIdx = baseSkeleton.BoneCount();
+        for (size_t i = 0; i < baseSkeleton.BoneCount(); ++i)
+        {
+            const std::wstring& n = baseSkeleton.Bones()[i].name;
+            if (n.find(L"LeftFoot") != std::wstring::npos || n.find(L"LeftToe") != std::wstring::npos)
+            {
+                footBoneIdx = i;
+                break;
+            }
+        }
+        if (footBoneIdx < baseSkeleton.BoneCount())
+        {
+            for (const auto& cm : clipMetas)
+            {
+                if (!cm.clip || cm.clip->bonesKeyFrames.size() <= footBoneIdx) { continue; }
+                const auto& fkfs = cm.clip->bonesKeyFrames[footBoneIdx];
+                if (fkfs.size() < 2) { continue; }
+                float fyMin = fkfs[0].transform.m[3][1];
+                float fyMax = fyMin;
+                size_t maxFrame = 0;
+                for (size_t i = 0; i < fkfs.size(); ++i)
+                {
+                    const float y = fkfs[i].transform.m[3][1];
+                    if (y < fyMin) { fyMin = y; }
+                    if (y > fyMax) { fyMax = y; maxFrame = i; }
+                }
+                wchar_t buf[300];
+                std::swprintf(buf, std::size(buf),
+                              L"[fbx]   '%ls' Foot[%zu] '%ls' Y range: min=%.2f max=%.2f span=%.2f (peak at frame %zu)\n",
+                              cm.clip->name.c_str(),
+                              footBoneIdx,
+                              baseSkeleton.Bones()[footBoneIdx].name.c_str(),
+                              fyMin, fyMax, fyMax - fyMin, maxFrame);
+                engine::core::LogInfo(buf);
+            }
+        }
+
         wchar_t logLine[300];
         std::swprintf(logLine, std::size(logLine),
                       L"[render] FBX animation-only loaded: clips=%zu, bones-matched=%zu/%zu (path: %ls) [root-motion locked]\n",
