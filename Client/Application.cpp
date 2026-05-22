@@ -97,14 +97,13 @@ namespace client
         m_srvHeap     = std::make_unique<engine::render::SrvDescriptorHeap>(*m_device, 64);
         m_bootCmdList = std::make_unique<engine::render::CommandList>(*m_device);
 
-        // Fallback albedo — Resources/Texture/Leather.jpg.
-        const std::wstring texDir  = engine::render::fbx_loader::DefaultFbxDir() + L"..\\Texture\\";
-        const std::wstring texPath = texDir + L"Leather.jpg";
-        const engine::render::ImageData img =
-            engine::render::image_loader::LoadImage(texPath.c_str());
+        // Fallback albedo — neutral gray 1×1 (Mesh.cpp 가 텍스처 없는 SubMesh 에 입힘).
+        //   과거에는 Leather.jpg 였는데 Mixamo without-skin X-Bot 같이 *body texture 없는*
+        //   자산에 갈색 가죽 무늬가 어색하게 입혀졌다. plain gray 면 색상만 변경되어 자연스러움.
+        const std::uint8_t grayRgba[4] = { 200, 200, 200, 255 };
         m_fallbackAlbedo = std::make_unique<engine::render::Texture>(
             *m_device, *m_queue, *m_bootCmdList,
-            img.pixels.data(), img.width, img.height);
+            grayRgba, 1, 1);
         m_fallbackAlbedo->CreateSrv(*m_device, *m_srvHeap);
     }
 
@@ -432,19 +431,15 @@ namespace client
         }
 
         // AnimatorRuntime parameter 입력 (Phase 5-M1 데모 매핑):
-        //   W       → Speed = 0.6 (Walk)
-        //   Shift+W → Speed = 1.0 (Run)
+        //   1       → Speed = 0.3 (Walk 강제 — Walk transition 임계값 0.1 초과)
         //   안 누름  → Speed = 0.0 (Idle)
         //   Space (down edge) → Jump trigger
+        // W 는 FreeCamera 의 카메라 이동 키로만 사용 — animator 측은 무영향.
         // controller 의 transitions 가 Speed/Jump 평가 → state 전환.
         if (m_sceneRuntime->HasAnimatorRuntime())
         {
             const auto& input = m_window->GetInput();
-            float speed = 0.0f;
-            if (input.IsKeyDown(static_cast<std::uint32_t>('W')))
-            {
-                speed = input.IsKeyDown(static_cast<std::uint32_t>(VK_SHIFT)) ? 1.0f : 0.6f;
-            }
+            const float speed = input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f : 0.0f;
             m_sceneRuntime->SetAnimatorFloat("Speed", speed);
 
             const bool curJump = input.IsKeyDown(static_cast<std::uint32_t>(VK_SPACE));
