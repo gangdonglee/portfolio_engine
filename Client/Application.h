@@ -126,14 +126,13 @@ namespace client
         //   m_currentSpeed 를 target 으로 *시간 보간* 해 부드럽게 전환.
         float                                               m_currentSpeed = 0.0f;
 
-        // 점프 Y — *자동 floor 정렬* + 활공 phase 의 *추가 점프*.
-        //   매 frame 발 본 mesh-local Y 측정 → bind pose 기준 위로 올라간 만큼 몸 내림
-        //   (도움닫기 다리 굽힘으로 발이 떠 보이는 현상 자동 해소).
-        //   활공 phase (24~42 frame) 만 +parabola 추가 → 캐릭터가 실제 점프.
-        float                                               m_jumpPeakHeight   = 50.0f;
-        float                                               m_footBindY        = 0.0f;
-        bool                                                m_footBindCaptured = false;
-        float                                               m_bindCaptureTimer = 0.0f;   // 부팅 후 1초 후 캡처
+        // 점프 Y 코드 측 보정은 *전면 제거*. devlog 33/35/36 의 시도들 (footY 자동 정렬,
+        // 시간 기반 명시적 곡선) 은 *FbxLoader 의 측정 식 버그* (translation 이 m[3][0..2]
+        // 가 아닌 m[0..2][3] 에 있던 것) 때문에 *자산에 데이터가 없다* 는 잘못된 진단 위에
+        // 쌓인 우회였다. 실제 자산의 Hips translation 은 살아있고, skin matrix 적용 시 부호
+        // 반전 (current Y → skin Y 반대 방향) 이 발견됨. 좌표계 변환 (Y/Z swap + matReflect)
+        // 의 LoadFbx ↔ LoadFbxAnimationOnly 정합 불일치 의심. 다음 세션에서 좌표계 통일.
+        // 추적 기록은 devlog 37.
 
         // 타이틀바 디버그 정보 갱신 throttle — 매 프레임 SetWindowTextW 호출 시 CPU 비용 + 깜빡임 우려.
         float                                               m_titleUpdateAccum = 0.0f;

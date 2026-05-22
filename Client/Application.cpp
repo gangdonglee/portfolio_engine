@@ -213,31 +213,9 @@ namespace client
         ImGui::Text("(Space=Jump, 1=Walk)");
 
         ImGui::Separator();
-        ImGui::Text("Auto floor align + 활공 시 점프 추가");
-        ImGui::SliderFloat("Jump Peak", &m_jumpPeakHeight, 0.0f, 200.0f, "%.0f");
-
         const auto* xform = m_sceneRuntime->AnimatorInstanceTransform();
-        const float jumpY = xform ? xform->position.y : 0.0f;
-        const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"mixamorig:LeftFoot");
-        ImGui::Text("inst.transform.y = %.2f  (footY=%.2f, bindY=%.2f)",
-                    jumpY, footY, m_footBindY);
-
-        // 활공 구간 시각 표시.
-        if (duration > 0.05f)
-        {
-            constexpr float kTakeoff = 24.0f / 78.0f;
-            constexpr float kLanding = 42.0f / 78.0f;
-            ImGui::Text("flight phase: [%.1f%% (frame %d), %.1f%% (frame %d)]",
-                        kTakeoff * 100.0f, 24,
-                        kLanding * 100.0f, 42);
-            const float pct = stateTime / duration;
-            const char* phase = "?";
-            if (state != "Jump") { phase = "(not Jump)"; }
-            else if (pct < kTakeoff) { phase = "0~takeoff (도움닫기)"; }
-            else if (pct < kLanding) { phase = "takeoff~landing (활공)"; }
-            else                    { phase = "landing~exit (recovery)"; }
-            ImGui::Text("phase: %s", phase);
-        }
+        ImGui::Text("inst.transform.y = %.2f (코드 측 점프 보정 없음)",
+                    xform ? xform->position.y : 0.0f);
 
         ImGui::End();
     }
@@ -624,61 +602,9 @@ namespace client
             }
             m_prevJumpDown = curJump;
 
-            // 점프 Y — Animator Jump state time 의 phase 별 곡선.
-            //   Mixamo Jump 클립 78 프레임 구조:
-            //     0  ~ 24  : 도움닫기 (다리 굽힘) — 몸 *내려감* (-crouchDepth)
-            //                  Hips Y translation=0 자산이라 다리만 올라가 발이 떠 보이는 효과 보정
-            //     24       : 점프 (땅 떠남, 활공 시작) — jumpY=0
-            //     24 ~ 42  : 활공 (공중) — 포물선, peak at 33 프레임
-            //     42       : 착지 (발 floor) — jumpY=0 + Locomotion 으로 hard cut
-            //   AnimatorController 의 exitTime=0.538 (=42/78) 과 정확히 동기화.
-            // bindY 캡처 timer — 부팅 후 1초 지난 *Idle 안정화 footY* 캡처 (BuildPalette
-            // 첫 호출 전 footY=0 잘못 캡처 방지).
-            m_bindCaptureTimer += dt;
-            // 자동 floor 정렬 — 매 frame 발 본 (LeftFoot) 의 mesh-local Y 측정.
-            //   bind pose 보다 발이 위로 올라가면 (도움닫기 다리 굽힘 등) 그만큼 몸을 내림.
-            //   Mixamo 자산이 bone-Y translation=0 인 한계를 *bone palette translation 추출*
-            //   로 우회. Mixamo preview 의 *발-floor 자동 정렬* 과 같은 효과.
-            //
-            //   bind pose 의 발 mesh-local Y 를 초기화 시 1회 캐시 (m_footBindY).
-            //   매 frame footY 측정 → floorAlign = -(footY - m_footBindY)  ← 발 올라간 만큼 몸 내림
-            //   활공 phase 만 *추가* jumpY = +peak·4t(1-t) 더해서 점프 표현.
-            constexpr float kTakeoffNorm    = 24.0f / 78.0f;
-            constexpr float kLandingNorm    = 42.0f / 78.0f;
-
-            const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"mixamorig:LeftFoot");
-            // bindY 캡처 — 부팅 후 1초 이상 지난 *Idle 안정화 footY* 캡처. 부팅 직후 첫 frame
-            // 은 AnimatorRuntime 의 BuildPalette 전이라 footY=0 으로 잘못 캡처됨.
-            if (!m_footBindCaptured && m_bindCaptureTimer >= 1.0f)
-            {
-                m_footBindY        = footY;
-                m_footBindCaptured = true;
-            }
-            // 부호 — 발 본의 mesh-local Y 는 *위로 올라가면 *감소** (좌표계 특성).
-            //   footY 감소 (발 올라감) → jumpY 음수 (몸 내림) ← 자동 floor align.
-            //   부팅 초기 (bindCaptured 전) 는 jumpY=0 유지.
-            float jumpY = m_footBindCaptured ? (footY - m_footBindY) : 0.0f;
-
-            if (m_sceneRuntime->AnimatorCurrentStateName() == "Jump")
-            {
-                const float duration = m_sceneRuntime->AnimatorStateDuration("Jump");
-                if (duration > 0.05f)
-                {
-                    const float stateTime = m_sceneRuntime->AnimatorCurrentStateTime();
-                    const float takeoffT  = duration * kTakeoffNorm;
-                    const float landingT  = duration * kLandingNorm;
-                    if (stateTime > takeoffT && stateTime < landingT)
-                    {
-                        // 활공: 자동 floor align 위에 *추가* +peak·4t(1-t).
-                        const float t = (stateTime - takeoffT) / (landingT - takeoffT);
-                        jumpY += m_jumpPeakHeight * 4.0f * t * (1.0f - t);
-                    }
-                }
-            }
-            if (auto* xform = m_sceneRuntime->AnimatorInstanceTransform())
-            {
-                xform->position.y = jumpY;
-            }
+            // 점프 Y 코드 측 보정 *전면 제거*. 자산의 Hips translation track 이 살아있다는
+            // 것이 검증됨 (devlog 37) — root motion 통합이 진짜 해법. Animator/셰이더로
+            // bone palette 가 그대로 흐르도록 두고, 코드는 xform.position.y 를 건드리지 않는다.
         }
 
         // 카메라 + Scene tick + 렌더.

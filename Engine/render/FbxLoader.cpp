@@ -853,12 +853,7 @@ namespace engine::render::fbx_loader
             }
         }
 
-        // Root motion 제거 (안전망) — root bone (Mixamo Hips) 의 *XZ translation 만* 첫 frame
-        // 으로 고정. Y 는 유지 → 점프의 Hips Y 상하 변동 + Walking 의 자연스러운 Y bob 살아남음.
-        // rotation 도 유지 → 골반 swing 자연.
-        //   - In Place 자산: translation 자체가 0 이라 무영향.
-        //   - 일반 자산 (XZ root motion 있음): 수평 진행만 제거. 점프는 정상.
-        //   - "Hips" 부분 문자열 매칭 (mixamorig:Hips 등 prefix 흡수). 매칭 실패 시 boneIdx=0.
+        // Hips bone 검색 — "Hips" 부분 문자열 매칭 (mixamorig:Hips 등 prefix 흡수).
         size_t rootBoneIdx = 0;
         for (size_t i = 0; i < baseSkeleton.BoneCount(); ++i)
         {
@@ -868,6 +863,48 @@ namespace engine::render::fbx_loader
                 break;
             }
         }
+
+        // 진단 — *XZ lock 안전망 적용 전* Hips bone 의 원본 X/Y/Z translation range.
+        //   ⚠ 위치 보정: ConvertMatrix 가 *불필요 transpose* 를 해서 translation 이
+        //   *마지막 열* (m[0/1/2][3]) 에 들어있다. m[3][0..2] 가 아님 (FbxLoader.cpp:44 주석은
+        //   col-major 가정인데 실제 4x4 dump 검증 결과 row-major 였음 — devlog 36 추적 참조).
+        //   여기서는 진단을 위해 col 3 위치에서 읽는다.
+        for (const auto& cm : clipMetas)
+        {
+            if (!cm.clip || cm.clip->bonesKeyFrames.size() <= rootBoneIdx) { continue; }
+            const auto& kfs = cm.clip->bonesKeyFrames[rootBoneIdx];
+            if (kfs.size() < 2) { continue; }
+            float xMin = kfs[0].transform.m[0][3], xMax = xMin;
+            float yMin = kfs[0].transform.m[1][3], yMax = yMin;
+            float zMin = kfs[0].transform.m[2][3], zMax = zMin;
+            size_t yPeakFrame = 0;
+            for (size_t i = 0; i < kfs.size(); ++i)
+            {
+                const float x = kfs[i].transform.m[0][3];
+                const float y = kfs[i].transform.m[1][3];
+                const float z = kfs[i].transform.m[2][3];
+                if (x < xMin) xMin = x;  if (x > xMax) xMax = x;
+                if (y < yMin) yMin = y;  if (y > yMax) { yMax = y; yPeakFrame = i; }
+                if (z < zMin) zMin = z;  if (z > zMax) zMax = z;
+            }
+            wchar_t buf[400];
+            std::swprintf(buf, std::size(buf),
+                          L"[fbx]   '%ls' Hips[%zu] '%ls' RAW translation range (pre-lock):\n"
+                          L"          X span=%.2f (%.2f..%.2f)  Y span=%.2f (%.2f..%.2f, peak @ frame %zu)  Z span=%.2f (%.2f..%.2f)\n",
+                          cm.clip->name.c_str(),
+                          rootBoneIdx,
+                          baseSkeleton.Bones()[rootBoneIdx].name.c_str(),
+                          xMax - xMin, xMin, xMax,
+                          yMax - yMin, yMin, yMax, yPeakFrame,
+                          zMax - zMin, zMin, zMax);
+            engine::core::LogInfo(buf);
+        }
+
+        // Root motion 제거 (안전망) — root bone (Mixamo Hips) 의 *XZ translation 만* 첫 frame
+        // 으로 고정. Y 는 유지 → 점프의 Hips Y 상하 변동 + Walking 의 자연스러운 Y bob 살아남음.
+        // rotation 도 유지 → 골반 swing 자연.
+        //   - In Place 자산: translation 자체가 0 이라 무영향.
+        //   - 일반 자산 (XZ root motion 있음): 수평 진행만 제거. 점프는 정상.
         for (auto& cm : clipMetas)
         {
             if (!cm.clip || cm.clip->bonesKeyFrames.size() <= rootBoneIdx) { continue; }
@@ -903,14 +940,15 @@ namespace engine::render::fbx_loader
                 if (!cm.clip || cm.clip->bonesKeyFrames.size() <= footBoneIdx) { continue; }
                 const auto& fkfs = cm.clip->bonesKeyFrames[footBoneIdx];
                 if (fkfs.size() < 2) { continue; }
-                float fyMin = fkfs[0].transform.m[3][1];
-                float fyMax = fyMin;
+                // ⚠ translation 위치 — ConvertMatrix 의 transpose 로 m[0/1/2][3] 에 저장됨
+                // (FbxLoader.cpp:44 주석은 col-major 가정이지만 검증 결과 row-major. devlog 37).
+                float yMin = fkfs[0].transform.m[1][3], yMax = yMin;
                 size_t maxFrame = 0;
                 for (size_t i = 0; i < fkfs.size(); ++i)
                 {
-                    const float y = fkfs[i].transform.m[3][1];
-                    if (y < fyMin) { fyMin = y; }
-                    if (y > fyMax) { fyMax = y; maxFrame = i; }
+                    const float y = fkfs[i].transform.m[1][3];
+                    if (y < yMin) { yMin = y; }
+                    if (y > yMax) { yMax = y; maxFrame = i; }
                 }
                 wchar_t buf[300];
                 std::swprintf(buf, std::size(buf),
@@ -918,7 +956,7 @@ namespace engine::render::fbx_loader
                               cm.clip->name.c_str(),
                               footBoneIdx,
                               baseSkeleton.Bones()[footBoneIdx].name.c_str(),
-                              fyMin, fyMax, fyMax - fyMin, maxFrame);
+                              yMin, yMax, yMax - yMin, maxFrame);
                 engine::core::LogInfo(buf);
             }
         }
