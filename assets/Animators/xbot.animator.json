@@ -4,7 +4,7 @@
   "states": [
     {
       "name": "Idle",
-      "motionClipPath": "Resources/FBX/Breathing Idle.fbx",
+      "motionClipPath": "Resources/FBX/Idle.fbx",
       "loop": true,
       "speed": 1.0
     },
