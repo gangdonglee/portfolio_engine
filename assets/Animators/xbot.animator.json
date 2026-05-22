@@ -38,9 +38,9 @@
     {
       "fromStateName": "Jump",
       "toStateName":   "Locomotion",
-      "crossfadeDuration": 0.2,
+      "crossfadeDuration": 0.0,
       "hasExitTime": true,
-      "exitTime": 0.4,
+      "exitTime": 0.538,
       "conditions": []
     }
   ]
