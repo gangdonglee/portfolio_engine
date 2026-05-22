@@ -76,9 +76,14 @@ namespace client
         void LoadSceneAndRuntime();        // Scene JSON + SceneRuntime + 카메라 초기화
         void InitRendererAndInput();       // FrameRenderer + InputController
         void ScanSceneSlots();             // assets/Scenes/*.scene.json 스캔 → F1..F9 매핑
+        void InitImGui();                  // ImGui Win32 + DX12 backend
+        void ShutdownImGui();              // dtor 에서
 
         // 매 프레임 호출 — Run() 안에서.
         void Tick(float dt);
+
+        // ImGui 패널 — Animator 디버그 (state, frame slider, Play/Pause).
+        void DrawAnimatorPanel();
 
         // ----- 자원 (부트 순서대로 ctor 에서 초기화) -----
         std::unique_ptr<engine::platform::Window>           m_window;
@@ -121,12 +126,23 @@ namespace client
         //   m_currentSpeed 를 target 으로 *시간 보간* 해 부드럽게 전환.
         float                                               m_currentSpeed = 0.0f;
 
-        // 점프 Y 는 Application::Tick 에서 *Animator state time 의 포물선 함수* 로 매 frame
-        // 평가 (Mixamo Without-Skin 자산이 Hips Y translation 없는 한계 우회). 자체 timer 멤버
-        // 불필요 — Animator state 가 진실의 단일 출처.
+        // 점프 Y — *자동 floor 정렬* + 활공 phase 의 *추가 점프*.
+        //   매 frame 발 본 mesh-local Y 측정 → bind pose 기준 위로 올라간 만큼 몸 내림
+        //   (도움닫기 다리 굽힘으로 발이 떠 보이는 현상 자동 해소).
+        //   활공 phase (24~42 frame) 만 +parabola 추가 → 캐릭터가 실제 점프.
+        float                                               m_jumpPeakHeight   = 50.0f;
+        float                                               m_footBindY        = 0.0f;
+        bool                                                m_footBindCaptured = false;
+        float                                               m_bindCaptureTimer = 0.0f;   // 부팅 후 1초 후 캡처
 
         // 타이틀바 디버그 정보 갱신 throttle — 매 프레임 SetWindowTextW 호출 시 CPU 비용 + 깜빡임 우려.
         float                                               m_titleUpdateAccum = 0.0f;
+
+        // ImGui 통합.
+        // ImGuiSrvAllocator 는 Application.cpp 의 anonymous namespace 정의 — unique_ptr<void>
+        // 으로 forward-decl 회피. 실제 타입은 cpp 내부에서만 사용.
+        void* m_imguiSrvAllocator   = nullptr;   // 실제는 ImGuiSrvAllocator*
+        bool  m_imguiInitialized    = false;
 
         // ctor 인자.
         int          m_widthPx;

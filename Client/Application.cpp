@@ -24,11 +24,19 @@
 #include "scene/Scene.h"
 #include "scene/SceneSerializer.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_win32.h"
+#include "backends/imgui_impl_dx12.h"
+
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <stdexcept>
+
+// ImGui 의 Win32 backend WndProc 핸들러 — Window 의 hook 으로 등록.
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace client
 {
@@ -36,6 +44,29 @@ namespace client
     {
         constexpr float kNearPlane = 1.0f;
         constexpr float kFarPlane  = 5000.0f;
+
+        // ImGui SRV bump-allocator — Editor 의 동일 패턴. srvHeap 은 외부 소유 (비소유 참조).
+        class ImGuiSrvAllocator final
+        {
+        public:
+            explicit ImGuiSrvAllocator(engine::render::SrvDescriptorHeap& heap) : m_heap(heap) {}
+            ImGuiSrvAllocator(const ImGuiSrvAllocator&)            = delete;
+            ImGuiSrvAllocator& operator=(const ImGuiSrvAllocator&) = delete;
+
+            static void Alloc(ImGui_ImplDX12_InitInfo* info,
+                              D3D12_CPU_DESCRIPTOR_HANDLE* outCpu,
+                              D3D12_GPU_DESCRIPTOR_HANDLE* outGpu)
+            {
+                auto* self = static_cast<ImGuiSrvAllocator*>(info->UserData);
+                const auto h = self->m_heap.Allocate();
+                *outCpu = h.cpu;
+                *outGpu = h.gpu;
+            }
+            static void Free(ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE) {}
+
+        private:
+            engine::render::SrvDescriptorHeap& m_heap;
+        };
 
         engine::scene::Scene BuildDefaultScene()
         {
@@ -69,6 +100,7 @@ namespace client
         InitGraphicsPipeline();
         LoadSceneAndRuntime();
         InitRendererAndInput();
+        InitImGui();
     }
 
     Application::~Application()
@@ -79,6 +111,135 @@ namespace client
         {
             m_queue->FlushGpu();
         }
+        ShutdownImGui();
+    }
+
+    void Application::InitImGui()
+    {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        ImGui::StyleColorsDark();
+
+        if (!ImGui_ImplWin32_Init(m_window->NativeHwnd()))
+        {
+            throw std::runtime_error("ImGui_ImplWin32_Init failed");
+        }
+
+        auto* alloc = new ImGuiSrvAllocator(*m_srvHeap);
+        m_imguiSrvAllocator = alloc;
+
+        ImGui_ImplDX12_InitInfo dxInit{};
+        dxInit.Device               = m_device->Native();
+        dxInit.CommandQueue         = m_queue->Native();
+        dxInit.NumFramesInFlight    = static_cast<int>(engine::render::SwapChain::kBackBufferCount);
+        dxInit.RTVFormat            = DXGI_FORMAT_R8G8B8A8_UNORM;
+        dxInit.DSVFormat            = DXGI_FORMAT_UNKNOWN;
+        dxInit.SrvDescriptorHeap    = m_srvHeap->Native();
+        dxInit.SrvDescriptorAllocFn = &ImGuiSrvAllocator::Alloc;
+        dxInit.SrvDescriptorFreeFn  = &ImGuiSrvAllocator::Free;
+        dxInit.UserData             = alloc;
+        if (!ImGui_ImplDX12_Init(&dxInit))
+        {
+            throw std::runtime_error("ImGui_ImplDX12_Init failed");
+        }
+
+        m_window->SetWndProcHook(
+            [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT
+            {
+                return ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam);
+            });
+
+        m_imguiInitialized = true;
+        engine::core::LogInfo(L"[imgui] ImGui Win32 + DX12 backend initialized\n");
+    }
+
+    void Application::ShutdownImGui()
+    {
+        if (!m_imguiInitialized) { return; }
+        ImGui_ImplDX12_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        delete static_cast<ImGuiSrvAllocator*>(m_imguiSrvAllocator);
+        m_imguiSrvAllocator = nullptr;
+        m_imguiInitialized = false;
+    }
+
+    void Application::DrawAnimatorPanel()
+    {
+        if (!m_sceneRuntime || !m_sceneRuntime->HasAnimatorRuntime()) { return; }
+
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(420, 260), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Animator Debug");
+
+        const std::string state = m_sceneRuntime->AnimatorCurrentStateName();
+        const float duration    = m_sceneRuntime->AnimatorStateDuration(state);
+        const float stateTime   = m_sceneRuntime->AnimatorCurrentStateTime();
+
+        ImGui::Text("State: %s", state.empty() ? "(none)" : state.c_str());
+        ImGui::Text("stateTime: %.3f s / duration: %.3f s", stateTime, duration);
+
+        if (duration > 0.05f)
+        {
+            constexpr float kFps = 30.0f;
+            const int curFrame   = static_cast<int>(stateTime * kFps + 0.5f);
+            const int totalFrame = static_cast<int>(duration  * kFps + 0.5f);
+            const float pct      = stateTime / duration;
+            char overlay[64];
+            std::snprintf(overlay, sizeof(overlay), "frame %d / %d  (%.1f%%)",
+                          curFrame, totalFrame, pct * 100.0f);
+            ImGui::ProgressBar(pct, ImVec2(-FLT_MIN, 0), overlay);
+
+            int sliderFrame = curFrame;
+            if (ImGui::SliderInt("Frame", &sliderFrame, 0, totalFrame))
+            {
+                const float newTime = static_cast<float>(sliderFrame) / kFps;
+                m_sceneRuntime->AnimatorSetCurrentStateTime(newTime);
+            }
+        }
+        else
+        {
+            ImGui::Text("duration unavailable");
+        }
+
+        bool paused = m_sceneRuntime->AnimatorIsPaused();
+        if (ImGui::Button(paused ? "Play" : "Pause"))
+        {
+            m_sceneRuntime->AnimatorSetPaused(!paused);
+        }
+        ImGui::SameLine();
+        ImGui::Text("(Space=Jump, 1=Walk)");
+
+        ImGui::Separator();
+        ImGui::Text("Auto floor align + 활공 시 점프 추가");
+        ImGui::SliderFloat("Jump Peak", &m_jumpPeakHeight, 0.0f, 200.0f, "%.0f");
+
+        const auto* xform = m_sceneRuntime->AnimatorInstanceTransform();
+        const float jumpY = xform ? xform->position.y : 0.0f;
+        const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"mixamorig:LeftFoot");
+        ImGui::Text("inst.transform.y = %.2f  (footY=%.2f, bindY=%.2f)",
+                    jumpY, footY, m_footBindY);
+
+        // 활공 구간 시각 표시.
+        if (duration > 0.05f)
+        {
+            constexpr float kTakeoff = 24.0f / 78.0f;
+            constexpr float kLanding = 42.0f / 78.0f;
+            ImGui::Text("flight phase: [%.1f%% (frame %d), %.1f%% (frame %d)]",
+                        kTakeoff * 100.0f, 24,
+                        kLanding * 100.0f, 42);
+            const float pct = stateTime / duration;
+            const char* phase = "?";
+            if (state != "Jump") { phase = "(not Jump)"; }
+            else if (pct < kTakeoff) { phase = "0~takeoff (도움닫기)"; }
+            else if (pct < kLanding) { phase = "takeoff~landing (활공)"; }
+            else                    { phase = "landing~exit (recovery)"; }
+            ImGui::Text("phase: %s", phase);
+        }
+
+        ImGui::End();
     }
 
     void Application::InitGraphicsCore()
@@ -356,6 +517,14 @@ namespace client
         m_window->PumpMessages();
         if (!m_window->IsOpen()) { return; }
 
+        // ImGui frame 시작 — Tick 본 작업 후 ImGui::Render 로 마무리.
+        if (m_imguiInitialized)
+        {
+            ImGui_ImplDX12_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+            ImGui::NewFrame();
+        }
+
         // 비정상 상태 가드 — ChangeScene 의 Build SceneRuntime 단계 실패 시 nullptr.
         // WM_CLOSE 가 다음 PumpMessages 에서 처리되므로 한 프레임만 skip 후 메인 루프 종료.
         if (!m_sceneRuntime) { return; }
@@ -455,8 +624,61 @@ namespace client
             }
             m_prevJumpDown = curJump;
 
-            // 코드 측 점프 Y 변환은 비활성 — Animator 클립 자체의 본 회전 동작만으로
-            // 시각화 검증 중. 새 Jump.fbx 자산이 회전만으로 충분한 점프 표현이 되는지 확인.
+            // 점프 Y — Animator Jump state time 의 phase 별 곡선.
+            //   Mixamo Jump 클립 78 프레임 구조:
+            //     0  ~ 24  : 도움닫기 (다리 굽힘) — 몸 *내려감* (-crouchDepth)
+            //                  Hips Y translation=0 자산이라 다리만 올라가 발이 떠 보이는 효과 보정
+            //     24       : 점프 (땅 떠남, 활공 시작) — jumpY=0
+            //     24 ~ 42  : 활공 (공중) — 포물선, peak at 33 프레임
+            //     42       : 착지 (발 floor) — jumpY=0 + Locomotion 으로 hard cut
+            //   AnimatorController 의 exitTime=0.538 (=42/78) 과 정확히 동기화.
+            // bindY 캡처 timer — 부팅 후 1초 지난 *Idle 안정화 footY* 캡처 (BuildPalette
+            // 첫 호출 전 footY=0 잘못 캡처 방지).
+            m_bindCaptureTimer += dt;
+            // 자동 floor 정렬 — 매 frame 발 본 (LeftFoot) 의 mesh-local Y 측정.
+            //   bind pose 보다 발이 위로 올라가면 (도움닫기 다리 굽힘 등) 그만큼 몸을 내림.
+            //   Mixamo 자산이 bone-Y translation=0 인 한계를 *bone palette translation 추출*
+            //   로 우회. Mixamo preview 의 *발-floor 자동 정렬* 과 같은 효과.
+            //
+            //   bind pose 의 발 mesh-local Y 를 초기화 시 1회 캐시 (m_footBindY).
+            //   매 frame footY 측정 → floorAlign = -(footY - m_footBindY)  ← 발 올라간 만큼 몸 내림
+            //   활공 phase 만 *추가* jumpY = +peak·4t(1-t) 더해서 점프 표현.
+            constexpr float kTakeoffNorm    = 24.0f / 78.0f;
+            constexpr float kLandingNorm    = 42.0f / 78.0f;
+
+            const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"mixamorig:LeftFoot");
+            // bindY 캡처 — 부팅 후 1초 이상 지난 *Idle 안정화 footY* 캡처. 부팅 직후 첫 frame
+            // 은 AnimatorRuntime 의 BuildPalette 전이라 footY=0 으로 잘못 캡처됨.
+            if (!m_footBindCaptured && m_bindCaptureTimer >= 1.0f)
+            {
+                m_footBindY        = footY;
+                m_footBindCaptured = true;
+            }
+            // 부호 — 발 본의 mesh-local Y 는 *위로 올라가면 *감소** (좌표계 특성).
+            //   footY 감소 (발 올라감) → jumpY 음수 (몸 내림) ← 자동 floor align.
+            //   부팅 초기 (bindCaptured 전) 는 jumpY=0 유지.
+            float jumpY = m_footBindCaptured ? (footY - m_footBindY) : 0.0f;
+
+            if (m_sceneRuntime->AnimatorCurrentStateName() == "Jump")
+            {
+                const float duration = m_sceneRuntime->AnimatorStateDuration("Jump");
+                if (duration > 0.05f)
+                {
+                    const float stateTime = m_sceneRuntime->AnimatorCurrentStateTime();
+                    const float takeoffT  = duration * kTakeoffNorm;
+                    const float landingT  = duration * kLandingNorm;
+                    if (stateTime > takeoffT && stateTime < landingT)
+                    {
+                        // 활공: 자동 floor align 위에 *추가* +peak·4t(1-t).
+                        const float t = (stateTime - takeoffT) / (landingT - takeoffT);
+                        jumpY += m_jumpPeakHeight * 4.0f * t * (1.0f - t);
+                    }
+                }
+            }
+            if (auto* xform = m_sceneRuntime->AnimatorInstanceTransform())
+            {
+                xform->position.y = jumpY;
+            }
         }
 
         // 카메라 + Scene tick + 렌더.
@@ -473,6 +695,13 @@ namespace client
         scissor.right  = static_cast<LONG>(m_window->Width());
         scissor.bottom = static_cast<LONG>(m_window->Height());
 
+        // ImGui 패널 + Render — FrameRenderer 가 ImGui::GetDrawData() 결과를 마지막에 commit.
+        if (m_imguiInitialized)
+        {
+            DrawAnimatorPanel();
+            ImGui::Render();
+        }
+
         m_frameRenderer->Render(*m_sceneRuntime, *m_camera, viewport, scissor);
 
         // 타이틀바 디버그 정보 — 100ms 주기로 갱신 (매 프레임은 SetWindowTextW 비용 + 깜빡임 우려).
@@ -482,16 +711,35 @@ namespace client
             m_titleUpdateAccum = 0.0f;
             const auto camPos = m_camera->Position();
             const auto camTgt = m_camera->Target();
-            const std::string& curState = m_sceneRuntime->HasAnimatorRuntime()
-                ? m_sceneRuntime->CurrentAnimatorStateName()
-                : std::string{};
-            wchar_t buf[256];
+            std::string  curState;
+            std::wstring frameInfo;
+            if (m_sceneRuntime->HasAnimatorRuntime())
+            {
+                curState = m_sceneRuntime->CurrentAnimatorStateName();
+                const float stateTime = m_sceneRuntime->AnimatorCurrentStateTime();
+                const float duration  = m_sceneRuntime->AnimatorStateDuration(curState);
+                if (duration > 0.05f)
+                {
+                    // Mixamo 진행바 스타일 — frame / totalFrames + normalized %.
+                    constexpr float kFps = 30.0f;
+                    const int   curFrame   = static_cast<int>(stateTime * kFps + 0.5f);
+                    const int   totalFrame = static_cast<int>(duration  * kFps + 0.5f);
+                    const float pct        = stateTime / duration * 100.0f;
+                    wchar_t fbuf[80];
+                    std::swprintf(fbuf, std::size(fbuf),
+                                  L" | frame %d/%d (%.1f%%)",
+                                  curFrame, totalFrame, pct);
+                    frameInfo = fbuf;
+                }
+            }
+            wchar_t buf[320];
             std::swprintf(buf, std::size(buf),
-                          L"portfolio_engine | cam=(%.0f, %.0f, %.0f) look=(%.0f, %.0f, %.0f)%hs%hs",
+                          L"portfolio_engine | cam=(%.0f, %.0f, %.0f) look=(%.0f, %.0f, %.0f)%hs%hs%ls",
                           camPos.x, camPos.y, camPos.z,
                           camTgt.x, camTgt.y, camTgt.z,
                           curState.empty() ? "" : " | state=",
-                          curState.c_str());
+                          curState.c_str(),
+                          frameInfo.c_str());
             m_window->SetTitle(buf);
         }
     }
