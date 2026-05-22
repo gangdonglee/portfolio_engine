@@ -853,10 +853,11 @@ namespace engine::render::fbx_loader
             }
         }
 
-        // Root motion 제거 (안전망) — root bone (Mixamo Hips) 의 *translation* 만 첫 frame
-        // 값으로 고정. rotation 은 유지 → 골반 swing 자연스러움.
+        // Root motion 제거 (안전망) — root bone (Mixamo Hips) 의 *XZ translation 만* 첫 frame
+        // 으로 고정. Y 는 유지 → 점프의 Hips Y 상하 변동 + Walking 의 자연스러운 Y bob 살아남음.
+        // rotation 도 유지 → 골반 swing 자연.
         //   - In Place 자산: translation 자체가 0 이라 무영향.
-        //   - 일반 자산 (root motion 있음): 진행 모션 제거.
+        //   - 일반 자산 (XZ root motion 있음): 수평 진행만 제거. 점프는 정상.
         //   - "Hips" 부분 문자열 매칭 (mixamorig:Hips 등 prefix 흡수). 매칭 실패 시 boneIdx=0.
         size_t rootBoneIdx = 0;
         for (size_t i = 0; i < baseSkeleton.BoneCount(); ++i)
@@ -873,13 +874,12 @@ namespace engine::render::fbx_loader
             auto& kfs = cm.clip->bonesKeyFrames[rootBoneIdx];
             if (kfs.empty()) { continue; }
             const float t0x = kfs[0].transform.m[3][0];
-            const float t0y = kfs[0].transform.m[3][1];
             const float t0z = kfs[0].transform.m[3][2];
             for (auto& kf : kfs)
             {
                 kf.transform.m[3][0] = t0x;
-                kf.transform.m[3][1] = t0y;
                 kf.transform.m[3][2] = t0z;
+                // Y (m[3][1]) 는 lock 안 함 — 점프 / bob 유지
             }
         }
 

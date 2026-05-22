@@ -86,6 +86,20 @@ namespace engine::anim
             e["motionClipPath"] = s.motionClipPath;
             e["loop"]           = s.loop;
             e["speed"]          = s.speed;
+            // Blend tree — entries 가 있을 때만 직렬화 (기존 단일 clip state JSON 호환).
+            if (!s.blendTree.empty())
+            {
+                json bt = json::array();
+                for (const auto& entry : s.blendTree)
+                {
+                    json en;
+                    en["motionClipPath"] = entry.motionClipPath;
+                    en["threshold"]      = entry.threshold;
+                    bt.push_back(std::move(en));
+                }
+                e["blendTree"]      = std::move(bt);
+                e["blendParameter"] = s.blendParameter;
+            }
             states.push_back(std::move(e));
         }
         root["states"] = std::move(states);
@@ -171,6 +185,17 @@ namespace engine::anim
                 if (auto x = e.find("motionClipPath"); x != e.end() && x->is_string())  { s.motionClipPath = x->get<std::string>(); }
                 if (auto x = e.find("loop");           x != e.end() && x->is_boolean()) { s.loop = x->get<bool>(); }
                 if (auto x = e.find("speed");          x != e.end() && x->is_number())  { s.speed = x->get<float>(); }
+                if (auto x = e.find("blendParameter"); x != e.end() && x->is_string())  { s.blendParameter = x->get<std::string>(); }
+                if (auto x = e.find("blendTree");      x != e.end() && x->is_array())
+                {
+                    for (const auto& en : *x)
+                    {
+                        BlendTreeEntry entry;
+                        if (auto y = en.find("motionClipPath"); y != en.end() && y->is_string()) { entry.motionClipPath = y->get<std::string>(); }
+                        if (auto y = en.find("threshold");      y != en.end() && y->is_number()) { entry.threshold      = y->get<float>(); }
+                        s.blendTree.push_back(std::move(entry));
+                    }
+                }
                 c.states.push_back(std::move(s));
             }
         }

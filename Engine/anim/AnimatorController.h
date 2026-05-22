@@ -7,18 +7,34 @@
 
 namespace engine::anim
 {
-    // 한 State = 하나의 motion (현재는 단일 클립). Blend Tree 는 M2 에서.
+    // 1D Blend Tree 항목 — 단일 파라미터 값(threshold)에 대응되는 motion 클립.
+    //   AnimatorRuntime 이 *현재 blendParameter 값* 의 인접 두 항목 (threshold 정렬 기준)
+    //   사이를 linear interp 으로 weighted blend.
+    struct BlendTreeEntry
+    {
+        std::string  motionClipPath;
+        float        threshold = 0.0f;
+    };
+
+    // 한 State = 하나의 motion. 두 모드:
+    //   - 단일 clip: motionClipPath 만 사용. blendTree 비어있음.
+    //   - 1D Blend Tree: blendTree 에 entries[] + blendParameter 지정.
+    //     motionClipPath 는 *무시*. AnimatorRuntime 이 blendParameter 값으로 평가.
     //
     // motionClipPath: assets/ 또는 Resources/ 기준 상대 경로. 클립 FBX (Mixamo without-skin 등).
     //   비어있으면 T-pose (state 가 *유효한 motion 없음*).
     // loop: 클립 끝에서 wrap 할지. false 면 끝에 도달 후 정지 (또는 transition 의 hasExitTime 트리거).
     // speed: 시간 진행 배율. 1.0 = 정상, 2.0 = 2배 빠르게.
+    // blendTree: 비어있지 않으면 blend tree mode 활성. threshold 오름차순 가정.
+    // blendParameter: blend tree mode 의 평가 파라미터 이름 (보통 Float 타입 — Speed 등).
     struct AnimatorState
     {
-        std::string  name;
-        std::string  motionClipPath;
-        bool         loop  = true;
-        float        speed = 1.0f;
+        std::string                  name;
+        std::string                  motionClipPath;
+        bool                         loop  = true;
+        float                        speed = 1.0f;
+        std::vector<BlendTreeEntry>  blendTree;          // empty = 단일 clip mode
+        std::string                  blendParameter;     // blend tree mode 에서만 의미
     };
 
     // 파라미터 타입 — Unity Mecanim 과 동일.

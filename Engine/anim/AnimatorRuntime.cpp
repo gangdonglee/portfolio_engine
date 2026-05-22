@@ -1,10 +1,12 @@
 #include "anim/AnimatorRuntime.h"
 
+#include "core/Logger.h"
 #include "render/AnimClip.h"
 #include "render/Skeleton.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace engine::anim
 {
@@ -50,6 +52,17 @@ namespace engine::anim
             result.r[3] = XMVectorLerp(A.r[3], B.r[3], blend);
             return result;
         }
+
+        // 두 transform 의 element-wise lerp — crossfade 와 동일 정책.
+        XMMATRIX LerpTransforms(const XMMATRIX& a, const XMMATRIX& b, float t)
+        {
+            XMMATRIX r;
+            r.r[0] = XMVectorLerp(a.r[0], b.r[0], t);
+            r.r[1] = XMVectorLerp(a.r[1], b.r[1], t);
+            r.r[2] = XMVectorLerp(a.r[2], b.r[2], t);
+            r.r[3] = XMVectorLerp(a.r[3], b.r[3], t);
+            return r;
+        }
     }
 
     AnimatorRuntime::AnimatorRuntime(const AnimatorController&        controller,
@@ -89,6 +102,81 @@ namespace engine::anim
     }
 
     AnimatorRuntime::~AnimatorRuntime() = default;
+
+    XMMATRIX AnimatorRuntime::EvaluateStateBoneTransform(const AnimatorState& state,
+                                                         size_t               boneIdx,
+                                                         double               stateTime) const
+    {
+        // 단일 clip mode — blendTree 가 비어있음.
+        if (state.blendTree.empty())
+        {
+            const engine::render::AnimClip* clip = nullptr;
+            if (auto it = m_clipMap.find(state.motionClipPath); it != m_clipMap.end())
+            {
+                clip = it->second;
+            }
+            return EvaluateBoneTransform(clip, boneIdx, stateTime);
+        }
+
+        // 1D Blend Tree mode — blendParameter 값 → 인접 두 entry 의 clip 평가 후 lerp.
+        //   threshold 정렬 가정. 파라미터 값이 범위 밖이면 양 끝으로 clamp.
+        const engine::int32 pIdx = FindParamIndex(state.blendParameter);
+        const float paramVal = (pIdx >= 0) ? m_paramValues[static_cast<size_t>(pIdx)] : 0.0f;
+
+        const auto& entries = state.blendTree;
+        // 첫 entry 보다 작거나 같으면 그 clip 만.
+        if (paramVal <= entries.front().threshold)
+        {
+            const engine::render::AnimClip* clip = nullptr;
+            if (auto it = m_clipMap.find(entries.front().motionClipPath); it != m_clipMap.end()) { clip = it->second; }
+            return EvaluateBoneTransform(clip, boneIdx, stateTime);
+        }
+        // 마지막 entry 보다 크거나 같으면 그 clip 만.
+        if (paramVal >= entries.back().threshold)
+        {
+            const engine::render::AnimClip* clip = nullptr;
+            if (auto it = m_clipMap.find(entries.back().motionClipPath); it != m_clipMap.end()) { clip = it->second; }
+            return EvaluateBoneTransform(clip, boneIdx, stateTime);
+        }
+
+        // 인접 두 entry 찾기 — paramVal 이 [thresholds[i], thresholds[i+1]] 사이.
+        for (size_t i = 0; i + 1 < entries.size(); ++i)
+        {
+            const float a = entries[i].threshold;
+            const float b = entries[i + 1].threshold;
+            if (paramVal >= a && paramVal <= b)
+            {
+                const float t = (b - a > 0.0001f) ? (paramVal - a) / (b - a) : 0.0f;
+                const engine::render::AnimClip* clipA = nullptr;
+                const engine::render::AnimClip* clipB = nullptr;
+                if (auto it = m_clipMap.find(entries[i    ].motionClipPath); it != m_clipMap.end()) { clipA = it->second; }
+                if (auto it = m_clipMap.find(entries[i + 1].motionClipPath); it != m_clipMap.end()) { clipB = it->second; }
+                const XMMATRIX A = EvaluateBoneTransform(clipA, boneIdx, stateTime);
+                const XMMATRIX B = EvaluateBoneTransform(clipB, boneIdx, stateTime);
+                return LerpTransforms(A, B, t);
+            }
+        }
+        return XMMatrixIdentity();
+    }
+
+    double AnimatorRuntime::StateRepresentativeDuration(const AnimatorState& state) const
+    {
+        const std::string& path = state.blendTree.empty()
+            ? state.motionClipPath
+            : state.blendTree.front().motionClipPath;
+        if (auto it = m_clipMap.find(path); it != m_clipMap.end() && it->second != nullptr)
+        {
+            return it->second->DurationSec();
+        }
+        return 0.0;
+    }
+
+    double AnimatorRuntime::StateDuration(std::string_view stateName) const
+    {
+        const engine::int32 idx = FindStateIndex(stateName);
+        if (idx < 0) { return 0.0; }
+        return StateRepresentativeDuration(m_controller.states[static_cast<size_t>(idx)]);
+    }
 
     const std::string& AnimatorRuntime::CurrentStateName() const noexcept
     {
@@ -191,17 +279,12 @@ namespace engine::anim
             }
         }
 
-        // ② 현재 state 시간 진행 + wrap/clamp.
+        // ② 현재 state 시간 진행 + wrap/clamp. 대표 duration 은 blend tree 의 첫 entry.
         if (m_currentStateIndex < m_controller.states.size())
         {
             const auto& curState = m_controller.states[m_currentStateIndex];
             m_currentStateTime += static_cast<double>(dt) * curState.speed;
-            const engine::render::AnimClip* curClip = nullptr;
-            if (auto it = m_clipMap.find(curState.motionClipPath); it != m_clipMap.end())
-            {
-                curClip = it->second;
-            }
-            const double duration = (curClip != nullptr) ? curClip->DurationSec() : 0.0;
+            const double duration = StateRepresentativeDuration(curState);
             if (duration > 0.0)
             {
                 if (curState.loop)
@@ -224,12 +307,7 @@ namespace engine::anim
         if (!m_transitioning && m_currentStateIndex < m_controller.states.size())
         {
             const auto& curState = m_controller.states[m_currentStateIndex];
-            const engine::render::AnimClip* curClip = nullptr;
-            if (auto it = m_clipMap.find(curState.motionClipPath); it != m_clipMap.end())
-            {
-                curClip = it->second;
-            }
-            const double duration = (curClip != nullptr) ? curClip->DurationSec() : 0.0;
+            const double duration = StateRepresentativeDuration(curState);
 
             for (const auto& t : m_controller.transitions)
             {
@@ -258,6 +336,17 @@ namespace engine::anim
                 m_crossfadeDuration = (t.crossfadeDuration > 0.0001f) ? t.crossfadeDuration : 0.0001f;
                 m_crossfadeElapsed  = 0.0f;
 
+                // 진단 — state 전환 로그.
+                {
+                    char buf[200];
+                    std::snprintf(buf, sizeof(buf),
+                                  "[anim] transition: '%s' -> '%s' (curTime=%.2fs)\n",
+                                  m_controller.states[m_currentStateIndex].name.c_str(),
+                                  m_controller.states[m_targetStateIndex].name.c_str(),
+                                  m_currentStateTime);
+                    engine::core::LogInfoA(buf);
+                }
+
                 // 이 transition 의 *Trigger 조건* 만 consumed.
                 for (const auto& cond : t.conditions)
                 {
@@ -284,38 +373,29 @@ namespace engine::anim
 
     void AnimatorRuntime::BuildPalette()
     {
-        const engine::render::AnimClip* curClip = nullptr;
-        const engine::render::AnimClip* tgtClip = nullptr;
+        const AnimatorState* curState = nullptr;
+        const AnimatorState* tgtState = nullptr;
         if (m_currentStateIndex < m_controller.states.size())
         {
-            if (auto it = m_clipMap.find(m_controller.states[m_currentStateIndex].motionClipPath);
-                it != m_clipMap.end())
-            {
-                curClip = it->second;
-            }
+            curState = &m_controller.states[m_currentStateIndex];
         }
         if (m_transitioning && m_targetStateIndex < m_controller.states.size())
         {
-            if (auto it = m_clipMap.find(m_controller.states[m_targetStateIndex].motionClipPath);
-                it != m_clipMap.end())
-            {
-                tgtClip = it->second;
-            }
+            tgtState = &m_controller.states[m_targetStateIndex];
         }
 
         const float weight = CrossfadeProgress01();
 
         for (size_t b = 0; b < m_palette.size(); ++b)
         {
-            const XMMATRIX curMat = EvaluateBoneTransform(curClip, b, m_currentStateTime);
+            const XMMATRIX curMat = curState
+                ? EvaluateStateBoneTransform(*curState, b, m_currentStateTime)
+                : XMMatrixIdentity();
             XMMATRIX boneGlobal;
-            if (m_transitioning && tgtClip != nullptr)
+            if (m_transitioning && tgtState != nullptr)
             {
-                const XMMATRIX tgtMat = EvaluateBoneTransform(tgtClip, b, m_targetStateTime);
-                boneGlobal.r[0] = XMVectorLerp(curMat.r[0], tgtMat.r[0], weight);
-                boneGlobal.r[1] = XMVectorLerp(curMat.r[1], tgtMat.r[1], weight);
-                boneGlobal.r[2] = XMVectorLerp(curMat.r[2], tgtMat.r[2], weight);
-                boneGlobal.r[3] = XMVectorLerp(curMat.r[3], tgtMat.r[3], weight);
+                const XMMATRIX tgtMat = EvaluateStateBoneTransform(*tgtState, b, m_targetStateTime);
+                boneGlobal = LerpTransforms(curMat, tgtMat, weight);
             }
             else
             {

@@ -89,6 +89,27 @@ namespace engine::anim
         // 본 팔레트 채움.
         void BuildPalette();
 
+        // state 의 한 본 transform 평가 — 단일 clip 또는 1D blend tree.
+        //   blend tree 면 blendParameter 값 → 인접 두 entry 의 clip 평가 후 weighted lerp.
+        //   각 entry 는 clipMap 조회 + 자체 duration 으로 wrap.
+        DirectX::XMMATRIX EvaluateStateBoneTransform(const AnimatorState& state,
+                                                     size_t               boneIdx,
+                                                     double               stateTime) const;
+
+        // state 의 *대표 duration* — Update 의 m_currentStateTime wrap 용.
+        //   단일 clip: 그 clip 의 DurationSec.
+        //   blend tree: blendTree[0] 의 clip duration (첫 entry, 정렬 가정).
+        //   클립 매핑 실패 / 비어있음 → 0.0 반환 (호출자가 wrap skip).
+        double StateRepresentativeDuration(const AnimatorState& state) const;
+
+    public:
+        // 외부 게임 코드용 — state 이름으로 대표 duration 조회 (점프 물리 동기화 등).
+        double StateDuration(std::string_view stateName) const;
+
+        // 현재 state 의 진행 시간 (sec). transition 중에는 *from state 의 시간*.
+        double CurrentStateTime() const noexcept { return m_currentStateTime; }
+
+    private:
         const AnimatorController&        m_controller;
         const engine::render::Skeleton&  m_skeleton;
         ClipMap                          m_clipMap;
