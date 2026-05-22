@@ -56,10 +56,14 @@ namespace engine::scene
         json meshes = json::array();
         for (const auto& m : scene.meshes)
         {
-            json t;
-            t["position"] = ToArray(m.transform.position);
-            t["rotation"] = ToArray(m.transform.rotation);
-            t["scale"]    = ToArray(m.transform.scale);
+            auto serializeTransform = [](const Transform& xform)
+            {
+                json t;
+                t["position"] = ToArray(xform.position);
+                t["rotation"] = ToArray(xform.rotation);
+                t["scale"]    = ToArray(xform.scale);
+                return t;
+            };
 
             json e;
             e["name"]          = m.name;
@@ -72,7 +76,19 @@ namespace engine::scene
             {
                 e["animatorControllerPath"] = m.animatorControllerPath;
             }
-            e["transform"]     = std::move(t);
+            // importTransform 은 identity 인 경우 생략 — 기존 씬 JSON 의 노이즈 회피.
+            const bool importIsIdentity =
+                m.importTransform.position.x == 0.0f && m.importTransform.position.y == 0.0f &&
+                m.importTransform.position.z == 0.0f &&
+                m.importTransform.rotation.x == 0.0f && m.importTransform.rotation.y == 0.0f &&
+                m.importTransform.rotation.z == 0.0f && m.importTransform.rotation.w == 1.0f &&
+                m.importTransform.scale.x    == 1.0f && m.importTransform.scale.y    == 1.0f &&
+                m.importTransform.scale.z    == 1.0f;
+            if (!importIsIdentity)
+            {
+                e["importTransform"] = serializeTransform(m.importTransform);
+            }
+            e["transform"]     = serializeTransform(m.transform);
             meshes.push_back(std::move(e));
         }
         root["meshes"] = std::move(meshes);
@@ -159,15 +175,17 @@ namespace engine::scene
                 if (auto pit = e.find("meshAssetPath");     pit != e.end() && pit->is_string()) { m.meshAssetPath = pit->get<std::string>(); }
                 if (auto cit = e.find("animationClipPath");      cit != e.end() && cit->is_string()) { m.animationClipPath = cit->get<std::string>(); }
                 if (auto cit = e.find("animatorControllerPath"); cit != e.end() && cit->is_string()) { m.animatorControllerPath = cit->get<std::string>(); }
-                if (auto tit = e.find("transform"); tit != e.end() && tit->is_object())
+                auto parseTransform = [](const json& jt, Transform& out)
                 {
-                    m.transform.position = Get<DirectX::XMFLOAT3>(*tit, "position", m.transform.position,
+                    out.position = Get<DirectX::XMFLOAT3>(jt, "position", out.position,
                         [](const json& j){ return ParseFloat3(j); });
-                    m.transform.rotation = Get<DirectX::XMFLOAT4>(*tit, "rotation", m.transform.rotation,
+                    out.rotation = Get<DirectX::XMFLOAT4>(jt, "rotation", out.rotation,
                         [](const json& j){ return ParseFloat4(j); });
-                    m.transform.scale    = Get<DirectX::XMFLOAT3>(*tit, "scale", m.transform.scale,
+                    out.scale    = Get<DirectX::XMFLOAT3>(jt, "scale", out.scale,
                         [](const json& j){ return ParseFloat3(j); });
-                }
+                };
+                if (auto tit = e.find("transform");       tit != e.end() && tit->is_object()) { parseTransform(*tit, m.transform); }
+                if (auto tit = e.find("importTransform"); tit != e.end() && tit->is_object()) { parseTransform(*tit, m.importTransform); }
                 scene.meshes.push_back(std::move(m));
             }
         }

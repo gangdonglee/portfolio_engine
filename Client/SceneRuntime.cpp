@@ -418,8 +418,14 @@ namespace client
             const auto& inst  = m_scene.meshes[i];
             const auto& asset = m_assetCache.at(inst.meshAssetPath);
 
-            const XMMATRIX world = ComposeWorld(inst.transform);
-            const XMMATRIX mvp   = world * m_cachedViewProj;
+            // 자산 좌표계 보정 (Mixamo X-Bot 등) 은 importTransform 으로 mesh-local 측 합성.
+            //   final = inst.transform 의 변환 적용 *전* 에 importTransform 적용.
+            //   row-vector convention (XMMATRIX × XMMATRIX = first A then B): import 먼저, inst 다음.
+            //   identity importTransform 은 합성 비용만 미미.
+            const XMMATRIX importAdjust = ComposeWorld(inst.importTransform);
+            const XMMATRIX instWorld    = ComposeWorld(inst.transform);
+            const XMMATRIX world        = importAdjust * instWorld;
+            const XMMATRIX mvp          = world * m_cachedViewProj;
 
             FrameConstants cb{};
             XMStoreFloat4x4(&cb.mvp,   mvp);

@@ -38,6 +38,13 @@ namespace engine::scene
         std::string animatorControllerPath;  // 선택 — .animator.json 경로. 비어있지 않으면
                                              //   animationClipPath 보다 우선 (스테이트 머신 평가).
                                              //   M0: 데이터만 로드 + 로그. M1: 런타임 평가.
+        // importTransform: 자산별 로드 시점 *baked-in* 보정 (FbxLoader 에서 mesh CP +
+        //   inverse bind pose + animation keyframe 에 직접 곱셈). identity 면 무영향.
+        //   Unity 의 model importer rotation/scale 옵션과 동일 패턴 — Mixamo 등 자산이
+        //   다른 좌표계로 export 된 경우 여기에서 보정해야 인스턴스 transform 이 *게임
+        //   런타임 자유도* 로 보존된다.
+        Transform   importTransform;
+        // 게임 런타임 인스턴스 transform — 캐릭터 위치/회전/스케일.
         Transform   transform;
     };
 
