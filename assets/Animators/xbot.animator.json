@@ -1,24 +1,17 @@
 {
   "name": "XBot",
-  "defaultStateName": "Idle",
+  "defaultStateName": "Locomotion",
   "states": [
     {
-      "name": "Idle",
-      "motionClipPath": "Resources/FBX/Idle.fbx",
+      "name": "Locomotion",
       "loop": true,
-      "speed": 1.0
-    },
-    {
-      "name": "Walk",
-      "motionClipPath": "Resources/FBX/Walking.fbx",
-      "loop": true,
-      "speed": 1.0
-    },
-    {
-      "name": "Run",
-      "motionClipPath": "Resources/FBX/Running.fbx",
-      "loop": true,
-      "speed": 1.0
+      "speed": 1.0,
+      "blendParameter": "Speed",
+      "blendTree": [
+        { "motionClipPath": "Resources/FBX/Idle.fbx",    "threshold": 0.0 },
+        { "motionClipPath": "Resources/FBX/Walking.fbx", "threshold": 0.5 },
+        { "motionClipPath": "Resources/FBX/Running.fbx", "threshold": 1.0 }
+      ]
     },
     {
       "name": "Jump",
@@ -33,46 +26,6 @@
   ],
   "transitions": [
     {
-      "fromStateName": "Idle",
-      "toStateName":   "Walk",
-      "crossfadeDuration": 0.2,
-      "hasExitTime": false,
-      "exitTime": 0.0,
-      "conditions": [
-        { "parameterName": "Speed", "op": "Greater", "value": 0.1 }
-      ]
-    },
-    {
-      "fromStateName": "Walk",
-      "toStateName":   "Run",
-      "crossfadeDuration": 0.2,
-      "hasExitTime": false,
-      "exitTime": 0.0,
-      "conditions": [
-        { "parameterName": "Speed", "op": "Greater", "value": 0.5 }
-      ]
-    },
-    {
-      "fromStateName": "Run",
-      "toStateName":   "Walk",
-      "crossfadeDuration": 0.2,
-      "hasExitTime": false,
-      "exitTime": 0.0,
-      "conditions": [
-        { "parameterName": "Speed", "op": "Less", "value": 0.5 }
-      ]
-    },
-    {
-      "fromStateName": "Walk",
-      "toStateName":   "Idle",
-      "crossfadeDuration": 0.2,
-      "hasExitTime": false,
-      "exitTime": 0.0,
-      "conditions": [
-        { "parameterName": "Speed", "op": "Less", "value": 0.1 }
-      ]
-    },
-    {
       "fromStateName": "",
       "toStateName":   "Jump",
       "crossfadeDuration": 0.1,
@@ -84,10 +37,10 @@
     },
     {
       "fromStateName": "Jump",
-      "toStateName":   "Idle",
+      "toStateName":   "Locomotion",
       "crossfadeDuration": 0.2,
       "hasExitTime": true,
-      "exitTime": 1.0,
+      "exitTime": 0.4,
       "conditions": []
     }
   ]
