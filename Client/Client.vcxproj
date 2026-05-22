@@ -47,6 +47,7 @@
     <FbxSdkRoot>$(SolutionDir)Library</FbxSdkRoot>
     <FbxSdkLibDebug>$(FbxSdkRoot)\Lib\FBX\debug</FbxSdkLibDebug>
     <FbxSdkLibRelease>$(FbxSdkRoot)\Lib\FBX\release</FbxSdkLibRelease>
+    <ImGuiRoot>$(SolutionDir)external\imgui</ImGuiRoot>
   </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
@@ -63,7 +64,7 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(ImGuiRoot);$(ImGuiRoot)\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -98,7 +99,7 @@ if exist "$(SolutionDir)Resources" (
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(ImGuiRoot);$(ImGuiRoot)\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -128,6 +129,12 @@ if exist "$(SolutionDir)Resources" (
     <ClCompile Include="SceneRuntime.cpp" />
     <ClCompile Include="FrameRenderer.cpp" />
     <ClCompile Include="InputController.cpp" />
+    <ClCompile Include="$(ImGuiRoot)\imgui.cpp" />
+    <ClCompile Include="$(ImGuiRoot)\imgui_draw.cpp" />
+    <ClCompile Include="$(ImGuiRoot)\imgui_tables.cpp" />
+    <ClCompile Include="$(ImGuiRoot)\imgui_widgets.cpp" />
+    <ClCompile Include="$(ImGuiRoot)\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="$(ImGuiRoot)\backends\imgui_impl_dx12.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h" />

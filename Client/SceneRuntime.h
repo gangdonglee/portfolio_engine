@@ -97,6 +97,15 @@ namespace client
         std::string AnimatorCurrentStateName() const;
         float       AnimatorCurrentStateTime() const noexcept;
 
+        // 디버그 — Animator 시간 진행 일시정지 / frame 직접 이동.
+        bool AnimatorIsPaused() const noexcept;
+        void AnimatorSetPaused(bool paused) noexcept;
+        void AnimatorSetCurrentStateTime(float t) noexcept;
+
+        // 자동 floor align 용 — 본 이름 으로 *현재 frame 의 bone palette translation Y* 조회
+        //   (= 본 origin 의 mesh-local Y). 본 없거나 Animator 없으면 0 반환.
+        float AnimatorBoneMeshLocalY(std::wstring_view boneName) const;
+
         // AnimatorRuntime passthrough — Application 이 키 입력에 응답해 호출.
         // AnimatorRuntime 가 활성이 아니면 silent no-op.
         bool HasAnimatorRuntime() const noexcept;

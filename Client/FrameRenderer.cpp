@@ -14,6 +14,9 @@
 #include "render/SwapChain.h"
 #include "render/Texture.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_dx12.h"
+
 #include <stdexcept>
 #include <string>
 
@@ -125,6 +128,14 @@ namespace client
         {
             m_debugRenderer->DrawGrid(list, fi, camera.ViewProjection());
             m_debugRenderer->DrawAxes(list, fi, camera.ViewProjection(), 100.0f);
+        }
+
+        // ⑤c ImGui draw data — Application 이 ImGui::Render() 호출 후라면 valid.
+        //   동일 RTV/DSV 사용. ImGui 의 SrvDescriptorHeap 은 init 시 Application 의 srvHeap.
+        //   ImGui 가 자체 PSO/RootSig 로 그려서 list 의 binding 을 변경 — 후속 코드 없음 (Present 만).
+        if (ImDrawData* drawData = ImGui::GetDrawData())
+        {
+            ImGui_ImplDX12_RenderDrawData(drawData, list);
         }
 
         // ⑥ Barrier RT→PRESENT → Close → Execute → Present.

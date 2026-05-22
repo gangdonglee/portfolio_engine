@@ -168,26 +168,61 @@ namespace client
 
                 // 모든 state.motionClipPath 사전 로드 + clipMap 구축.
                 engine::anim::AnimatorRuntime::ClipMap clipMap;
-                // 단일 clip + blend tree entry 의 모든 motionClipPath 를 한 곳으로 묶어 로드.
+                // 여러 clip 중 *Mixamo 표준 이름 'mixamo.com'* 우선 — With-Skin 자산이
+                // *Take 001* (T-pose padding, 100 frame) 같은 짜잘한 clip 도 포함하므로.
+                //   1순위: 이름이 "mixamo" 포함된 clip
+                //   2순위: 키프레임 가장 많은 clip
+                auto pickMotion = [](const std::vector<std::unique_ptr<engine::render::AnimClip>>& clips)
+                    -> const engine::render::AnimClip*
+                {
+                    const engine::render::AnimClip* mixamoClip = nullptr;
+                    const engine::render::AnimClip* longest    = nullptr;
+                    size_t longestKfs = 0;
+                    for (const auto& c : clips)
+                    {
+                        if (!c || c->bonesKeyFrames.empty()) { continue; }
+                        if (c->name.find(L"mixamo") != std::wstring::npos)
+                        {
+                            mixamoClip = c.get();
+                        }
+                        const size_t kfs = c->bonesKeyFrames[0].size();
+                        if (kfs > longestKfs) { longestKfs = kfs; longest = c.get(); }
+                    }
+                    return mixamoClip ? mixamoClip : longest;
+                };
                 auto loadClipIntoMap = [&](const std::string& path)
                 {
                     if (path.empty()) { return; }
                     if (m_controllerClipCache.contains(path))
                     {
-                        const auto& cached = m_controllerClipCache.at(path);
-                        if (!cached.empty())
-                        {
-                            clipMap.emplace(path, cached[0].get());
-                        }
+                        const auto* picked = pickMotion(m_controllerClipCache.at(path));
+                        if (picked) { clipMap.emplace(path, picked); }
                         return;
                     }
                     const std::wstring clipWpath = std::filesystem::absolute(path).wstring();
                     engine::render::fbx_loader::LoadedFbxAnimation loaded =
                         engine::render::fbx_loader::LoadFbxAnimationOnly(
                             clipWpath.c_str(), *asset.skeleton);
-                    if (!loaded.clips.empty())
+                    // 진단 — 각 clip 의 이름 + 키프레임 수 + pickMotion 선택 결과.
+                    for (const auto& c : loaded.clips)
                     {
-                        clipMap.emplace(path, loaded.clips[0].get());
+                        if (!c) { continue; }
+                        const size_t kfs = c->bonesKeyFrames.empty() ? 0 : c->bonesKeyFrames[0].size();
+                        char buf[256];
+                        std::snprintf(buf, sizeof(buf),
+                                      "[clip] %s: '%ls' keyframes=%zu\n",
+                                      path.c_str(), c->name.c_str(), kfs);
+                        engine::core::LogInfoA(buf);
+                    }
+                    const auto* picked = pickMotion(loaded.clips);
+                    if (picked)
+                    {
+                        char buf[256];
+                        std::snprintf(buf, sizeof(buf),
+                                      "[clip] %s -> picked '%ls'\n",
+                                      path.c_str(), picked->name.c_str());
+                        engine::core::LogInfoA(buf);
+                        clipMap.emplace(path, picked);
                     }
                     m_controllerClipCache.emplace(path, std::move(loaded.clips));
                 };
@@ -345,6 +380,31 @@ namespace client
     {
         if (!m_animatorRuntime) { return 0.0f; }
         return static_cast<float>(m_animatorRuntime->CurrentStateTime());
+    }
+
+    bool SceneRuntime::AnimatorIsPaused() const noexcept
+    {
+        return m_animatorRuntime && m_animatorRuntime->IsPaused();
+    }
+
+    void SceneRuntime::AnimatorSetPaused(bool paused) noexcept
+    {
+        if (m_animatorRuntime) { m_animatorRuntime->SetPaused(paused); }
+    }
+
+    void SceneRuntime::AnimatorSetCurrentStateTime(float t) noexcept
+    {
+        if (m_animatorRuntime) { m_animatorRuntime->SetCurrentStateTime(static_cast<double>(t)); }
+    }
+
+    float SceneRuntime::AnimatorBoneMeshLocalY(std::wstring_view boneName) const
+    {
+        if (!m_animatorRuntime || !m_animSkeleton) { return 0.0f; }
+        const engine::int32 idx = m_animSkeleton->FindIndex(std::wstring{ boneName });
+        if (idx < 0) { return 0.0f; }
+        // currentBone × (0,0,0,1) 의 translation Y — bone joint 의 mesh-local 위치.
+        // AnimatorRuntime 이 BuildPalette 내부에서 m_boneMeshLocalY 갱신.
+        return m_animatorRuntime->BoneMeshLocalY(static_cast<size_t>(idx));
     }
 
     void SceneRuntime::SetAnimatorFloat(std::string_view name, float value)
