@@ -14,6 +14,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Editor", "Editor\Editor.vcx
 		{E001A1B2-1111-2222-3333-444444444444} = {E001A1B2-1111-2222-3333-444444444444}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FbxConverter", "Tools\FbxConverter\FbxConverter.vcxproj", "{F0DC011E-FBX1-4001-9F00-555555555555}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E001A1B2-1111-2222-3333-444444444444} = {E001A1B2-1111-2222-3333-444444444444}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -32,6 +37,10 @@ Global
 		{D001A1B2-1111-2222-3333-444444444444}.Debug|x64.Build.0 = Debug|x64
 		{D001A1B2-1111-2222-3333-444444444444}.Release|x64.ActiveCfg = Release|x64
 		{D001A1B2-1111-2222-3333-444444444444}.Release|x64.Build.0 = Release|x64
+		{F0DC011E-FBX1-4001-9F00-555555555555}.Debug|x64.ActiveCfg = Debug|x64
+		{F0DC011E-FBX1-4001-9F00-555555555555}.Debug|x64.Build.0 = Debug|x64
+		{F0DC011E-FBX1-4001-9F00-555555555555}.Release|x64.ActiveCfg = Release|x64
+		{F0DC011E-FBX1-4001-9F00-555555555555}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
