@@ -55,6 +55,9 @@ namespace engine::render::fbx_loader
             return r;
         }
 
+        // 좌표계: ConvertScene(DirectX) + 이 Y/Z swap + matReflect 의 *3중 조합* 이
+        // baseline 동작. Dragon 의 자산별 LclR.z=-180 이 이 조합과 우연히 상쇄되어 정상으로
+        // 보임. swap 단독 제거 시 Dragon 까지 X-180 회전되어 깨진다 → baseline 유지.
         XMFLOAT3 ConvertVec3(const FbxVector4& v) noexcept
         {
             return XMFLOAT3{
@@ -304,6 +307,8 @@ namespace engine::render::fbx_loader
             const int32 skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
             if (skinCount <= 0) { return; }
 
+            // ConvertVec3 의 Y/Z swap 과 *동일 컨벤션* 으로 본 transform 도 swap reflection.
+            // 정점/normal 과 본 행렬의 좌표계가 일치해야 스키닝이 깨지지 않는다.
             FbxAMatrix matReflect;
             matReflect.SetRow(0, FbxVector4(1, 0, 0, 0));
             matReflect.SetRow(1, FbxVector4(0, 0, 1, 0));
@@ -803,6 +808,7 @@ namespace engine::render::fbx_loader
             throw std::runtime_error("FBX(animOnly): AnimStack 없음 — 애니메이션 0");
         }
 
+        // LoadAnimationData 와 동일 Y/Z swap reflection — baseline 좌표계 일관성 유지.
         FbxAMatrix matReflect;
         matReflect.SetRow(0, FbxVector4(1, 0, 0, 0));
         matReflect.SetRow(1, FbxVector4(0, 0, 1, 0));
@@ -847,9 +853,39 @@ namespace engine::render::fbx_loader
             }
         }
 
+        // Root motion 제거 (안전망) — root bone (Mixamo Hips) 의 *translation* 만 첫 frame
+        // 값으로 고정. rotation 은 유지 → 골반 swing 자연스러움.
+        //   - In Place 자산: translation 자체가 0 이라 무영향.
+        //   - 일반 자산 (root motion 있음): 진행 모션 제거.
+        //   - "Hips" 부분 문자열 매칭 (mixamorig:Hips 등 prefix 흡수). 매칭 실패 시 boneIdx=0.
+        size_t rootBoneIdx = 0;
+        for (size_t i = 0; i < baseSkeleton.BoneCount(); ++i)
+        {
+            if (baseSkeleton.Bones()[i].name.find(L"Hips") != std::wstring::npos)
+            {
+                rootBoneIdx = i;
+                break;
+            }
+        }
+        for (auto& cm : clipMetas)
+        {
+            if (!cm.clip || cm.clip->bonesKeyFrames.size() <= rootBoneIdx) { continue; }
+            auto& kfs = cm.clip->bonesKeyFrames[rootBoneIdx];
+            if (kfs.empty()) { continue; }
+            const float t0x = kfs[0].transform.m[3][0];
+            const float t0y = kfs[0].transform.m[3][1];
+            const float t0z = kfs[0].transform.m[3][2];
+            for (auto& kf : kfs)
+            {
+                kf.transform.m[3][0] = t0x;
+                kf.transform.m[3][1] = t0y;
+                kf.transform.m[3][2] = t0z;
+            }
+        }
+
         wchar_t logLine[300];
         std::swprintf(logLine, std::size(logLine),
-                      L"[render] FBX animation-only loaded: clips=%zu, bones-matched=%zu/%zu (path: %ls)\n",
+                      L"[render] FBX animation-only loaded: clips=%zu, bones-matched=%zu/%zu (path: %ls) [root-motion locked]\n",
                       clipMetas.size(),
                       static_cast<size_t>(std::count_if(baseIdxToClipNode.begin(), baseIdxToClipNode.end(),
                                                        [](FbxNode* p) { return p != nullptr; })),

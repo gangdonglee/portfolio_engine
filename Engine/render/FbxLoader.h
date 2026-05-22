@@ -42,6 +42,10 @@ namespace engine::render
         // queue/list 는 텍스처 업로드 1회용.
         // srvHeap 은 머티리얼 텍스처 SRV 등록처 — 호출자가 capacity 보장.
         // defaultColor: 머티리얼이 없거나 Kd 가 0,0,0 인 폴백.
+        // 자산별 좌표계 보정은 *SceneRuntime 의 world matrix 단계*에서
+        // ComposeWorld(inst.importTransform) * ComposeWorld(inst.transform) 합성으로 처리.
+        // FbxLoader 에는 vertex/bone palette baked-in 후처리를 두지 않는다
+        //   — 그 경로는 conjugation 식의 컨벤션 매칭이 미묘해서 mesh 가 깨졌다.
         LoadedFbxModel LoadFbx(
             Device&                  device,
             CommandQueue&            queue,
