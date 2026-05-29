@@ -1,6 +1,7 @@
 #include "Application.h"
 
 #include "FrameRenderer.h"
+#include "Player.h"
 #include "SceneRuntime.h"
 
 #include "core/Logger.h"
@@ -21,6 +22,7 @@
 #include "render/SrvDescriptorHeap.h"
 #include "render/SwapChain.h"
 #include "render/Texture.h"
+#include "render/ThirdPersonCamera.h"
 #include "scene/Scene.h"
 #include "scene/SceneSerializer.h"
 
@@ -361,9 +363,17 @@ namespace client
         m_freeCamera = std::make_unique<engine::render::FreeCamera>(*m_camera);
         m_freeCamera->SetMoveSpeed(100.0f);
 
+        m_thirdPersonCamera = std::make_unique<engine::render::ThirdPersonCamera>(*m_camera);
+
+        // Player — CharacterController + transform write-back. SceneRuntime 생성 후 Bind() 호출.
+        m_player = std::make_unique<Player>();
+
         // SceneRuntime — Scene 의 owner 가 SceneRuntime 으로 이동.
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(scene));
+
+        // Player 의 transform 바인딩 — AnimatorInstanceTransform() 이 nullptr 면 silent unbound.
+        m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
 
         // 부팅 씬 타이틀 표시.
         if (!m_currentScenePath.empty())
@@ -431,6 +441,8 @@ namespace client
         // === Teardown phase (이 시점부터 실패 시 기존 자산 회복 불가 — 약한 예외 보장) ===
         // ① GPU 작업 완료 보장 — 기존 자산이 GPU 에서 미사용 상태.
         m_queue->FlushGpu();
+        // Player 의 transform 포인터 dangling 회피 — SceneRuntime reset 전 unbind.
+        if (m_player) { m_player->Bind(nullptr); }
         // ② 기존 SceneRuntime 폐기 — 인스턴스 CB / 라이트 SB / Animator / 자산 캐시 release.
         m_sceneRuntime.reset();
         // ③ SrvHeap 슬롯 카운터 reset + fallback SRV 슬롯 0 재등록.
@@ -452,6 +464,22 @@ namespace client
         // Tick 시작의 nullptr 가드가 한 프레임 skip 으로 안전.
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(newScene));
+
+        // Player 의 transform 재바인딩 — 기존 instance 가 폐기되었으므로 새 ptr 로 갱신.
+        if (m_player)
+        {
+            m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
+        }
+
+        // Jump bind 자료 reset — 씬 변경 시 새 자산의 footY/hipX baseline 다시 캡처 필요.
+        m_footBindCaptured  = false;
+        m_footBindY         = 0.0f;
+        m_footBindSum       = 0.0f;
+        m_footBindSamples   = 0;
+        m_hipBindXCaptured  = false;
+        m_hipBindX          = 0.0f;
+        m_bindCaptureTimer  = 0.0f;
+        m_smoothedInstY     = 0.0f;
 
         // FrameRenderer 의 in-flight fence value reset — 새 슬롯들이 미사용 상태.
         // (Texture/FbxLoader 가 ctor 안에서 자체 FlushGpu 하므로 별도 FlushGpu 불필요.)
@@ -577,21 +605,54 @@ namespace client
             m_sceneRuntime->SetActiveClip(clipChange);
         }
 
+        // F 키 토글 — 3인칭 (Player + ThirdPersonCamera) 와 FreeCamera 전환.
+        //   down edge 만 처리 (hold 시 매 프레임 toggle 방지). VK 'F' (0x46) 는 VK_F1 (0x70) 와
+        //   다른 코드 — F1..F9 씬 슬롯과 충돌 없음.
+        {
+            const auto& input = m_window->GetInput();
+            const bool curToggle = input.IsKeyDown(static_cast<std::uint32_t>('F'));
+            if (curToggle && !m_prevToggleKeyDown)
+            {
+                m_thirdPersonActive = !m_thirdPersonActive;
+                if (m_thirdPersonActive && m_player)
+                {
+                    // 토글 시 카메라 yaw 기준으로 캐릭터 위치를 카메라 앞에 맞추진 않음 — 현재 위치
+                    // 유지 (transform.position 그대로). ThirdPersonCamera 가 다음 Update 에서
+                    // 캐릭터 따라잡음.
+                    engine::core::LogInfoA("[input] camera = ThirdPerson (Player active)\n");
+                }
+                else
+                {
+                    engine::core::LogInfoA("[input] camera = Free\n");
+                }
+            }
+            m_prevToggleKeyDown = curToggle;
+        }
+
         // AnimatorRuntime parameter 입력 (5-M2 Blend Tree 매핑):
-        //   1       → target Speed = 0.3 (Idle+Walk blend)
-        //   안 누름  → target Speed = 0.0 (Idle)
-        //   Space (down edge) → Jump trigger
-        // W 는 FreeCamera 의 카메라 이동 키로만 사용 — animator 측은 무영향.
+        //   3인칭 active: Speed = Player.Speed() / maxRunSpeed (clamp 0..1)
+        //   free-cam: 1 → 0.3 (Walk), 2 → 1.0 (Run), 안 누름 → 0 (Idle)
+        //   Space (down edge) → Jump trigger (양쪽 모드 공통)
         //
         // Blend Tree 에서 Speed 즉시 변경은 paramVal 점프 → 클립 hard cut.
         // m_currentSpeed 를 target 으로 *지수 보간* 으로 부드럽게 전환.
         if (m_sceneRuntime->HasAnimatorRuntime())
         {
             const auto& input = m_window->GetInput();
-            // 1 hold → Walking(0.3), 2 hold → Running(1.0), 안 누름 → Idle(0).
-            const float target = input.IsKeyDown(static_cast<std::uint32_t>('2')) ? 1.0f
-                               : input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f
-                               : 0.0f;
+            // 3인칭: Player 의 실측 속도 → 0..1. 최대 달리기 속도 450 u/s (Shift+WASD) 기준.
+            //   free-cam: 1 hold → Walking(0.3), 2 hold → Running(1.0).
+            float target = 0.0f;
+            if (m_thirdPersonActive && m_player)
+            {
+                constexpr float kMaxRunSpeed = 450.0f;
+                target = std::clamp(m_player->Controller().Speed() / kMaxRunSpeed, 0.0f, 1.0f);
+            }
+            else
+            {
+                target = input.IsKeyDown(static_cast<std::uint32_t>('2')) ? 1.0f
+                       : input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f
+                       : 0.0f;
+            }
             // smoothing rate 8/s — 0.125 s 시상수. 키 누름/뗌 ≈ 0.25 s 안에 완전 도달.
             const float smoothingRate = 8.0f;
             const float alpha = std::min(1.0f, dt * smoothingRate);
@@ -685,16 +746,54 @@ namespace client
                 jumpX = (hipX - m_hipBindX);
             }
 
+            // Player.Update 가 transform.position 의 baseline (x, z) 을 먼저 쓰므로,
+            //   jump 보정은 그 위에 *additive* 로 적용. 3인칭 비활성 시엔 baseline 이 0 이라
+            //   absolute 와 동일 효과 — 양쪽 모드 코드 path 통합.
+            if (m_thirdPersonActive && m_player)
+            {
+                m_player->Update(m_window->GetInput(), dt,
+                                 m_thirdPersonCamera ? m_thirdPersonCamera->Yaw() : 0.0f);
+            }
+
             if (engine::scene::Transform* xform = m_sceneRuntime->AnimatorInstanceTransform())
             {
-                xform->position.y = jumpY;
-                xform->position.x = jumpX;
+                if (m_thirdPersonActive)
+                {
+                    // jumpX 는 mesh-local 보정값. Player yaw 가 캐릭터를 회전시키므로 그 방향에
+                    //   맞춰 world (x, z) 로 분해해야 hip swing cancel 이 정확히 들어감.
+                    //   yaw=0 (facing +Z): cosYaw=1, sinYaw=0 → x += jumpX, z 변화 없음
+                    //                       → free-cam 시절 동작과 정확히 일치.
+                    //   yaw=π/2 (facing +X): cosYaw=0, sinYaw=1 → x 불변, z -= jumpX
+                    //                       → 캐릭터 right 방향으로 hip 보정 진행.
+                    //   부호 (z -= jumpX) 는 CharacterController 의 right = (cosYaw, 0, -sinYaw)
+                    //   convention 과 동일 — mesh-X 가 character right 으로 매핑.
+                    const float yaw    = m_player ? m_player->Controller().Yaw() : 0.0f;
+                    const float cosYaw = std::cos(yaw);
+                    const float sinYaw = std::sin(yaw);
+                    xform->position.y += jumpY;
+                    xform->position.x += jumpX * cosYaw;
+                    xform->position.z -= jumpX * sinYaw;
+                }
+                else
+                {
+                    xform->position.y = jumpY;
+                    xform->position.x = jumpX;
+                }
             }
 
         }
 
-        // 카메라 + Scene tick + 렌더.
-        m_freeCamera->Update(m_window->GetInput(), dt);
+        // 카메라 갱신 — 3인칭 active 면 ThirdPersonCamera 가 Player 위치 추적,
+        // 아니면 FreeCamera 가 WASD/마우스 입력 받음.
+        if (m_thirdPersonActive && m_thirdPersonCamera && m_player)
+        {
+            m_thirdPersonCamera->Update(m_window->GetInput(),
+                                        m_player->Controller().Position(), dt);
+        }
+        else
+        {
+            m_freeCamera->Update(m_window->GetInput(), dt);
+        }
         m_sceneRuntime->Tick(dt);
 
         D3D12_VIEWPORT viewport{};

@@ -129,6 +129,7 @@ if exist "$(SolutionDir)Resources" (
     <ClCompile Include="SceneRuntime.cpp" />
     <ClCompile Include="FrameRenderer.cpp" />
     <ClCompile Include="InputController.cpp" />
+    <ClCompile Include="Player.cpp" />
     <ClCompile Include="$(ImGuiRoot)\imgui.cpp" />
     <ClCompile Include="$(ImGuiRoot)\imgui_draw.cpp" />
     <ClCompile Include="$(ImGuiRoot)\imgui_tables.cpp" />
@@ -141,6 +142,7 @@ if exist "$(SolutionDir)Resources" (
     <ClInclude Include="SceneRuntime.h" />
     <ClInclude Include="FrameRenderer.h" />
     <ClInclude Include="InputController.h" />
+    <ClInclude Include="Player.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine\Engine.vcxproj">

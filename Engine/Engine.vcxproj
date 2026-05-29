@@ -117,6 +117,8 @@
     <ClCompile Include="scene\SceneSerializer.cpp" />
     <ClCompile Include="anim\AnimatorSerializer.cpp" />
     <ClCompile Include="anim\AnimatorRuntime.cpp" />
+    <ClCompile Include="render\ThirdPersonCamera.cpp" />
+    <ClCompile Include="game\CharacterController.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\HrCheck.h" />
@@ -155,6 +157,8 @@
     <ClInclude Include="anim\AnimatorController.h" />
     <ClInclude Include="anim\AnimatorSerializer.h" />
     <ClInclude Include="anim\AnimatorRuntime.h" />
+    <ClInclude Include="render\ThirdPersonCamera.h" />
+    <ClInclude Include="game\CharacterController.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

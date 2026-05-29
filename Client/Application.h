@@ -35,12 +35,14 @@ namespace engine::render
     class Texture;
     class Camera;
     class FreeCamera;
+    class ThirdPersonCamera;
 }
 
 namespace client
 {
     class FrameRenderer;
     class SceneRuntime;
+    class Player;
 
     // 클라이언트 애플리케이션의 루트.
     //   - 윈도우/Device/CommandQueue/SwapChain/DepthBuffer/RootSig/PSO/SrvHeap/fallback texture
@@ -107,6 +109,15 @@ namespace client
         // 카메라 (FreeCamera 가 Camera 를 참조하므로 Camera 먼저).
         std::unique_ptr<engine::render::Camera>             m_camera;
         std::unique_ptr<engine::render::FreeCamera>         m_freeCamera;
+        std::unique_ptr<engine::render::ThirdPersonCamera>  m_thirdPersonCamera;
+
+        // 3인칭 플레이어. F 키 토글로 ThirdPersonCamera 와 함께 활성/비활성.
+        //   active 시: WASD → Player (CharacterController) + 카메라 follow.
+        //   inactive 시: WASD → FreeCamera (기존 자유 시점).
+        // Bind() 는 SceneRuntime 생성/재생성 후 호출 — AnimatorInstanceTransform() 추적.
+        std::unique_ptr<Player>                             m_player;
+        bool                                                m_thirdPersonActive = false;
+        bool                                                m_prevToggleKeyDown = false;
 
         // Scene 런타임 / 매 프레임 렌더러 / 입력 컨트롤러.
         std::unique_ptr<SceneRuntime>                       m_sceneRuntime;
