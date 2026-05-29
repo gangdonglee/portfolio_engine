@@ -692,12 +692,13 @@ namespace client
             float jumpY = 0.0f;
             if (animStateName == "Jump")
             {
-                // takeoff frame 13, landing frame 34 — Mixamo Jump 의 실제 takeoff push 가
-                //   frame 13 (Hip Y 가 baseline 돌아오는 시점) 부터 visible 이라 그 frame 부터
-                //   parabola 활성. peak height 도 mesh 의 root motion (Mixamo skinning) 보정
-                //   감안해 110 unit (60 으로는 takeoff 단계 jY 가 작아 "땅에 쳐박힘" 보고).
-                constexpr float kTakeoffNorm = 13.0f / 57.0f;
-                constexpr float kLandingNorm = 34.0f / 57.0f;
+                // Jumping.fbx (78 frames, 2.6s) takeoff ~frame 22, landing ~frame 55.
+                //   Jump.fbx (57f) 시절의 13/57, 34/57 와 다른 비율 — clip 교체 시 재튜닝 필요.
+                // footY-align 제거 — Jumping.fbx 는 crouch 단계에서 footY 가 크게 떨어져
+                //   inst.y 를 -44 까지 밀어내 floor clipping 유발. crouch / recovery 는 그냥
+                //   클립 자체 모션에 맡기고 (jumpY=0), airborne 만 parabola lift 적용.
+                constexpr float kTakeoffNorm = 22.0f / 78.0f;
+                constexpr float kLandingNorm = 55.0f / 78.0f;
                 constexpr float kFadeWindow  = 0.04f;   // ~76ms blend zone.
                 const float duration = m_sceneRuntime->AnimatorStateDuration("Jump");
                 if (duration > 0.05f)
@@ -714,10 +715,7 @@ namespace client
                     const float fadeOut = 1.0f - smoothstep(kLandingNorm - kFadeWindow, kLandingNorm + kFadeWindow, n);
                     const float airborneActive = fadeIn * fadeOut;
 
-                    // footY 정렬 — Mixamo Jump 의 crouch/recovery 에서 발 본이 위로 올라가는 것 보정.
-                    const float align = m_footBindCaptured ? (footY - m_footBindY) : 0.0f;
-
-                    // parabola — sin² single bell over airborne window.
+                    // parabola — sin² single bell over airborne window. peak 110 unit.
                     float parabola = 0.0f;
                     if (airborneActive > 0.0f)
                     {
@@ -726,8 +724,7 @@ namespace client
                         parabola = m_jumpPeakHeight * s * s;
                     }
 
-                    // Blend: align dominates outside airborne, parabola dominates inside.
-                    jumpY = align * (1.0f - airborneActive) + parabola * airborneActive;
+                    jumpY = parabola * airborneActive;
                 }
             }
             // Hip X auto-align — Mixamo Jump 의 hip swing 보정.

@@ -15,7 +15,7 @@
     },
     {
       "name": "Jump",
-      "motionClipPath": "Resources/FBX/Jump.fbx",
+      "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
       "speed": 1.0
     }
