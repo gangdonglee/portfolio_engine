@@ -24,8 +24,8 @@
         "peakHeight": 110.0,
         "fadeWindow": 0.04,
         "crouchOffsetY": 0.0,
-        "groundAlignBone": "LeftFoot",
-        "groundAlignBaseline": 107.35
+        "groundAlignBone": "",
+        "groundAlignBaseline": 0.0
       }
     }
   ],
