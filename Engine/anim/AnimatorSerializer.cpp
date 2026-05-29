@@ -108,6 +108,7 @@ namespace engine::anim
                 rm["landingNormTime"] = s.rootMotion.landingNormTime;
                 rm["peakHeight"]      = s.rootMotion.peakHeight;
                 rm["fadeWindow"]      = s.rootMotion.fadeWindow;
+                rm["crouchOffsetY"]   = s.rootMotion.crouchOffsetY;
                 e["rootMotion"]       = std::move(rm);
             }
             states.push_back(std::move(e));
@@ -213,6 +214,7 @@ namespace engine::anim
                     if (auto y = x->find("landingNormTime"); y != x->end() && y->is_number()) { s.rootMotion.landingNormTime = y->get<float>(); }
                     if (auto y = x->find("peakHeight");      y != x->end() && y->is_number()) { s.rootMotion.peakHeight      = y->get<float>(); }
                     if (auto y = x->find("fadeWindow");      y != x->end() && y->is_number()) { s.rootMotion.fadeWindow      = y->get<float>(); }
+                    if (auto y = x->find("crouchOffsetY");   y != x->end() && y->is_number()) { s.rootMotion.crouchOffsetY   = y->get<float>(); }
                 }
                 c.states.push_back(std::move(s));
             }

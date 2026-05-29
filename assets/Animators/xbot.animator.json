@@ -22,7 +22,8 @@
         "takeoffNormTime": 0.282,
         "landingNormTime": 0.705,
         "peakHeight": 110.0,
-        "fadeWindow": 0.04
+        "fadeWindow": 0.04,
+        "crouchOffsetY": -20.0
       }
     }
   ],

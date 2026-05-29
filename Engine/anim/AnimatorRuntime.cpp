@@ -187,7 +187,9 @@ namespace engine::anim
         if (!state.hasRootMotion) { return 0.0f; }
 
         const auto& rm = state.rootMotion;
-        if (rm.peakHeight == 0.0f || rm.takeoffNormTime >= rm.landingNormTime) { return 0.0f; }
+        const bool hasParabola = (rm.peakHeight != 0.0f) && (rm.takeoffNormTime < rm.landingNormTime);
+        const bool hasCrouch   = (rm.crouchOffsetY != 0.0f);
+        if (!hasParabola && !hasCrouch) { return 0.0f; }
 
         const double duration = StateRepresentativeDuration(state);
         if (duration <= 0.05) { return 0.0f; }
@@ -204,14 +206,20 @@ namespace engine::anim
         const float fadeOut = 1.0f - smoothstep(rm.landingNormTime - rm.fadeWindow,
                                                 rm.landingNormTime + rm.fadeWindow, n);
         const float airborne = fadeIn * fadeOut;
-        if (airborne <= 0.0f) { return 0.0f; }
 
-        // airborne 구간 [takeoff, landing] 안의 normalized local time → sin² bell.
-        const float local = std::clamp((n - rm.takeoffNormTime) /
-                                       (rm.landingNormTime - rm.takeoffNormTime),
-                                       0.0f, 1.0f);
-        const float s = std::sin(local * 3.14159265358979323846f);
-        return rm.peakHeight * s * s * airborne;
+        // crouchOffsetY 는 airborne 밖에서 (pre-takeoff / post-landing) *상시* 적용.
+        //   parabola 는 airborne 안에서 sin² lift. 두 항이 smoothstep 으로 cross-blend —
+        //   takeoff 직전: crouch 만, 직후: parabola 만, 사이는 부드러운 전환.
+        float result = rm.crouchOffsetY * (1.0f - airborne);
+        if (hasParabola && airborne > 0.0f)
+        {
+            const float local = std::clamp((n - rm.takeoffNormTime) /
+                                           (rm.landingNormTime - rm.takeoffNormTime),
+                                           0.0f, 1.0f);
+            const float s = std::sin(local * 3.14159265358979323846f);
+            result += rm.peakHeight * s * s * airborne;
+        }
+        return result;
     }
 
     const std::string& AnimatorRuntime::CurrentStateName() const noexcept

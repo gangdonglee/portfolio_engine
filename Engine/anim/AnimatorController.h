@@ -25,6 +25,10 @@ namespace engine::anim
     //                                       landing (땅 닿는 순간) 의 normalized stateTime.
     //   peakHeight: airborne 의 sin² 곡선 최대값 (units).
     //   fadeWindow: takeoff/landing 경계의 smoothstep blend 폭 (정규화 시간 ±). 끊김 방지.
+    //   crouchOffsetY: pre-takeoff / post-landing 단계에 *상시* 적용되는 Y 오프셋 (units, 보통 음수).
+    //                  Mixamo 클립의 anticipation 자세에서 mesh-local foot 이 살짝 떠 있을 때 보정.
+    //                  airborne 윈도우에서는 fadeOut 되어 parabola 만 남음 — 즉 두 곡선이
+    //                  smoothstep 으로 cross-blend.
     //
     // 호출자 (Application) 는 AnimatorRuntime::RootMotionY() 의 결과를 transform.position.y 에
     // additive 적용. peakHeight 0 또는 takeoff>=landing 이면 곡선 비활성 (0 반환).
@@ -34,6 +38,7 @@ namespace engine::anim
         float landingNormTime = 1.0f;
         float peakHeight      = 0.0f;
         float fadeWindow      = 0.04f;
+        float crouchOffsetY   = 0.0f;
     };
 
     // 한 State = 하나의 motion. 두 모드:
