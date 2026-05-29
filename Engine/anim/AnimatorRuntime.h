@@ -119,6 +119,13 @@ namespace engine::anim
         // 외부 게임 코드용 — state 이름으로 대표 duration 조회 (점프 물리 동기화 등).
         double StateDuration(std::string_view stateName) const;
 
+        // 현재 state 의 ballistic root motion Y 오프셋 (units).
+        //   - 현재 state 의 hasRootMotion==false: 0 반환.
+        //   - peakHeight==0 또는 takeoffNormTime>=landingNormTime: 0 반환.
+        //   - airborne 윈도우 [takeoff, landing] 안에서 sin² parabola 적용 후 smoothstep 페이드.
+        // 호출자 (Application) 가 transform.position.y += RootMotionY() 로 가산.
+        float RootMotionY() const noexcept;
+
         // 현재 state 의 진행 시간 (sec). transition 중에는 *from state 의 시간*.
         double CurrentStateTime() const noexcept { return m_currentStateTime; }
 

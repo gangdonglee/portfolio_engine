@@ -16,6 +16,26 @@ namespace engine::anim
         float        threshold = 0.0f;
     };
 
+    // State 의 ballistic root motion 메타데이터 — Jump 같은 *시간 기반 Y 곡선* 의
+    //   takeoff/landing 정규화 시간 + peak height. Mixamo 의 jump 클립이 자체 root motion
+    //   을 baked 하지 않거나 mesh-local 패턴이 우리 mesh 와 안 맞을 때, *코드 측에서* 부드러운
+    //   parabola Y 를 덧씌워 시각 점프를 표현.
+    //
+    //   takeoffNormTime / landingNormTime: 0..1 정규화 시간. clip 의 takeoff (땅 떠나는 순간) 와
+    //                                       landing (땅 닿는 순간) 의 normalized stateTime.
+    //   peakHeight: airborne 의 sin² 곡선 최대값 (units).
+    //   fadeWindow: takeoff/landing 경계의 smoothstep blend 폭 (정규화 시간 ±). 끊김 방지.
+    //
+    // 호출자 (Application) 는 AnimatorRuntime::RootMotionY() 의 결과를 transform.position.y 에
+    // additive 적용. peakHeight 0 또는 takeoff>=landing 이면 곡선 비활성 (0 반환).
+    struct RootMotionBallistic
+    {
+        float takeoffNormTime = 0.0f;
+        float landingNormTime = 1.0f;
+        float peakHeight      = 0.0f;
+        float fadeWindow      = 0.04f;
+    };
+
     // 한 State = 하나의 motion. 두 모드:
     //   - 단일 clip: motionClipPath 만 사용. blendTree 비어있음.
     //   - 1D Blend Tree: blendTree 에 entries[] + blendParameter 지정.
@@ -27,6 +47,8 @@ namespace engine::anim
     // speed: 시간 진행 배율. 1.0 = 정상, 2.0 = 2배 빠르게.
     // blendTree: 비어있지 않으면 blend tree mode 활성. threshold 오름차순 가정.
     // blendParameter: blend tree mode 의 평가 파라미터 이름 (보통 Float 타입 — Speed 등).
+    // hasRootMotion / rootMotion: 점프 같은 ballistic Y 곡선 — JSON 의 "rootMotion" 객체로 지정.
+    //                              없으면 코드 측 Y 보정 없음 (animation 만 재생).
     struct AnimatorState
     {
         std::string                  name;
@@ -35,6 +57,8 @@ namespace engine::anim
         float                        speed = 1.0f;
         std::vector<BlendTreeEntry>  blendTree;          // empty = 단일 clip mode
         std::string                  blendParameter;     // blend tree mode 에서만 의미
+        bool                         hasRootMotion = false;
+        RootMotionBallistic          rootMotion{};
     };
 
     // 파라미터 타입 — Unity Mecanim 과 동일.

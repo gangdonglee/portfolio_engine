@@ -137,22 +137,12 @@ namespace client
         //   m_currentSpeed 를 target 으로 *시간 보간* 해 부드럽게 전환.
         float                                               m_currentSpeed = 0.0f;
 
-        // 점프 Y — 자동 발-바닥 정렬 + 활공 phase 추가 peak (commit faa0c56 패턴 복원).
-        //   bindY: Idle 1.5초 동안 footY 누적 평균 → 한 frame 의 편향 회피.
-        //   매 frame: 발이 bindY 보다 위로 → 캐릭터 그만큼 내림 (자동 floor align).
-        //   Jump state 활공 구간 (takeoff~landing): 추가 parabola peak.
-        float                                               m_footBindY = 0.0f;
-        float                                               m_footBindSum = 0.0f;
-        engine::uint32                                      m_footBindSamples = 0;
-        bool                                                m_footBindCaptured = false;
         // Hip X auto-align — Mixamo Jump 의 hip swing 으로 인한 캐릭터 X 흔들림 보정.
+        //   Idle 일 때 hipX 캡처 → Jump state 동안 (hipX - bindX) 만큼 transform.position.x 가산.
+        //   3인칭은 player yaw 로 회전 분해 후 적용. RootMotion (Y) 와 달리 *클립의 본 위치*
+        //   를 직접 읽어 보정 — 데이터 주도화 가능하지만 별도 후속 작업.
         float                                               m_hipBindX = 0.0f;
         bool                                                m_hipBindXCaptured = false;
-        float                                               m_bindCaptureTimer = 0.0f;
-        float                                               m_jumpPeakHeight   = 110.0f;
-        // inst.y 저역통과 필터 — state 전이 (Locomotion ↔ Jump) 시 target jumpY 의
-        // discontinuity 를 부드럽게 흡수. rate 빠르면 parabola 추종, 느리면 transition 부드러움.
-        float                                               m_smoothedInstY = 0.0f;
 
         // 타이틀바 디버그 정보 갱신 throttle — 매 프레임 SetWindowTextW 호출 시 CPU 비용 + 깜빡임 우려.
         float                                               m_titleUpdateAccum = 0.0f;

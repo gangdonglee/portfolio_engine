@@ -180,6 +180,40 @@ namespace engine::anim
         return StateRepresentativeDuration(m_controller.states[static_cast<size_t>(idx)]);
     }
 
+    float AnimatorRuntime::RootMotionY() const noexcept
+    {
+        if (m_currentStateIndex >= m_controller.states.size()) { return 0.0f; }
+        const auto& state = m_controller.states[m_currentStateIndex];
+        if (!state.hasRootMotion) { return 0.0f; }
+
+        const auto& rm = state.rootMotion;
+        if (rm.peakHeight == 0.0f || rm.takeoffNormTime >= rm.landingNormTime) { return 0.0f; }
+
+        const double duration = StateRepresentativeDuration(state);
+        if (duration <= 0.05) { return 0.0f; }
+
+        const float n = static_cast<float>(m_currentStateTime / duration);
+
+        // smoothstep 페이드 — takeoff/landing 경계 hard-cut 방지.
+        const auto smoothstep = [](float a, float b, float x) noexcept {
+            const float t = std::clamp((x - a) / (b - a), 0.0f, 1.0f);
+            return t * t * (3.0f - 2.0f * t);
+        };
+        const float fadeIn  = smoothstep(rm.takeoffNormTime - rm.fadeWindow,
+                                         rm.takeoffNormTime + rm.fadeWindow, n);
+        const float fadeOut = 1.0f - smoothstep(rm.landingNormTime - rm.fadeWindow,
+                                                rm.landingNormTime + rm.fadeWindow, n);
+        const float airborne = fadeIn * fadeOut;
+        if (airborne <= 0.0f) { return 0.0f; }
+
+        // airborne 구간 [takeoff, landing] 안의 normalized local time → sin² bell.
+        const float local = std::clamp((n - rm.takeoffNormTime) /
+                                       (rm.landingNormTime - rm.takeoffNormTime),
+                                       0.0f, 1.0f);
+        const float s = std::sin(local * 3.14159265358979323846f);
+        return rm.peakHeight * s * s * airborne;
+    }
+
     const std::string& AnimatorRuntime::CurrentStateName() const noexcept
     {
         static const std::string kEmpty;

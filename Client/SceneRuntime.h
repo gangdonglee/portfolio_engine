@@ -107,6 +107,10 @@ namespace client
         float AnimatorBoneMeshLocalY(std::wstring_view boneName) const;
         float AnimatorBoneMeshLocalX(std::wstring_view boneName) const;   // 진단용
 
+        // 현재 Animator state 의 ballistic root motion Y 오프셋. 없으면 0.
+        // Application 이 transform.position.y 에 가산 — Jump 코드측 하드코딩 제거용.
+        float AnimatorRootMotionY() const;
+
         // AnimatorRuntime passthrough — Application 이 키 입력에 응답해 호출.
         // AnimatorRuntime 가 활성이 아니면 silent no-op.
         bool HasAnimatorRuntime() const noexcept;

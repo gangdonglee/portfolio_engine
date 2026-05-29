@@ -370,6 +370,12 @@ namespace client
         return static_cast<float>(m_animatorRuntime->StateDuration(stateName));
     }
 
+    float SceneRuntime::AnimatorRootMotionY() const
+    {
+        if (!m_animatorRuntime) { return 0.0f; }
+        return m_animatorRuntime->RootMotionY();
+    }
+
     std::string SceneRuntime::AnimatorCurrentStateName() const
     {
         if (!m_animatorRuntime) { return {}; }

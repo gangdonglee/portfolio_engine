@@ -100,6 +100,16 @@ namespace engine::anim
                 e["blendTree"]      = std::move(bt);
                 e["blendParameter"] = s.blendParameter;
             }
+            // Root motion — 명시된 경우만 직렬화 (기존 JSON 과 호환).
+            if (s.hasRootMotion)
+            {
+                json rm;
+                rm["takeoffNormTime"] = s.rootMotion.takeoffNormTime;
+                rm["landingNormTime"] = s.rootMotion.landingNormTime;
+                rm["peakHeight"]      = s.rootMotion.peakHeight;
+                rm["fadeWindow"]      = s.rootMotion.fadeWindow;
+                e["rootMotion"]       = std::move(rm);
+            }
             states.push_back(std::move(e));
         }
         root["states"] = std::move(states);
@@ -195,6 +205,14 @@ namespace engine::anim
                         if (auto y = en.find("threshold");      y != en.end() && y->is_number()) { entry.threshold      = y->get<float>(); }
                         s.blendTree.push_back(std::move(entry));
                     }
+                }
+                if (auto x = e.find("rootMotion"); x != e.end() && x->is_object())
+                {
+                    s.hasRootMotion = true;
+                    if (auto y = x->find("takeoffNormTime"); y != x->end() && y->is_number()) { s.rootMotion.takeoffNormTime = y->get<float>(); }
+                    if (auto y = x->find("landingNormTime"); y != x->end() && y->is_number()) { s.rootMotion.landingNormTime = y->get<float>(); }
+                    if (auto y = x->find("peakHeight");      y != x->end() && y->is_number()) { s.rootMotion.peakHeight      = y->get<float>(); }
+                    if (auto y = x->find("fadeWindow");      y != x->end() && y->is_number()) { s.rootMotion.fadeWindow      = y->get<float>(); }
                 }
                 c.states.push_back(std::move(s));
             }
