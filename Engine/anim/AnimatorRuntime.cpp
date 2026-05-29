@@ -94,6 +94,7 @@ namespace engine::anim
 
         m_palette.resize(skeleton.BoneCount());
         m_boneMeshLocalY.assign(skeleton.BoneCount(), 0.0f);
+        m_boneMeshLocalX.assign(skeleton.BoneCount(), 0.0f);
         const XMFLOAT4X4 identity = []{
             XMFLOAT4X4 m;
             XMStoreFloat4x4(&m, XMMatrixIdentity());
@@ -415,6 +416,7 @@ namespace engine::anim
             XMFLOAT4X4 stored;
             XMStoreFloat4x4(&stored, boneGlobal);
             m_boneMeshLocalY[b] = stored.m[2][3];
+            m_boneMeshLocalX[b] = stored.m[0][3];
         }
     }
 }

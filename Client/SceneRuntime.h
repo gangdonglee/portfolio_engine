@@ -105,6 +105,7 @@ namespace client
         // 자동 floor align 용 — 본 이름 으로 *현재 frame 의 bone palette translation Y* 조회
         //   (= 본 origin 의 mesh-local Y). 본 없거나 Animator 없으면 0 반환.
         float AnimatorBoneMeshLocalY(std::wstring_view boneName) const;
+        float AnimatorBoneMeshLocalX(std::wstring_view boneName) const;   // 진단용
 
         // AnimatorRuntime passthrough — Application 이 키 입력에 응답해 호출.
         // AnimatorRuntime 가 활성이 아니면 silent no-op.

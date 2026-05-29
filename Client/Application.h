@@ -134,8 +134,14 @@ namespace client
         float                                               m_footBindSum = 0.0f;
         engine::uint32                                      m_footBindSamples = 0;
         bool                                                m_footBindCaptured = false;
+        // Hip X auto-align — Mixamo Jump 의 hip swing 으로 인한 캐릭터 X 흔들림 보정.
+        float                                               m_hipBindX = 0.0f;
+        bool                                                m_hipBindXCaptured = false;
         float                                               m_bindCaptureTimer = 0.0f;
-        float                                               m_jumpPeakHeight   = 60.0f;
+        float                                               m_jumpPeakHeight   = 110.0f;
+        // inst.y 저역통과 필터 — state 전이 (Locomotion ↔ Jump) 시 target jumpY 의
+        // discontinuity 를 부드럽게 흡수. rate 빠르면 parabola 추종, 느리면 transition 부드러움.
+        float                                               m_smoothedInstY = 0.0f;
 
         // 타이틀바 디버그 정보 갱신 throttle — 매 프레임 SetWindowTextW 호출 시 CPU 비용 + 깜빡임 우려.
         float                                               m_titleUpdateAccum = 0.0f;

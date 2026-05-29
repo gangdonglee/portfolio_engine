@@ -83,6 +83,11 @@ namespace engine::anim
         {
             return (boneIdx < m_boneMeshLocalY.size()) ? m_boneMeshLocalY[boneIdx] : 0.0f;
         }
+        // 진단용 — 본 joint 의 mesh-local X (수평 1축).
+        float BoneMeshLocalX(size_t boneIdx) const noexcept
+        {
+            return (boneIdx < m_boneMeshLocalX.size()) ? m_boneMeshLocalX[boneIdx] : 0.0f;
+        }
 
     private:
         // parameter 이름 → m_paramValues 인덱스 (없으면 -1).
@@ -146,6 +151,7 @@ namespace engine::anim
         std::vector<DirectX::XMFLOAT4X4> m_palette;
         // *currentBone 의 translation Y* per bone — 자동 floor 정렬용.
         std::vector<float>               m_boneMeshLocalY;
+        std::vector<float>               m_boneMeshLocalX;   // 진단용 — 수평축 변동 추적.
 
         bool    m_paused = false;
     };

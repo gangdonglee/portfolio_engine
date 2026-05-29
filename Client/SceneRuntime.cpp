@@ -418,6 +418,26 @@ namespace client
         return m_animatorRuntime->BoneMeshLocalY(static_cast<size_t>(idx));
     }
 
+    float SceneRuntime::AnimatorBoneMeshLocalX(std::wstring_view boneName) const
+    {
+        if (!m_animatorRuntime || !m_animSkeleton) { return 0.0f; }
+        engine::int32 idx = m_animSkeleton->FindIndex(std::wstring{ boneName });
+        if (idx < 0)
+        {
+            const std::wstring needle{ boneName };
+            for (size_t i = 0; i < m_animSkeleton->BoneCount(); ++i)
+            {
+                if (m_animSkeleton->Bones()[i].name.find(needle) != std::wstring::npos)
+                {
+                    idx = static_cast<engine::int32>(i);
+                    break;
+                }
+            }
+        }
+        if (idx < 0) { return 0.0f; }
+        return m_animatorRuntime->BoneMeshLocalX(static_cast<size_t>(idx));
+    }
+
     void SceneRuntime::SetAnimatorFloat(std::string_view name, float value)
     {
         if (m_animatorRuntime) { m_animatorRuntime->SetFloat(name, value); }
