@@ -409,12 +409,12 @@ namespace engine::anim
             const XMMATRIX combined  = XMMatrixMultiply(boneGlobal, offsetMat);
             XMStoreFloat4x4(&m_palette[b], combined);
 
-            // currentBone (= boneGlobal) 의 translation Y — bone joint 의 mesh-local 위치.
-            //   XMMatrixMultiply 는 column-vector convention 으로 동작 — translation 은 m[1][3].
-            //   (XMMATRIX 자체 저장은 row-major 지만 의미는 col-vec convention; r[3] 의 y component).
+            // currentBone (= boneGlobal) 의 translation vertical — bone joint 의 mesh-local 높이.
+            //   ConvertMatrix transpose 정책 으로 translation 은 m[0..2][3] (col 3, rows 0-2).
+            //   matReflect Y/Z swap 후 vertical = m[2][3] (FbxLoader 진단과 동일 convention).
             XMFLOAT4X4 stored;
             XMStoreFloat4x4(&stored, boneGlobal);
-            m_boneMeshLocalY[b] = stored.m[1][3];
+            m_boneMeshLocalY[b] = stored.m[2][3];
         }
     }
 }

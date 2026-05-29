@@ -400,10 +400,21 @@ namespace client
     float SceneRuntime::AnimatorBoneMeshLocalY(std::wstring_view boneName) const
     {
         if (!m_animatorRuntime || !m_animSkeleton) { return 0.0f; }
-        const engine::int32 idx = m_animSkeleton->FindIndex(std::wstring{ boneName });
+        // 정확 매칭 우선, 실패 시 substring 매칭 (Mixamo namespace prefix 변동 흡수).
+        engine::int32 idx = m_animSkeleton->FindIndex(std::wstring{ boneName });
+        if (idx < 0)
+        {
+            const std::wstring needle{ boneName };
+            for (size_t i = 0; i < m_animSkeleton->BoneCount(); ++i)
+            {
+                if (m_animSkeleton->Bones()[i].name.find(needle) != std::wstring::npos)
+                {
+                    idx = static_cast<engine::int32>(i);
+                    break;
+                }
+            }
+        }
         if (idx < 0) { return 0.0f; }
-        // currentBone × (0,0,0,1) 의 translation Y — bone joint 의 mesh-local 위치.
-        // AnimatorRuntime 이 BuildPalette 내부에서 m_boneMeshLocalY 갱신.
         return m_animatorRuntime->BoneMeshLocalY(static_cast<size_t>(idx));
     }
 

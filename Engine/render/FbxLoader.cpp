@@ -779,8 +779,23 @@ namespace engine::render::fbx_loader
         }
 
         // 베이스 본 인덱스 → 클립 FBX 의 FbxNode* (없으면 nullptr — 그 본의 키프레임 skip).
-        // 본 이름 변환은 WideCharToMultiByte UTF-8 — LoadFbx 의 utf8Path 변환과 동일 정책.
-        // 비-ASCII 본 이름 (예: 한글) 도 안전 매칭 (Mixamo 외 자산 대응).
+        //
+        // Namespace prefix 정규화:
+        //   Mixamo 는 다운로드 시점에 따라 'mixamorig:Hips' / 'mixamorig1:Hips' / 'mixamorig2:...'
+        //   등으로 prefix 가 달라져 같은 캐릭터의 mesh-FBX 와 clip-FBX 본 이름이 직접 비교 실패 사례
+        //   존재 (관측: X Bot.fbx 는 'mixamorig1:', Idle.fbx 는 'mixamorig:'). 마지막 ':' 뒤의 leaf
+        //   이름으로 정규화한 후 매칭.
+        auto NormalizeBoneName = [](const std::string& s) -> std::string {
+            const size_t colon = s.find_last_of(':');
+            return (colon == std::string::npos) ? s : s.substr(colon + 1);
+        };
+        std::unordered_map<std::string, FbxNode*> normClipMap;
+        normClipMap.reserve(boneNodeMap.size());
+        for (const auto& [name, node] : boneNodeMap)
+        {
+            normClipMap.emplace(NormalizeBoneName(name), node);
+        }
+
         std::vector<FbxNode*> baseIdxToClipNode(baseBoneCount, nullptr);
         for (size_t i = 0; i < baseBoneCount; ++i)
         {
@@ -795,7 +810,8 @@ namespace engine::render::fbx_loader
                                       wname.c_str(), static_cast<int>(wname.size()),
                                       utf8Name.data(), nameLen, nullptr, nullptr);
             }
-            if (auto it = boneNodeMap.find(utf8Name); it != boneNodeMap.end())
+            const std::string normName = NormalizeBoneName(utf8Name);
+            if (auto it = normClipMap.find(normName); it != normClipMap.end())
             {
                 baseIdxToClipNode[i] = it->second;
             }
@@ -862,6 +878,36 @@ namespace engine::render::fbx_loader
                 rootBoneIdx = i;
                 break;
             }
+        }
+
+        // 진단 — Jump clip의 frame별 Hip vertical (m[2][3]) dump.
+        //   takeoff/landing frame 식별용. m[2][3] 가 matReflect 후 vertical.
+        for (const auto& cm : clipMetas)
+        {
+            if (!cm.clip || cm.clip->bonesKeyFrames.size() <= rootBoneIdx) { continue; }
+            if (cm.clip->name.find(L"Take 001") != std::wstring::npos) { continue; }
+            const auto& kfs = cm.clip->bonesKeyFrames[rootBoneIdx];
+            if (kfs.size() < 2) { continue; }
+            const float baseY = kfs[0].transform.m[2][3];
+            float maxDelta = 0.0f; size_t peakFrame = 0;
+            size_t takeoffFrame = 0; bool takeoffFound = false;
+            size_t landingFrame = kfs.size() - 1;
+            constexpr float kThreshold = 2.0f;
+            for (size_t i = 0; i < kfs.size(); ++i)
+            {
+                const float delta = kfs[i].transform.m[2][3] - baseY;
+                if (delta > maxDelta) { maxDelta = delta; peakFrame = i; }
+                if (!takeoffFound && delta > kThreshold) { takeoffFrame = i; takeoffFound = true; }
+                if (delta > kThreshold) { landingFrame = i; }
+            }
+            wchar_t buf[400];
+            std::swprintf(buf, std::size(buf),
+                L"[fbx-JUMP] '%ls' frames=%zu, baseY=%.2f, peak=%.2f@f%zu, takeoff~f%zu, landing~f%zu (normalized takeoff=%.3f, landing=%.3f)\n",
+                cm.clip->name.c_str(), kfs.size(), baseY, maxDelta, peakFrame,
+                takeoffFrame, landingFrame,
+                static_cast<float>(takeoffFrame) / static_cast<float>(kfs.size()),
+                static_cast<float>(landingFrame + 1) / static_cast<float>(kfs.size()));
+            engine::core::LogInfo(buf);
         }
 
         // 진단 — *XZ lock 안전망 적용 전* Hips bone 의 원본 X/Y/Z translation range.

@@ -588,7 +588,10 @@ namespace client
         if (m_sceneRuntime->HasAnimatorRuntime())
         {
             const auto& input = m_window->GetInput();
-            const float target = input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f : 0.0f;
+            // 1 hold → Walking(0.3), 2 hold → Running(1.0), 안 누름 → Idle(0).
+            const float target = input.IsKeyDown(static_cast<std::uint32_t>('2')) ? 1.0f
+                               : input.IsKeyDown(static_cast<std::uint32_t>('1')) ? 0.3f
+                               : 0.0f;
             // smoothing rate 8/s — 0.125 s 시상수. 키 누름/뗌 ≈ 0.25 s 안에 완전 도달.
             const float smoothingRate = 8.0f;
             const float alpha = std::min(1.0f, dt * smoothingRate);
@@ -602,9 +605,58 @@ namespace client
             }
             m_prevJumpDown = curJump;
 
-            // 점프 Y 코드 측 보정 *전면 제거*. 자산의 Hips translation track 이 살아있다는
-            // 것이 검증됨 (devlog 37) — root motion 통합이 진짜 해법. Animator/셰이더로
-            // bone palette 가 그대로 흐르도록 두고, 코드는 xform.position.y 를 건드리지 않는다.
+            // 점프 Y 곡선 — Mixamo Jump.fbx 의 takeoff/landing 프레임에 정렬한 sin² 곡선.
+            //   Jump.fbx 의 Hips Y span (~14 unit) 만으로는 시각상 점프 거의 안 보임 (키 170 의 8%).
+            //   전체 duration 의 [0, takeoff] = crouch 단계 (Y=0, ground), [takeoff, landing] = 공중
+            //   (sin² 곡선으로 부드럽게 상승→하강), [landing, 1] = recovery (Y=0).
+            //   sin² 는 시작/끝 derivative=0 → 끊김 없음. parabola 4t(1-t) 는 시작 derivative=4 라 튐.
+            // 점프 Y — *Jump state 일 때만* footY 자동 정렬 + 활공 phase parabola peak.
+            //   Running/Walking 의 자연스런 발 motion 까지 보정하면 캐릭터가 위아래로 요동치므로
+            //   auto-align 은 Jump 상태에서만 활성.
+            //   bindY: Locomotion 일 때 *첫 valid frame 즉시 캡처* (첫 점프도 즉시 정렬). 이후
+            //   Locomotion 동안 EMA 로 천천히 idle baseline 추적 (Jump 후 회복용).
+            const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"LeftFoot");
+            const std::string animStateName = m_sceneRuntime->CurrentAnimatorStateName();
+            const bool inLocomotion = (animStateName == "Locomotion");
+
+            // bindY 즉시 캡처 — footY != 0 (BuildPalette 가 한 번이라도 돌고 난 후).
+            if (!m_footBindCaptured && inLocomotion && std::fabs(footY) > 0.01f)
+            {
+                m_footBindY        = footY;
+                m_footBindCaptured = true;
+            }
+            else if (m_footBindCaptured && inLocomotion)
+            {
+                // EMA — Jump 후 idle baseline 회복용. 충분히 느려 cycle 영향 무시.
+                m_footBindY = m_footBindY * 0.995f + footY * 0.005f;
+            }
+
+            float jumpY = 0.0f;
+            if (animStateName == "Jump")
+            {
+                // 진단 측정값 (fbx-JUMP, 57 frame Mixamo Jump.fbx):
+                //   takeoff frame 16 = 0.281, landing frame 32 = 0.561.
+                constexpr float kTakeoffNorm = 16.0f / 57.0f;
+                constexpr float kLandingNorm = 32.0f / 57.0f;
+                // footY 자동 정렬 — 매 frame 발 본 mesh-local Y 와 bindY 차이.
+                jumpY = m_footBindCaptured ? (footY - m_footBindY) : 0.0f;
+                const float duration = m_sceneRuntime->AnimatorStateDuration("Jump");
+                if (duration > 0.05f)
+                {
+                    const float stateTime = m_sceneRuntime->AnimatorCurrentStateTime();
+                    const float takeoffT  = duration * kTakeoffNorm;
+                    const float landingT  = duration * kLandingNorm;
+                    if (stateTime > takeoffT && stateTime < landingT)
+                    {
+                        const float t = (stateTime - takeoffT) / (landingT - takeoffT);
+                        jumpY += m_jumpPeakHeight * 4.0f * t * (1.0f - t);
+                    }
+                }
+            }
+            if (engine::scene::Transform* xform = m_sceneRuntime->AnimatorInstanceTransform())
+            {
+                xform->position.y = jumpY;
+            }
         }
 
         // 카메라 + Scene tick + 렌더.
