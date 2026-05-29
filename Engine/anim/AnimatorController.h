@@ -29,6 +29,12 @@ namespace engine::anim
     //                  Mixamo 클립의 anticipation 자세에서 mesh-local foot 이 살짝 떠 있을 때 보정.
     //                  airborne 윈도우에서는 fadeOut 되어 parabola 만 남음 — 즉 두 곡선이
     //                  smoothstep 으로 cross-blend.
+    //   crouchDepth: pre-takeoff 의 *sin 곡선 dip* peak (units, 보통 음수).
+    //                n=0 에서 0, n=takeoffNormTime/2 에서 peak, n=takeoffNormTime 에서 0.
+    //                anticipation 단계 캐릭터가 살짝 내려갔다가 takeoff 로 부드럽게 인수인계.
+    //                frame 0 ("just standing on floor") 과 frame mid-crouch 동시 만족 가능.
+    //   recoveryDepth: post-landing 의 *sin 곡선 dip* peak (units, 보통 음수).
+    //                  n=landingNormTime 에서 0, 중간에서 peak, n=1 에서 0. 착지 흡수 효과.
     //   groundAlignBone: 비어있지 않으면 *동적* foot-align 활성 — 매 프레임 해당 본의
     //                    mesh-local Y 를 읽어 (baseline - currentBoneY) 만큼 가산. FBX 가 프레임
     //                    마다 foot bone Y 가 바뀌는 (root motion baked) 경우 일정 오프셋만으론
@@ -45,6 +51,10 @@ namespace engine::anim
         float       peakHeight          = 0.0f;
         float       fadeWindow          = 0.04f;
         float       crouchOffsetY       = 0.0f;
+        float       crouchDepth         = 0.0f;
+        float       crouchPeakNorm      = 0.5f;   // 0..1 within crouch phase
+        float       recoveryDepth       = 0.0f;
+        float       recoveryPeakNorm    = 0.5f;   // 0..1 within recovery phase
         std::string groundAlignBone;
         float       groundAlignBaseline = 0.0f;
     };

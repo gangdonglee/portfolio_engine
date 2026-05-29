@@ -189,8 +189,10 @@ namespace engine::anim
         const auto& rm = state.rootMotion;
         const bool hasParabola    = (rm.peakHeight != 0.0f) && (rm.takeoffNormTime < rm.landingNormTime);
         const bool hasCrouch      = (rm.crouchOffsetY != 0.0f);
+        const bool hasCrouchDip   = (rm.crouchDepth != 0.0f) && (rm.takeoffNormTime > 0.0f);
+        const bool hasRecoveryDip = (rm.recoveryDepth != 0.0f) && (rm.landingNormTime < 1.0f);
         const bool hasBoneAlign   = !rm.groundAlignBone.empty();
-        if (!hasParabola && !hasCrouch && !hasBoneAlign) { return 0.0f; }
+        if (!hasParabola && !hasCrouch && !hasCrouchDip && !hasRecoveryDip && !hasBoneAlign) { return 0.0f; }
 
         const double duration = StateRepresentativeDuration(state);
         if (duration <= 0.05) { return 0.0f; }
@@ -249,14 +251,44 @@ namespace engine::anim
         //   박히는 현상.
         const float crouchWeight   = 1.0f - fadeIn;
         const float nonAirborne    = 1.0f - airborne;
+        constexpr float kPi        = 3.14159265358979323846f;
 
         float result = rm.crouchOffsetY * nonAirborne + boneAlign * crouchWeight;
+
+        // 비대칭 dip 곡선 — peakNorm 에서 1, 양 끝 (0, 1) 에서 0. smoothstep 두 개로 구성.
+        //   crouchPeakNorm = 0.5 면 대칭, > 0.5 면 dip 이 더 늦게 들어감 (Mixamo 의 deep crouch
+        //   anticipation 처럼 phase 후반에 발이 많이 떠 있는 케이스 대응).
+        const auto asymDip = [](float local, float peakNorm) noexcept {
+            const auto sstep = [](float a, float b, float x) {
+                const float t = std::clamp((x - a) / (b - a), 0.0f, 1.0f);
+                return t * t * (3.0f - 2.0f * t);
+            };
+            peakNorm = std::clamp(peakNorm, 0.01f, 0.99f);
+            if (local < peakNorm)
+            {
+                return sstep(0.0f, peakNorm, local);
+            }
+            return 1.0f - sstep(peakNorm, 1.0f, local);
+        };
+
+        // crouchDepth: pre-takeoff dip — n=0/takeoff 에서 0, peakNorm 위치에서 깊이 최대.
+        if (hasCrouchDip && n < rm.takeoffNormTime)
+        {
+            const float local = n / rm.takeoffNormTime;
+            result += rm.crouchDepth * asymDip(local, rm.crouchPeakNorm);
+        }
+        // recoveryDepth: post-landing dip — landing/end 에서 0, peakNorm 위치에서 깊이 최대.
+        if (hasRecoveryDip && n > rm.landingNormTime)
+        {
+            const float local = (n - rm.landingNormTime) / (1.0f - rm.landingNormTime);
+            result += rm.recoveryDepth * asymDip(local, rm.recoveryPeakNorm);
+        }
         if (hasParabola && airborne > 0.0f)
         {
             const float local = std::clamp((n - rm.takeoffNormTime) /
                                            (rm.landingNormTime - rm.takeoffNormTime),
                                            0.0f, 1.0f);
-            const float s = std::sin(local * 3.14159265358979323846f);
+            const float s = std::sin(local * kPi);
             result += rm.peakHeight * s * s * airborne;
         }
         return result;

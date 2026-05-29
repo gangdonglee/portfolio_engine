@@ -24,6 +24,10 @@
         "peakHeight": 110.0,
         "fadeWindow": 0.04,
         "crouchOffsetY": 0.0,
+        "crouchDepth": -50.0,
+        "crouchPeakNorm": 0.65,
+        "recoveryDepth": 0.0,
+        "recoveryPeakNorm": 0.5,
         "groundAlignBone": "",
         "groundAlignBaseline": 0.0
       }

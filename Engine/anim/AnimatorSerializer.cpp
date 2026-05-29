@@ -109,6 +109,10 @@ namespace engine::anim
                 rm["peakHeight"]          = s.rootMotion.peakHeight;
                 rm["fadeWindow"]          = s.rootMotion.fadeWindow;
                 rm["crouchOffsetY"]       = s.rootMotion.crouchOffsetY;
+                rm["crouchDepth"]         = s.rootMotion.crouchDepth;
+                rm["crouchPeakNorm"]      = s.rootMotion.crouchPeakNorm;
+                rm["recoveryDepth"]       = s.rootMotion.recoveryDepth;
+                rm["recoveryPeakNorm"]    = s.rootMotion.recoveryPeakNorm;
                 rm["groundAlignBone"]     = s.rootMotion.groundAlignBone;
                 rm["groundAlignBaseline"] = s.rootMotion.groundAlignBaseline;
                 e["rootMotion"]           = std::move(rm);
@@ -217,6 +221,10 @@ namespace engine::anim
                     if (auto y = x->find("peakHeight");          y != x->end() && y->is_number()) { s.rootMotion.peakHeight          = y->get<float>(); }
                     if (auto y = x->find("fadeWindow");          y != x->end() && y->is_number()) { s.rootMotion.fadeWindow          = y->get<float>(); }
                     if (auto y = x->find("crouchOffsetY");       y != x->end() && y->is_number()) { s.rootMotion.crouchOffsetY       = y->get<float>(); }
+                    if (auto y = x->find("crouchDepth");         y != x->end() && y->is_number()) { s.rootMotion.crouchDepth         = y->get<float>(); }
+                    if (auto y = x->find("crouchPeakNorm");      y != x->end() && y->is_number()) { s.rootMotion.crouchPeakNorm      = y->get<float>(); }
+                    if (auto y = x->find("recoveryDepth");       y != x->end() && y->is_number()) { s.rootMotion.recoveryDepth       = y->get<float>(); }
+                    if (auto y = x->find("recoveryPeakNorm");    y != x->end() && y->is_number()) { s.rootMotion.recoveryPeakNorm    = y->get<float>(); }
                     if (auto y = x->find("groundAlignBone");     y != x->end() && y->is_string()) { s.rootMotion.groundAlignBone     = y->get<std::string>(); }
                     if (auto y = x->find("groundAlignBaseline"); y != x->end() && y->is_number()) { s.rootMotion.groundAlignBaseline = y->get<float>(); }
                 }
