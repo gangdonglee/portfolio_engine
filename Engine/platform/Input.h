@@ -38,6 +38,10 @@ namespace engine::platform
         void OnKeyUp  (uint32 vkey);
         void OnMouseMove(int32 x, int32 y);
         void OnMouseButton(int32 button, bool down);
+        // WM_MOUSEWHEEL 의 wheel notch. Win32 는 ±WHEEL_DELTA (=120) 단위로 누적 전달 —
+        //   여기선 normalized notch 만 누적 (휠 한 칸 = +1, 반대 방향 = -1).
+        //   같은 프레임 안에서 여러 번 호출 가능 → += 누적.
+        void OnMouseWheel(int32 wheelNotches);
 
         // 게임 코드 조회.
         bool  IsKeyDown(uint32 vkey)         const noexcept;
@@ -46,6 +50,8 @@ namespace engine::platform
         int32 MouseY()                       const noexcept { return m_mouseY; }
         int32 MouseDeltaX()                  const noexcept { return m_mouseDeltaX; }
         int32 MouseDeltaY()                  const noexcept { return m_mouseDeltaY; }
+        // 이번 프레임에 누적된 마우스 휠 노치 수 (위 스크롤 = 양수). BeginFrame 시 0 으로 리셋.
+        int32 MouseWheel()                   const noexcept { return m_wheelDelta; }
 
     private:
         bool  m_keys[256]{};            // VK_* 인덱싱
@@ -56,5 +62,10 @@ namespace engine::platform
         int32 m_prevMouseY  = 0;
         int32 m_mouseDeltaX = 0;
         int32 m_mouseDeltaY = 0;
+        // m_wheelAccum 은 WndProc 가 OnMouseWheel 로 누적, BeginFrame 이 snapshot → m_wheelDelta
+        // 로 옮기고 accum 을 0 으로 reset. PumpMessages → BeginFrame → 게임코드 read 순서에서
+        // 이전 프레임 잔여 / 이번 프레임 신규를 깔끔히 분리.
+        int32 m_wheelAccum  = 0;
+        int32 m_wheelDelta  = 0;
     };
 }

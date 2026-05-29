@@ -31,6 +31,15 @@ namespace engine::render
             m_pitch = std::clamp(m_pitch, kPitchMin, kPitchMax);
         }
 
+        // 줌 — 마우스 휠. 위로 굴리면 distance 감소 (zoom in), 반대는 zoom out.
+        //   RMB 와 독립 (회전 중에도 사용 가능). distance 는 [min, max] 클램프.
+        const int wheel = input.MouseWheel();
+        if (wheel != 0)
+        {
+            m_distance = std::clamp(m_distance - static_cast<float>(wheel) * m_zoomStep,
+                                    m_distanceMin, m_distanceMax);
+        }
+
         UpdateCameraFromState(targetPos);
     }
 

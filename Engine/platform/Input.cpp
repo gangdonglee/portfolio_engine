@@ -11,6 +11,9 @@ namespace engine::platform
         m_mouseDeltaY = m_mouseY - m_prevMouseY;
         m_prevMouseX  = m_mouseX;
         m_prevMouseY  = m_mouseY;
+        // 휠 — PumpMessages 가 m_wheelAccum 에 누적해놨음. snapshot 후 accum reset.
+        m_wheelDelta  = m_wheelAccum;
+        m_wheelAccum  = 0;
     }
 
     void Input::OnKeyDown(uint32 vkey)
@@ -32,6 +35,11 @@ namespace engine::platform
     void Input::OnMouseButton(int32 button, bool down)
     {
         if (button >= 0 && button < 3) m_buttons[button] = down;
+    }
+
+    void Input::OnMouseWheel(int32 wheelNotches)
+    {
+        m_wheelAccum += wheelNotches;
     }
 
     bool Input::IsKeyDown(uint32 vkey) const noexcept

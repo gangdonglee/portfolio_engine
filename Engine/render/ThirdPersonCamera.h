@@ -35,6 +35,9 @@ namespace engine::render
         void SetDistance   (float units) noexcept { m_distance = units; }
         void SetLookHeight (float units) noexcept { m_lookHeight = units; }
         void SetRotationSpeed(float radPerPx) noexcept { m_rotSpeed = radPerPx; }
+        // 줌 step / 클램프 범위 (units). 휠 한 노치당 m_distance 가 zoomStep 만큼 변동.
+        void SetZoomStep(float units)            noexcept { m_zoomStep    = units; }
+        void SetDistanceRange(float lo, float hi) noexcept { m_distanceMin = lo; m_distanceMax = hi; }
 
     private:
         void UpdateCameraFromState(const DirectX::XMFLOAT3& targetPos);
@@ -47,5 +50,11 @@ namespace engine::render
         float m_distance   = 300.0f;  // 캐릭터로부터 카메라까지의 거리 (units).
         float m_lookHeight = 100.0f;  // 캐릭터 origin 위 lookHeight 지점을 카메라가 바라봄 (가슴/머리 높이).
         float m_rotSpeed   = 0.005f;  // rad / pixel.
+
+        // 마우스 휠 zoom 파라미터. 휠 위로 = zoom in = m_distance 감소.
+        //   step 30 → 1 노치당 30 units 변화 (default range 100~800 기준 부드러운 가시 변화).
+        float m_zoomStep    = 30.0f;
+        float m_distanceMin = 100.0f;
+        float m_distanceMax = 800.0f;
     };
 }

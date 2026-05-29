@@ -213,6 +213,13 @@ namespace engine::platform
             case WM_RBUTTONUP:   m_input.OnMouseButton(1, false); return 0;
             case WM_MBUTTONDOWN: m_input.OnMouseButton(2, true);  return 0;
             case WM_MBUTTONUP:   m_input.OnMouseButton(2, false); return 0;
+            case WM_MOUSEWHEEL:
+            {
+                // WHEEL_DELTA = 120 (Win32). 1 휠 노치 = ±120. notch 단위로 normalize.
+                const short raw = static_cast<short>(HIWORD(wParam));
+                m_input.OnMouseWheel(raw / WHEEL_DELTA);
+                return 0;
+            }
 
             default:
                 return ::DefWindowProcW(hwnd, msg, wParam, lParam);
