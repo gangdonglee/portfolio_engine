@@ -187,9 +187,10 @@ namespace engine::anim
         if (!state.hasRootMotion) { return 0.0f; }
 
         const auto& rm = state.rootMotion;
-        const bool hasParabola = (rm.peakHeight != 0.0f) && (rm.takeoffNormTime < rm.landingNormTime);
-        const bool hasCrouch   = (rm.crouchOffsetY != 0.0f);
-        if (!hasParabola && !hasCrouch) { return 0.0f; }
+        const bool hasParabola    = (rm.peakHeight != 0.0f) && (rm.takeoffNormTime < rm.landingNormTime);
+        const bool hasCrouch      = (rm.crouchOffsetY != 0.0f);
+        const bool hasBoneAlign   = !rm.groundAlignBone.empty();
+        if (!hasParabola && !hasCrouch && !hasBoneAlign) { return 0.0f; }
 
         const double duration = StateRepresentativeDuration(state);
         if (duration <= 0.05) { return 0.0f; }
@@ -207,10 +208,49 @@ namespace engine::anim
                                                 rm.landingNormTime + rm.fadeWindow, n);
         const float airborne = fadeIn * fadeOut;
 
-        // crouchOffsetY 는 airborne 밖에서 (pre-takeoff / post-landing) *상시* 적용.
-        //   parabola 는 airborne 안에서 sin² lift. 두 항이 smoothstep 으로 cross-blend —
-        //   takeoff 직전: crouch 만, 직후: parabola 만, 사이는 부드러운 전환.
-        float result = rm.crouchOffsetY * (1.0f - airborne);
+        // groundAlign: 동적 — 매 프레임 본 mesh-local Y 와 baseline 차이 만큼 보정.
+        //   Skeleton bone 이름 비교는 wstring (FBX 컨벤션). UTF-8 → wstring 단순 변환
+        //   (Mixamo 본 이름은 ASCII). namespace prefix (mixamorig:) 대응 substring 매칭.
+        float boneAlign = 0.0f;
+        if (hasBoneAlign)
+        {
+            std::wstring wname;
+            wname.reserve(rm.groundAlignBone.size());
+            for (char c : rm.groundAlignBone) { wname.push_back(static_cast<wchar_t>(c)); }
+            engine::int32 boneIdx = m_skeleton.FindIndex(wname);
+            if (boneIdx < 0)
+            {
+                for (size_t i = 0; i < m_skeleton.BoneCount(); ++i)
+                {
+                    if (m_skeleton.Bones()[i].name.find(wname) != std::wstring::npos)
+                    {
+                        boneIdx = static_cast<engine::int32>(i);
+                        break;
+                    }
+                }
+            }
+            if (boneIdx >= 0 && static_cast<size_t>(boneIdx) < m_boneMeshLocalY.size())
+            {
+                // align = baseline - currentBoneY: 본이 baseline 보다 위로 가면 음수 push down.
+                boneAlign = rm.groundAlignBaseline - m_boneMeshLocalY[static_cast<size_t>(boneIdx)];
+            }
+        }
+
+        // Phase weighting:
+        //   crouchWeight   = 1 - fadeIn   (1 pre-takeoff, 0 elsewhere)
+        //   airborneWeight = fadeIn * fadeOut
+        //   recoveryWeight = 1 - fadeOut  (1 post-landing, 0 elsewhere)
+        //   합 = 1 항상 (cross-blend 보장).
+        //
+        // crouchOffsetY: pre-takeoff / post-landing 양쪽에 (1 - airborne) 으로 적용.
+        // boneAlign: pre-takeoff 만 적용 (crouchWeight). post-landing 은 FBX 가 자체적으로
+        //   "feet on ground" 자세를 가지므로 동적 align 이 over-push 유발 — Jumping.fbx
+        //   에서 recovery 시 footY 가 baseline 보다 매우 높아 character 가 floor 아래로
+        //   박히는 현상.
+        const float crouchWeight   = 1.0f - fadeIn;
+        const float nonAirborne    = 1.0f - airborne;
+
+        float result = rm.crouchOffsetY * nonAirborne + boneAlign * crouchWeight;
         if (hasParabola && airborne > 0.0f)
         {
             const float local = std::clamp((n - rm.takeoffNormTime) /

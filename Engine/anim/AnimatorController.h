@@ -29,16 +29,24 @@ namespace engine::anim
     //                  Mixamo 클립의 anticipation 자세에서 mesh-local foot 이 살짝 떠 있을 때 보정.
     //                  airborne 윈도우에서는 fadeOut 되어 parabola 만 남음 — 즉 두 곡선이
     //                  smoothstep 으로 cross-blend.
+    //   groundAlignBone: 비어있지 않으면 *동적* foot-align 활성 — 매 프레임 해당 본의
+    //                    mesh-local Y 를 읽어 (baseline - currentBoneY) 만큼 가산. FBX 가 프레임
+    //                    마다 foot bone Y 가 바뀌는 (root motion baked) 경우 일정 오프셋만으론
+    //                    부족 — 동적 추적 필요.
+    //   groundAlignBaseline: bone 이 "feet on ground" 자세에 있을 때의 mesh-local Y 기준값.
+    //                        대개 클립의 첫 프레임 또는 Idle bind pose 의 본 Y. 시각 검증으로 튜닝.
     //
     // 호출자 (Application) 는 AnimatorRuntime::RootMotionY() 의 결과를 transform.position.y 에
-    // additive 적용. peakHeight 0 또는 takeoff>=landing 이면 곡선 비활성 (0 반환).
+    // additive 적용. peakHeight 0 또는 takeoff>=landing 이면 parabola 비활성 (다른 항만 작용).
     struct RootMotionBallistic
     {
-        float takeoffNormTime = 0.0f;
-        float landingNormTime = 1.0f;
-        float peakHeight      = 0.0f;
-        float fadeWindow      = 0.04f;
-        float crouchOffsetY   = 0.0f;
+        float       takeoffNormTime     = 0.0f;
+        float       landingNormTime     = 1.0f;
+        float       peakHeight          = 0.0f;
+        float       fadeWindow          = 0.04f;
+        float       crouchOffsetY       = 0.0f;
+        std::string groundAlignBone;
+        float       groundAlignBaseline = 0.0f;
     };
 
     // 한 State = 하나의 motion. 두 모드:

@@ -104,12 +104,14 @@ namespace engine::anim
             if (s.hasRootMotion)
             {
                 json rm;
-                rm["takeoffNormTime"] = s.rootMotion.takeoffNormTime;
-                rm["landingNormTime"] = s.rootMotion.landingNormTime;
-                rm["peakHeight"]      = s.rootMotion.peakHeight;
-                rm["fadeWindow"]      = s.rootMotion.fadeWindow;
-                rm["crouchOffsetY"]   = s.rootMotion.crouchOffsetY;
-                e["rootMotion"]       = std::move(rm);
+                rm["takeoffNormTime"]     = s.rootMotion.takeoffNormTime;
+                rm["landingNormTime"]     = s.rootMotion.landingNormTime;
+                rm["peakHeight"]          = s.rootMotion.peakHeight;
+                rm["fadeWindow"]          = s.rootMotion.fadeWindow;
+                rm["crouchOffsetY"]       = s.rootMotion.crouchOffsetY;
+                rm["groundAlignBone"]     = s.rootMotion.groundAlignBone;
+                rm["groundAlignBaseline"] = s.rootMotion.groundAlignBaseline;
+                e["rootMotion"]           = std::move(rm);
             }
             states.push_back(std::move(e));
         }
@@ -210,11 +212,13 @@ namespace engine::anim
                 if (auto x = e.find("rootMotion"); x != e.end() && x->is_object())
                 {
                     s.hasRootMotion = true;
-                    if (auto y = x->find("takeoffNormTime"); y != x->end() && y->is_number()) { s.rootMotion.takeoffNormTime = y->get<float>(); }
-                    if (auto y = x->find("landingNormTime"); y != x->end() && y->is_number()) { s.rootMotion.landingNormTime = y->get<float>(); }
-                    if (auto y = x->find("peakHeight");      y != x->end() && y->is_number()) { s.rootMotion.peakHeight      = y->get<float>(); }
-                    if (auto y = x->find("fadeWindow");      y != x->end() && y->is_number()) { s.rootMotion.fadeWindow      = y->get<float>(); }
-                    if (auto y = x->find("crouchOffsetY");   y != x->end() && y->is_number()) { s.rootMotion.crouchOffsetY   = y->get<float>(); }
+                    if (auto y = x->find("takeoffNormTime");     y != x->end() && y->is_number()) { s.rootMotion.takeoffNormTime     = y->get<float>(); }
+                    if (auto y = x->find("landingNormTime");     y != x->end() && y->is_number()) { s.rootMotion.landingNormTime     = y->get<float>(); }
+                    if (auto y = x->find("peakHeight");          y != x->end() && y->is_number()) { s.rootMotion.peakHeight          = y->get<float>(); }
+                    if (auto y = x->find("fadeWindow");          y != x->end() && y->is_number()) { s.rootMotion.fadeWindow          = y->get<float>(); }
+                    if (auto y = x->find("crouchOffsetY");       y != x->end() && y->is_number()) { s.rootMotion.crouchOffsetY       = y->get<float>(); }
+                    if (auto y = x->find("groundAlignBone");     y != x->end() && y->is_string()) { s.rootMotion.groundAlignBone     = y->get<std::string>(); }
+                    if (auto y = x->find("groundAlignBaseline"); y != x->end() && y->is_number()) { s.rootMotion.groundAlignBaseline = y->get<float>(); }
                 }
                 c.states.push_back(std::move(s));
             }

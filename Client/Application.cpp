@@ -217,6 +217,8 @@ namespace client
         ImGui::Separator();
         const auto* xform = m_sceneRuntime->AnimatorInstanceTransform();
         ImGui::Text("inst.transform.y = %.2f", xform ? xform->position.y : 0.0f);
+        const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"LeftFoot");
+        ImGui::Text("LeftFoot mesh-local Y = %.2f (rootMotion baseline 튜닝 참고)", footY);
 
         ImGui::End();
     }
