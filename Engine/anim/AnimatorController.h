@@ -80,6 +80,11 @@ namespace engine::anim
     // blendParameter: blend tree mode 의 평가 파라미터 이름 (보통 Float 타입 — Speed 등).
     // hasRootMotion / rootMotion: 점프 같은 ballistic Y 곡선 — JSON 의 "rootMotion" 객체로 지정.
     //                              없으면 코드 측 Y 보정 없음 (animation 만 재생).
+    // startNormTime / endNormTime: 한 FBX 클립의 *일부 frame range* 만 재생.
+    //   default [0, 1] = 전체 클립. Lyra 처럼 단일 Jumping.fbx 를 4 phase (Start/Apex/Fall/Land)
+    //   로 분할해서 state 마다 다른 범위 사용 — 별도 FBX export 불필요.
+    //   stateTime 은 windowed duration (clip.duration * (endNorm - startNorm)) 안에서 진행.
+    //   실제 clip time = clip.duration * startNorm + stateTime.
     struct AnimatorState
     {
         std::string                  name;
@@ -90,6 +95,8 @@ namespace engine::anim
         std::string                  blendParameter;     // blend tree mode 에서만 의미
         bool                         hasRootMotion = false;
         RootMotionBallistic          rootMotion{};
+        float                        startNormTime = 0.0f;
+        float                        endNormTime   = 1.0f;
     };
 
     // 파라미터 타입 — Unity Mecanim 과 동일.

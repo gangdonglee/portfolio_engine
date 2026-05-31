@@ -37,16 +37,27 @@ namespace engine::game
 
     void CharacterController::UpdatePhysics(float dt) noexcept
     {
+        // 매 tick 이벤트 플래그 reset — 이번 frame 에 일어난 일만 표시.
+        m_jumpApexThisFrame = false;
+        m_landedThisFrame   = false;
+
         // UE NewFallVelocity + PhysFalling 패턴 — grounded 아닐 때 중력 적분 + floor snap.
         if (!m_isGrounded)
         {
+            const float oldVy = m_velocityY;
             m_velocityY -= m_gravity * dt;
+            // Apex 감지 — UE NotifyJumpApex 등가. Vy 가 양수에서 0 이하로 떨어진 frame.
+            if (oldVy > 0.0f && m_velocityY <= 0.0f)
+            {
+                m_jumpApexThisFrame = true;
+            }
             m_position.y += m_velocityY * dt;
             if (m_position.y <= 0.0f)
             {
-                m_position.y = 0.0f;
-                m_velocityY  = 0.0f;
-                m_isGrounded = true;
+                m_position.y      = 0.0f;
+                m_velocityY       = 0.0f;
+                m_isGrounded      = true;
+                m_landedThisFrame = true;   // UE Landed() 등가.
             }
         }
     }

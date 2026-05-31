@@ -105,6 +105,15 @@ namespace engine::anim
 
     AnimatorRuntime::~AnimatorRuntime() = default;
 
+    namespace {
+        // state 의 [startNormTime, endNormTime] frame range 안에서 stateTime 을 실제 clip
+        // 시간으로 매핑. range default [0, 1] 이면 stateTime 그대로.
+        double MapToClipTime(const AnimatorState& state, double stateTime, double clipDuration) noexcept {
+            const double startNorm = static_cast<double>(state.startNormTime);
+            return clipDuration * startNorm + stateTime;
+        }
+    }
+
     XMMATRIX AnimatorRuntime::EvaluateStateBoneTransform(const AnimatorState& state,
                                                          size_t               boneIdx,
                                                          double               stateTime) const
@@ -117,7 +126,8 @@ namespace engine::anim
             {
                 clip = it->second;
             }
-            return EvaluateBoneTransform(clip, boneIdx, stateTime);
+            const double clipTime = clip ? MapToClipTime(state, stateTime, clip->DurationSec()) : stateTime;
+            return EvaluateBoneTransform(clip, boneIdx, clipTime);
         }
 
         // 1D Blend Tree mode — blendParameter 값 → 인접 두 entry 의 clip 평가 후 lerp.
@@ -131,14 +141,16 @@ namespace engine::anim
         {
             const engine::render::AnimClip* clip = nullptr;
             if (auto it = m_clipMap.find(entries.front().motionClipPath); it != m_clipMap.end()) { clip = it->second; }
-            return EvaluateBoneTransform(clip, boneIdx, stateTime);
+            const double clipTime = clip ? MapToClipTime(state, stateTime, clip->DurationSec()) : stateTime;
+            return EvaluateBoneTransform(clip, boneIdx, clipTime);
         }
         // 마지막 entry 보다 크거나 같으면 그 clip 만.
         if (paramVal >= entries.back().threshold)
         {
             const engine::render::AnimClip* clip = nullptr;
             if (auto it = m_clipMap.find(entries.back().motionClipPath); it != m_clipMap.end()) { clip = it->second; }
-            return EvaluateBoneTransform(clip, boneIdx, stateTime);
+            const double clipTime = clip ? MapToClipTime(state, stateTime, clip->DurationSec()) : stateTime;
+            return EvaluateBoneTransform(clip, boneIdx, clipTime);
         }
 
         // 인접 두 entry 찾기 — paramVal 이 [thresholds[i], thresholds[i+1]] 사이.
@@ -153,8 +165,10 @@ namespace engine::anim
                 const engine::render::AnimClip* clipB = nullptr;
                 if (auto it = m_clipMap.find(entries[i    ].motionClipPath); it != m_clipMap.end()) { clipA = it->second; }
                 if (auto it = m_clipMap.find(entries[i + 1].motionClipPath); it != m_clipMap.end()) { clipB = it->second; }
-                const XMMATRIX A = EvaluateBoneTransform(clipA, boneIdx, stateTime);
-                const XMMATRIX B = EvaluateBoneTransform(clipB, boneIdx, stateTime);
+                const double clipTimeA = clipA ? MapToClipTime(state, stateTime, clipA->DurationSec()) : stateTime;
+                const double clipTimeB = clipB ? MapToClipTime(state, stateTime, clipB->DurationSec()) : stateTime;
+                const XMMATRIX A = EvaluateBoneTransform(clipA, boneIdx, clipTimeA);
+                const XMMATRIX B = EvaluateBoneTransform(clipB, boneIdx, clipTimeB);
                 return LerpTransforms(A, B, t);
             }
         }
@@ -168,7 +182,15 @@ namespace engine::anim
             : state.blendTree.front().motionClipPath;
         if (auto it = m_clipMap.find(path); it != m_clipMap.end() && it->second != nullptr)
         {
-            return it->second->DurationSec();
+            const double full = it->second->DurationSec();
+            // Frame range 적용 — windowed duration. state.startNorm = 0, endNorm = 1 면 동일.
+            const double startNorm = static_cast<double>(state.startNormTime);
+            const double endNorm   = static_cast<double>(state.endNormTime);
+            if (endNorm > startNorm && endNorm <= 1.0 + 0.0001)
+            {
+                return full * (endNorm - startNorm);
+            }
+            return full;
         }
         return 0.0;
     }
@@ -596,11 +618,14 @@ namespace engine::anim
             if (boneIdx >= 0 && static_cast<size_t>(boneIdx) < m_boneMeshLocalY.size())
             {
                 const float currentBoneY = m_boneMeshLocalY[static_cast<size_t>(boneIdx)];
-                // state 진입 시 baseline 캡처 (delta=0 시작 → 부드러운 진입)
-                if (m_rootMotionLastStateIdx != m_currentStateIndex)
+                // baseline 유지 정책 — 같은 본 이름으로 extract 모드 유지 시 baseline 그대로.
+                //   Jump_Start → Apex → Fall_Loop → Land 처럼 같은 Hips bone 으로 추출하면
+                //   첫 진입 (Locomotion → Jump_Start) 때만 캡처, phase 간 transition 시
+                //   baseline 안 바뀌어서 mesh 튐 없음.
+                if (m_rootMotionBaselineBone != boneName)
                 {
                     m_rootMotionBaselineY    = currentBoneY;
-                    m_rootMotionLastStateIdx = m_currentStateIndex;
+                    m_rootMotionBaselineBone = boneName;
                 }
                 const float delta = currentBoneY - m_rootMotionBaselineY;
                 m_rootMotionExtractedY = delta;
@@ -620,8 +645,8 @@ namespace engine::anim
         }
         else
         {
-            // state 가 root motion 미지정 → baseline 다음 진입 시 재캡처되도록 reset.
-            m_rootMotionLastStateIdx = static_cast<size_t>(-1);
+            // state 가 root motion 미지정 → baseline reset (다음 jump 진입 시 새로 캡처).
+            m_rootMotionBaselineBone.clear();
         }
     }
 }

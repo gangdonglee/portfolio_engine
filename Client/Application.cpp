@@ -685,7 +685,8 @@ namespace client
                 m_hipBindXCaptured = true;
             }
             float jumpX = 0.0f;
-            if (animStateName == "Jump" && m_hipBindXCaptured)
+            // 4-state jump 분할 — 모든 Jump_* state 에서 hipX 보정. Locomotion 이 아니면 적용.
+            if (!inLocomotion && m_hipBindXCaptured)
             {
                 jumpX = (hipX - m_hipBindX);
             }
@@ -741,12 +742,14 @@ namespace client
             m_freeCamera->Update(m_window->GetInput(), dt);
         }
 
-        // UE 패턴 — animator 가 캐릭터 물리 상태 읽음. controller 의 최신 isGrounded 를
-        //   animator 에 push → Jump→Locomotion 전이 (IsGrounded 조건) 가 capsule 착지
-        //   시점에 발동. 애니메이션이 물리에 종속. free-cam/3인칭 무관.
+        // UE 패턴 — animator 가 캐릭터 물리 상태 읽음. controller 의 최신 isGrounded/VelocityY
+        //   를 animator 에 push → state machine 전이 (Apex→Fall_Loop = VerticalSpeed<0,
+        //   Fall_Loop→Land = IsGrounded) 가 물리에 종속. 애니메이션이 물리 따라감.
         if (m_sceneRuntime->HasAnimatorRuntime() && m_player)
         {
-            m_sceneRuntime->SetAnimatorBool("IsGrounded", m_player->Controller().IsGrounded());
+            const auto& ctrl = m_player->Controller();
+            m_sceneRuntime->SetAnimatorBool ("IsGrounded",    ctrl.IsGrounded());
+            m_sceneRuntime->SetAnimatorFloat("VerticalSpeed", ctrl.VelocityY());
         }
 
         m_sceneRuntime->Tick(dt);

@@ -55,6 +55,15 @@ namespace engine::game
         float                    VelocityY()  const noexcept { return m_velocityY; }
         bool                     IsGrounded() const noexcept { return m_isGrounded; }
         bool                     IsFalling()  const noexcept { return !m_isGrounded; }
+        // UE 의 NotifyJumpApex() / Landed() 등가 — 이번 frame 에 해당 이벤트 발생했는지.
+        //   Vy 가 + → ≤ 0 으로 떨어진 frame: ApexReachedThisFrame() == true.
+        //   !grounded → grounded 전이 frame: LandedThisFrame() == true.
+        //   UpdatePhysics() 호출 시 reset 후 갱신.
+        bool                     ApexReachedThisFrame() const noexcept { return m_jumpApexThisFrame; }
+        bool                     LandedThisFrame()      const noexcept { return m_landedThisFrame; }
+        // 평면 floor (y=0) 가정 시 ground 까지의 거리. airborne 일 때만 양수.
+        //   Lyra 의 GroundDistance (LineTrace 결과) 등가 — 우리는 단순화.
+        float                    GroundDistance()       const noexcept { return m_isGrounded ? 0.0f : m_position.y; }
 
         void  SetMoveSpeed    (float unitsPerSec) noexcept { m_moveSpeed = unitsPerSec; }
         void  SetBoostFactor  (float factor)      noexcept { m_boostFactor = factor; }
@@ -78,9 +87,11 @@ namespace engine::game
         // Y 물리 — UE CharacterMovementComponent 기본값 (cm 스케일 가정).
         //   peak height = vy²/(2g) = 420²/1960 ≈ 90 cm.
         //   total air time = 2*vy/g ≈ 0.857 sec.
-        float             m_velocityY     = 0.0f;
-        float             m_gravity       = 980.0f;   // |GravityZ| (UE DefaultGravityZ = -980).
-        float             m_jumpZVelocity = 420.0f;   // UE 기본 JumpZVelocity.
-        bool              m_isGrounded    = true;
+        float             m_velocityY         = 0.0f;
+        float             m_gravity           = 980.0f;   // |GravityZ| (UE DefaultGravityZ = -980).
+        float             m_jumpZVelocity     = 420.0f;   // UE 기본 JumpZVelocity.
+        bool              m_isGrounded        = true;
+        bool              m_jumpApexThisFrame = false;    // Vy 부호 전환 frame 만 true.
+        bool              m_landedThisFrame   = false;    // airborne → grounded 전환 frame 만 true.
     };
 }

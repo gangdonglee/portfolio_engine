@@ -13,52 +13,127 @@
         { "motionClipPath": "Resources/FBX/Running.fbx", "threshold": 1.0 }
       ]
     },
+
     {
-      "name": "Jump",
+      "name": "Jump_Start",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
-      "speed": 3.03,
+      "speed": 1.0,
+      "startNormTime": 0.0,
+      "endNormTime":   0.333,
       "rootMotion": {
-        "takeoffNormTime": 0.282,
-        "landingNormTime": 0.705,
+        "takeoffNormTime": 0.0,
+        "landingNormTime": 1.0,
         "peakHeight": 0.0,
         "fadeWindow": 0.04,
-        "crouchOffsetY": 0.0,
-        "crouchDepth": 0.0,
-        "crouchPeakNorm": 0.5,
-        "recoveryDepth": 0.0,
-        "recoveryPeakNorm": 0.5,
-        "groundAlignBone": "",
-        "groundAlignBaseline": 0.0,
+        "extractRootMotionFromBone": "Hips"
+      }
+    },
+
+    {
+      "name": "Jump_Apex",
+      "motionClipPath": "Resources/FBX/Jumping.fbx",
+      "loop": true,
+      "speed": 1.0,
+      "startNormTime": 0.333,
+      "endNormTime":   0.513,
+      "rootMotion": {
+        "takeoffNormTime": 0.0,
+        "landingNormTime": 1.0,
+        "peakHeight": 0.0,
+        "fadeWindow": 0.04,
+        "extractRootMotionFromBone": "Hips"
+      }
+    },
+
+    {
+      "name": "Jump_Fall_Loop",
+      "motionClipPath": "Resources/FBX/Jumping.fbx",
+      "loop": true,
+      "speed": 1.0,
+      "startNormTime": 0.513,
+      "endNormTime":   0.705,
+      "rootMotion": {
+        "takeoffNormTime": 0.0,
+        "landingNormTime": 1.0,
+        "peakHeight": 0.0,
+        "fadeWindow": 0.04,
+        "extractRootMotionFromBone": "Hips"
+      }
+    },
+
+    {
+      "name": "Jump_Land",
+      "motionClipPath": "Resources/FBX/Jumping.fbx",
+      "loop": false,
+      "speed": 1.0,
+      "startNormTime": 0.705,
+      "endNormTime":   1.0,
+      "rootMotion": {
+        "takeoffNormTime": 0.0,
+        "landingNormTime": 1.0,
+        "peakHeight": 0.0,
+        "fadeWindow": 0.04,
         "extractRootMotionFromBone": "Hips"
       }
     }
   ],
+
   "parameters": [
-    { "name": "Speed",      "type": "Float",   "defaultValue": 0.0 },
-    { "name": "Jump",       "type": "Trigger", "defaultValue": 0.0 },
-    { "name": "IsGrounded", "type": "Bool",    "defaultValue": 1.0 }
+    { "name": "Speed",         "type": "Float",   "defaultValue": 0.0 },
+    { "name": "Jump",          "type": "Trigger", "defaultValue": 0.0 },
+    { "name": "IsGrounded",    "type": "Bool",    "defaultValue": 1.0 },
+    { "name": "VerticalSpeed", "type": "Float",   "defaultValue": 0.0 }
   ],
+
   "transitions": [
     {
       "fromStateName": "",
-      "toStateName":   "Jump",
-      "crossfadeDuration": 0.1,
+      "toStateName":   "Jump_Start",
+      "crossfadeDuration": 0.05,
       "hasExitTime": false,
-      "exitTime": 0.0,
       "conditions": [
         { "parameterName": "Jump", "op": "IfTrue", "value": 0.0 }
       ]
     },
+
     {
-      "fromStateName": "Jump",
-      "toStateName":   "Locomotion",
-      "crossfadeDuration": 0.1,
+      "fromStateName": "Jump_Start",
+      "toStateName":   "Jump_Apex",
+      "crossfadeDuration": 0.05,
       "hasExitTime": false,
-      "exitTime": 0.0,
+      "conditions": [
+        { "parameterName": "VerticalSpeed", "op": "Less", "value": 100.0 }
+      ]
+    },
+
+    {
+      "fromStateName": "Jump_Apex",
+      "toStateName":   "Jump_Fall_Loop",
+      "crossfadeDuration": 0.05,
+      "hasExitTime": false,
+      "conditions": [
+        { "parameterName": "VerticalSpeed", "op": "Less", "value": 0.0 }
+      ]
+    },
+
+    {
+      "fromStateName": "Jump_Fall_Loop",
+      "toStateName":   "Jump_Land",
+      "crossfadeDuration": 0.05,
+      "hasExitTime": false,
       "conditions": [
         { "parameterName": "IsGrounded", "op": "IfTrue", "value": 0.0 }
       ]
+    },
+
+    {
+      "fromStateName": "Jump_Land",
+      "toStateName":   "Locomotion",
+      "crossfadeDuration": 0.1,
+      "hasExitTime": true,
+      "exitTime": 0.9,
+      "conditions": []
     }
   ]
 }

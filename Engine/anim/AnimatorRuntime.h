@@ -169,11 +169,12 @@ namespace engine::anim
         bool    m_paused = false;
 
         // Root motion 추출 상태.
-        //   m_rootMotionLastStateIdx: 직전 BuildPalette 시점의 state — 바뀌면 baseline 재캡처.
-        //   m_rootMotionBaselineY: state 진입 시 캡처한 bone Y. 이후 frame 의 delta 기준.
+        //   m_rootMotionBaselineBone: 현재 baseline 의 본 이름 — 같으면 baseline 유지.
+        //     Lyra 패턴 — Jump_Start → Apex → Fall_Loop → Land 모두 같은 본 이라 통과.
+        //   m_rootMotionBaselineY: 첫 캡처한 bone Y. extract 상태 이어지는 동안 유지.
         //   m_rootMotionExtractedY: 이번 frame 의 delta (현재 boneY - baselineY).
-        size_t m_rootMotionLastStateIdx = static_cast<size_t>(-1);
-        float  m_rootMotionBaselineY    = 0.0f;
-        float  m_rootMotionExtractedY   = 0.0f;
+        std::string m_rootMotionBaselineBone;
+        float       m_rootMotionBaselineY    = 0.0f;
+        float       m_rootMotionExtractedY   = 0.0f;
     };
 }

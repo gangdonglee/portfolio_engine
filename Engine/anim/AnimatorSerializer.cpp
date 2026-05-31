@@ -86,6 +86,12 @@ namespace engine::anim
             e["motionClipPath"] = s.motionClipPath;
             e["loop"]           = s.loop;
             e["speed"]          = s.speed;
+            // Frame range — 단일 FBX 일부 구간만 재생. default [0, 1] 면 직렬화 생략.
+            if (s.startNormTime != 0.0f || s.endNormTime != 1.0f)
+            {
+                e["startNormTime"] = s.startNormTime;
+                e["endNormTime"]   = s.endNormTime;
+            }
             // Blend tree — entries 가 있을 때만 직렬화 (기존 단일 clip state JSON 호환).
             if (!s.blendTree.empty())
             {
@@ -204,6 +210,8 @@ namespace engine::anim
                 if (auto x = e.find("loop");           x != e.end() && x->is_boolean()) { s.loop = x->get<bool>(); }
                 if (auto x = e.find("speed");          x != e.end() && x->is_number())  { s.speed = x->get<float>(); }
                 if (auto x = e.find("blendParameter"); x != e.end() && x->is_string())  { s.blendParameter = x->get<std::string>(); }
+                if (auto x = e.find("startNormTime"); x != e.end() && x->is_number()) { s.startNormTime = x->get<float>(); }
+                if (auto x = e.find("endNormTime");   x != e.end() && x->is_number()) { s.endNormTime   = x->get<float>(); }
                 if (auto x = e.find("blendTree");      x != e.end() && x->is_array())
                 {
                     for (const auto& en : *x)
