@@ -33,10 +33,10 @@
     {
       "name": "Jump_Air",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
-      "loop": true,
-      "speed": 1.0,
+      "loop": false,
+      "speed": 0.0,
       "startNormTime": 0.40,
-      "endNormTime":   0.42,
+      "endNormTime":   0.401,
       "rootMotion": {
         "takeoffNormTime": 0.0,
         "landingNormTime": 1.0,
