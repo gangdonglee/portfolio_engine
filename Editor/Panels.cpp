@@ -177,9 +177,30 @@ namespace editor::panels
         return structureChanged;
     }
 
-    bool DrawInspector(engine::scene::Scene& scene, Selection& sel)
+    InspectorResult DrawInspector(engine::scene::Scene& scene, Selection& sel)
     {
-        bool changed = false;
+        InspectorResult result{};
+        bool& changed     = result.changed;
+        bool& needRebuild = result.needRebuild;
+
+        // 헬퍼 — InputText 직후 호출. 직전 Item 을 DragDrop target 으로 등록.
+        // payload type 이 매칭되면 dst 에 string 채우고 changed=true, needRebuild=true.
+        auto acceptPathDrop = [&](const char* payloadType, std::string& dst)
+        {
+            if (ImGui::BeginDragDropTarget())
+            {
+                const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType);
+                if (payload != nullptr && payload->Data != nullptr && payload->DataSize > 0)
+                {
+                    // payload 는 null-terminated UTF-8 string.
+                    const char* s = static_cast<const char*>(payload->Data);
+                    dst.assign(s);
+                    changed = true;
+                    needRebuild = true;
+                }
+                ImGui::EndDragDropTarget();
+            }
+        };
 
         switch (sel.kind)
         {
@@ -207,29 +228,50 @@ namespace editor::panels
                 auto& m = scene.meshes[sel.index];
                 ImGui::Text("MeshInstance [%zu]", sel.index);
                 ImGui::Separator();
-                changed |= InputStdString("name",              m.name);
-                changed |= InputStdString("meshAssetPath",     m.meshAssetPath);
-                changed |= InputStdString("animationClipPath", m.animationClipPath);
+                changed |= InputStdString("name", m.name);
+
+                // meshAssetPath — text edit OR drag-drop "ASSET_MESH_PATH"
+                if (InputStdString("meshAssetPath", m.meshAssetPath))
+                {
+                    changed = true;
+                    needRebuild = true;   // 경로 텍스트 직접 편집도 재빌드 필요.
+                }
+                acceptPathDrop("ASSET_MESH_PATH", m.meshAssetPath);
+
+                // animationClipPath
+                if (InputStdString("animationClipPath", m.animationClipPath))
+                {
+                    changed = true;
+                    needRebuild = true;
+                }
+                acceptPathDrop("ASSET_MESH_PATH", m.animationClipPath);   // 모션 FBX 도 mesh 페이로드 허용
                 ImGui::SameLine();
                 if (ImGui::SmallButton("clear##anim"))
                 {
                     m.animationClipPath.clear();
                     changed = true;
+                    needRebuild = true;
                 }
                 if (!m.animationClipPath.empty())
                 {
                     ImGui::TextDisabled("(Client F0 = T-pose, 1..4 = clip select)");
                 }
-                changed |= InputStdString("animatorControllerPath", m.animatorControllerPath);
+                if (InputStdString("animatorControllerPath", m.animatorControllerPath))
+                {
+                    changed = true;
+                    needRebuild = true;
+                }
+                acceptPathDrop("ASSET_ANIMATOR_PATH", m.animatorControllerPath);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("clear##animator"))
                 {
                     m.animatorControllerPath.clear();
                     changed = true;
+                    needRebuild = true;
                 }
                 if (!m.animatorControllerPath.empty())
                 {
-                    ImGui::TextDisabled("(M0: 로드 + 로그. M1+ 에서 런타임 평가.)");
+                    ImGui::TextDisabled("(드래그-드롭: Asset Browser → 이 필드)");
                 }
                 ImGui::Separator();
                 ImGui::Text("Transform");
@@ -239,6 +281,40 @@ namespace editor::panels
                 {
                     NormalizeQuaternion(m.transform.rotation);
                     changed = true;
+                }
+
+                ImGui::Separator();
+                // importTransform — FBX 가져오기 보정 (좌표계 변환). 자산별 1회 설정 후 보통 변경 없음.
+                if (ImGui::CollapsingHeader("Import Transform (FBX 좌표계 보정)",
+                                            ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    changed |= ImGui::DragFloat3("import.position", &m.importTransform.position.x, 1.0f);
+                    changed |= ImGui::DragFloat3("import.scale",    &m.importTransform.scale.x,    0.01f, 0.01f, 100.0f);
+                    if (ImGui::DragFloat4("import.rotation (quat)", &m.importTransform.rotation.x, 0.01f, -1.0f, 1.0f))
+                    {
+                        NormalizeQuaternion(m.importTransform.rotation);
+                        changed = true;
+                    }
+                    // 자주 쓰는 X축 ±90° 프리셋 버튼.
+                    if (ImGui::SmallButton("X +90"))
+                    {
+                        m.importTransform.rotation = { 0.7071068f, 0.0f, 0.0f, 0.7071068f };
+                        changed = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("X -90"))
+                    {
+                        m.importTransform.rotation = { -0.7071068f, 0.0f, 0.0f, 0.7071068f };
+                        changed = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Reset"))
+                    {
+                        m.importTransform.position = { 0.0f, 0.0f, 0.0f };
+                        m.importTransform.rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+                        m.importTransform.scale    = { 1.0f, 1.0f, 1.0f };
+                        changed = true;
+                    }
                 }
                 break;
             }
@@ -273,6 +349,6 @@ namespace editor::panels
             }
         }
 
-        return changed;
+        return result;
     }
 }

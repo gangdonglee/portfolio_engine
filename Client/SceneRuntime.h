@@ -121,6 +121,12 @@ namespace client
         // 디버그 — 현재 state 이름 (UI 표시용).
         std::string CurrentAnimatorStateName() const;
 
+        // Editor 전용 — 외부 Scene 의 transform / importTransform / ambient / lights 를
+        // 내부 m_scene 으로 cheap-copy (자산 재로드 없음). path 필드는 무시 — 자산 교체는
+        // 호출자가 SceneRuntime 재생성으로 처리해야 한다.
+        // meshes.size() 가 source 와 다르면 min 만큼만 매칭 인덱스 동기화 — caller 가 size 일치 책임.
+        void SyncEditableFieldsFrom(const engine::scene::Scene& source) noexcept;
+
     private:
         struct LoadedAsset
         {

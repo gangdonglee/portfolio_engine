@@ -30,7 +30,16 @@ namespace editor::panels
     // 단순 필드 편집은 Inspector 의 책임 — 본 함수에선 false 가 정상.
     bool DrawHierarchy(engine::scene::Scene& scene, Selection& selection);
 
+    // Inspector 1프레임 결과.
+    //   changed     — 어떤 필드라도 변경됨 (modified flag / Save 활성화).
+    //   needRebuild — *path* 필드 변경 (mesh/animator/controller) 또는 drag-drop 으로
+    //                 자산 교체 발생. 호출자가 SceneRuntime 재빌드 트리거 필요.
+    struct InspectorResult
+    {
+        bool changed     = false;
+        bool needRebuild = false;
+    };
+
     // Inspector 패널 1프레임. selection 의 노드 타입별 위젯.
-    // 반환값: 어떤 필드라도 변경됐으면 true (modified flag — Save 메뉴 활성화 신호 등).
-    bool DrawInspector(engine::scene::Scene& scene, Selection& selection);
+    InspectorResult DrawInspector(engine::scene::Scene& scene, Selection& selection);
 }

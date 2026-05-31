@@ -488,6 +488,23 @@ namespace client
         return m_animClips ? m_animClips->size() : 0;
     }
 
+    void SceneRuntime::SyncEditableFieldsFrom(const engine::scene::Scene& source) noexcept
+    {
+        m_scene.ambient = source.ambient;
+
+        const size_t nm = std::min(m_scene.meshes.size(), source.meshes.size());
+        for (size_t i = 0; i < nm; ++i)
+        {
+            m_scene.meshes[i].transform       = source.meshes[i].transform;
+            m_scene.meshes[i].importTransform = source.meshes[i].importTransform;
+            m_scene.meshes[i].name            = source.meshes[i].name;
+        }
+        const size_t nd = std::min(m_scene.dirLights.size(), source.dirLights.size());
+        for (size_t i = 0; i < nd; ++i) { m_scene.dirLights[i] = source.dirLights[i]; }
+        const size_t np = std::min(m_scene.pointLights.size(), source.pointLights.size());
+        for (size_t i = 0; i < np; ++i) { m_scene.pointLights[i] = source.pointLights[i]; }
+    }
+
     void SceneRuntime::PrepareGpuResources(engine::uint32 frameIndex, const engine::render::Camera& camera)
     {
         // view-proj / 카메라 위치 캐시.
