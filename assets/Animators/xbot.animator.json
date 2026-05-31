@@ -17,7 +17,7 @@
       "name": "Jump",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
-      "speed": 1.0,
+      "speed": 3.03,
       "rootMotion": {
         "takeoffNormTime": 0.282,
         "landingNormTime": 0.705,
