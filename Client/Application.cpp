@@ -219,6 +219,12 @@ namespace client
         ImGui::Text("inst.transform.y = %.2f", xform ? xform->position.y : 0.0f);
         const float footY = m_sceneRuntime->AnimatorBoneMeshLocalY(L"LeftFoot");
         ImGui::Text("LeftFoot mesh-local Y = %.2f (rootMotion baseline 튜닝 참고)", footY);
+        if (m_player)
+        {
+            const auto& ctrl = m_player->Controller();
+            ImGui::Text("controller: pos.y=%.2f vy=%.2f grounded=%d",
+                        ctrl.Position().y, ctrl.VelocityY(), ctrl.IsGrounded() ? 1 : 0);
+        }
 
         ImGui::End();
     }
