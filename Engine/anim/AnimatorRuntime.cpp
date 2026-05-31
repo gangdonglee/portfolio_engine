@@ -216,7 +216,10 @@ namespace engine::anim
                 const float s = std::sin(local * 3.14159265358979323846f);
                 return rm.peakHeight * s * s * airborne;
             }
-            return m_rootMotionExtractedY * airborne;
+            // peakHeight=0 일 때는 inst.position 가산 안 함 — 외부 (Application + 캐릭터
+            // 물리) 가 Y 를 처리하는 모드. palette 차감은 이미 BuildPalette 에서 끝나
+            // mesh 는 in-place 라 Animator 측 추가 lift 불필요.
+            return 0.0f;
         }
         const bool hasParabola    = (rm.peakHeight != 0.0f) && (rm.takeoffNormTime < rm.landingNormTime);
         const bool hasCrouch      = (rm.crouchOffsetY != 0.0f);

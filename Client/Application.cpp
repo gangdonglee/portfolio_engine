@@ -658,6 +658,12 @@ namespace client
             if (curJump && !m_prevJumpDown)
             {
                 m_sceneRuntime->SetAnimatorTrigger("Jump");
+                // UE 패턴 — 점프 임펄스는 CharacterController (capsule) 가 처리.
+                //   애니메이션은 visual pose 만, 실제 world Y 는 controller 의 vy/gravity 적분.
+                if (m_thirdPersonActive && m_player)
+                {
+                    m_player->Controller().Jump();
+                }
             }
             m_prevJumpDown = curJump;
 

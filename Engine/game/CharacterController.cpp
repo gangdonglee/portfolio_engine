@@ -23,6 +23,18 @@ namespace engine::game
         }
     }
 
+    void CharacterController::Jump() noexcept
+    {
+        // UE DoJump: 점프는 grounded 상태에서만 발동. 공중 점프 (double jump) 미지원.
+        //   Velocity.Z = max(Velocity.Z, JumpZVelocity) — Z (=Y up) 속도 즉시 설정.
+        //   MovementMode → MOVE_Falling (우리는 m_isGrounded=false 로 등가).
+        if (m_isGrounded)
+        {
+            m_velocityY  = m_jumpZVelocity;
+            m_isGrounded = false;
+        }
+    }
+
     void CharacterController::Update(const engine::platform::Input& input, float dt, float cameraYaw)
     {
         using namespace DirectX;
@@ -40,35 +52,49 @@ namespace engine::game
         if (input.IsKeyDown('D')) move = XMVectorAdd     (move, right);
         if (input.IsKeyDown('A')) move = XMVectorSubtract(move, right);
 
-        if (XMVector3Equal(move, XMVectorZero()))
+        const bool hasMove = !XMVector3Equal(move, XMVectorZero());
+        if (hasMove)
+        {
+            move = XMVector3Normalize(move);
+            const float speed = input.IsKeyDown(VK_SHIFT)
+                ? m_moveSpeed * m_boostFactor
+                : m_moveSpeed;
+            m_lastSpeed = speed;
+
+            XMVECTOR pos = XMLoadFloat3(&m_position);
+            pos = XMVectorAdd(pos, XMVectorScale(move, speed * dt));
+            XMStoreFloat3(&m_position, pos);
+
+            // 이동 방향 → target yaw. m_yaw 를 target 으로 *각도 보간*.
+            XMFLOAT3 moveF;
+            XMStoreFloat3(&moveF, move);
+            const float targetYaw = std::atan2(moveF.x, moveF.z);
+            const float delta     = ShortestYawDelta(m_yaw, targetYaw);
+            const float maxStep   = m_yawTurnRate * dt;
+            const float step      = std::clamp(delta, -maxStep, maxStep);
+            m_yaw += step;
+            if (m_yaw >  kPi) { m_yaw -= kTwoPi; }
+            if (m_yaw < -kPi) { m_yaw += kTwoPi; }
+        }
+        else
         {
             m_lastSpeed = 0.0f;
-            // 정지 시 yaw 도 유지 (target 변화 없음 — 갱신 안 함).
-            return;
         }
 
-        move = XMVector3Normalize(move);
-        const float speed = input.IsKeyDown(VK_SHIFT)
-            ? m_moveSpeed * m_boostFactor
-            : m_moveSpeed;
-        m_lastSpeed = speed;
+        // === Y 물리 (UE NewFallVelocity + PhysFalling 패턴) ===
+        // grounded 가 아니면 매 tick 중력 적분 + floor 충돌 검사.
+        if (!m_isGrounded)
+        {
+            m_velocityY -= m_gravity * dt;        // UE: Result += Gravity * dt (Gravity 음수)
+            m_position.y += m_velocityY * dt;     // Euler 적분
 
-        XMVECTOR pos = XMLoadFloat3(&m_position);
-        pos = XMVectorAdd(pos, XMVectorScale(move, speed * dt));
-        XMStoreFloat3(&m_position, pos);
-
-        // 이동 방향 → target yaw. m_yaw 를 target 으로 *각도 보간* (instantaneous 가 아닌
-        // angular rate 기반) — W→W+D→W 같은 미세 키 변화 / 대각→단일 복귀 시 캐릭터가 깜빡
-        // 회전하는 *뒤뚱댐* 회피. 12 rad/sec 면 빠르게 따라가면서도 visual smoothing.
-        XMFLOAT3 moveF;
-        XMStoreFloat3(&moveF, move);
-        const float targetYaw = std::atan2(moveF.x, moveF.z);
-        const float delta     = ShortestYawDelta(m_yaw, targetYaw);
-        const float maxStep   = m_yawTurnRate * dt;
-        const float step      = std::clamp(delta, -maxStep, maxStep);
-        m_yaw += step;
-        // 정규화 (−π..π) — 누적 drift 방지.
-        if (m_yaw >  kPi) { m_yaw -= kTwoPi; }
-        if (m_yaw < -kPi) { m_yaw += kTwoPi; }
+            // 평면 floor (y=0) 충돌 — 실제 게임은 capsule sweep + GroundCheck.
+            if (m_position.y <= 0.0f)
+            {
+                m_position.y = 0.0f;
+                m_velocityY  = 0.0f;
+                m_isGrounded = true;
+            }
+        }
     }
 }

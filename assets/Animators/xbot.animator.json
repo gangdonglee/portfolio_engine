@@ -21,7 +21,7 @@
       "rootMotion": {
         "takeoffNormTime": 0.282,
         "landingNormTime": 0.705,
-        "peakHeight": 110.0,
+        "peakHeight": 0.0,
         "fadeWindow": 0.04,
         "crouchOffsetY": 0.0,
         "crouchDepth": 0.0,
