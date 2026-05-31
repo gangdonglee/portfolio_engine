@@ -31,44 +31,12 @@
     },
 
     {
-      "name": "Jump_Apex",
+      "name": "Jump_Air",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": true,
       "speed": 1.0,
       "startNormTime": 0.333,
-      "endNormTime":   0.513,
-      "rootMotion": {
-        "takeoffNormTime": 0.0,
-        "landingNormTime": 1.0,
-        "peakHeight": 0.0,
-        "fadeWindow": 0.04,
-        "extractRootMotionFromBone": "Hips"
-      }
-    },
-
-    {
-      "name": "Jump_Fall_Loop",
-      "motionClipPath": "Resources/FBX/Jumping.fbx",
-      "loop": true,
-      "speed": 1.0,
-      "startNormTime": 0.513,
-      "endNormTime":   0.705,
-      "rootMotion": {
-        "takeoffNormTime": 0.0,
-        "landingNormTime": 1.0,
-        "peakHeight": 0.0,
-        "fadeWindow": 0.04,
-        "extractRootMotionFromBone": "Hips"
-      }
-    },
-
-    {
-      "name": "Jump_Land",
-      "motionClipPath": "Resources/FBX/Jumping.fbx",
-      "loop": false,
-      "speed": 1.5,
-      "startNormTime": 0.705,
-      "endNormTime":   0.80,
+      "endNormTime":   0.345,
       "rootMotion": {
         "takeoffNormTime": 0.0,
         "landingNormTime": 1.0,
@@ -90,7 +58,7 @@
     {
       "fromStateName": "",
       "toStateName":   "Jump_Start",
-      "crossfadeDuration": 0.12,
+      "crossfadeDuration": 0.05,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "Jump", "op": "IfTrue", "value": 0.0 }
@@ -99,41 +67,21 @@
 
     {
       "fromStateName": "Jump_Start",
-      "toStateName":   "Jump_Apex",
-      "crossfadeDuration": 0.12,
-      "hasExitTime": false,
-      "conditions": [
-        { "parameterName": "VerticalSpeed", "op": "Less", "value": 100.0 }
-      ]
+      "toStateName":   "Jump_Air",
+      "crossfadeDuration": 0.05,
+      "hasExitTime": true,
+      "exitTime": 0.95,
+      "conditions": []
     },
 
     {
-      "fromStateName": "Jump_Apex",
-      "toStateName":   "Jump_Fall_Loop",
-      "crossfadeDuration": 0.12,
-      "hasExitTime": false,
-      "conditions": [
-        { "parameterName": "VerticalSpeed", "op": "Less", "value": 0.0 }
-      ]
-    },
-
-    {
-      "fromStateName": "Jump_Fall_Loop",
-      "toStateName":   "Jump_Land",
-      "crossfadeDuration": 0.12,
+      "fromStateName": "Jump_Air",
+      "toStateName":   "Locomotion",
+      "crossfadeDuration": 0.40,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "IsGrounded", "op": "IfTrue", "value": 0.0 }
       ]
-    },
-
-    {
-      "fromStateName": "Jump_Land",
-      "toStateName":   "Locomotion",
-      "crossfadeDuration": 0.30,
-      "hasExitTime": true,
-      "exitTime": 0.6,
-      "conditions": []
     }
   ]
 }
