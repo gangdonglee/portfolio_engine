@@ -126,6 +126,12 @@ namespace engine::anim
         // 호출자 (Application) 가 transform.position.y += RootMotionY() 로 가산.
         float RootMotionY() const noexcept;
 
+        // 애니메이션의 root motion 추출값 (units, mesh-local Y delta from state-entry baseline).
+        //   state.rootMotion.extractRootMotionFromBone 가 설정된 경우만 의미 있음 (else 0).
+        //   BuildPalette 가 이 값만큼 모든 본 팔레트의 Y translation 을 차감 — visual mesh
+        //   는 in-place. 동시에 외부에서 inst.position.y 에 가산 가능 (capsule-style).
+        float RootMotionExtractedY() const noexcept { return m_rootMotionExtractedY; }
+
         // 현재 state 의 진행 시간 (sec). transition 중에는 *from state 의 시간*.
         double CurrentStateTime() const noexcept { return m_currentStateTime; }
 
@@ -161,5 +167,13 @@ namespace engine::anim
         std::vector<float>               m_boneMeshLocalX;   // 진단용 — 수평축 변동 추적.
 
         bool    m_paused = false;
+
+        // Root motion 추출 상태.
+        //   m_rootMotionLastStateIdx: 직전 BuildPalette 시점의 state — 바뀌면 baseline 재캡처.
+        //   m_rootMotionBaselineY: state 진입 시 캡처한 bone Y. 이후 frame 의 delta 기준.
+        //   m_rootMotionExtractedY: 이번 frame 의 delta (현재 boneY - baselineY).
+        size_t m_rootMotionLastStateIdx = static_cast<size_t>(-1);
+        float  m_rootMotionBaselineY    = 0.0f;
+        float  m_rootMotionExtractedY   = 0.0f;
     };
 }

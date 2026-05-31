@@ -57,6 +57,14 @@ namespace engine::anim
         float       recoveryPeakNorm    = 0.5f;   // 0..1 within recovery phase
         std::string groundAlignBone;
         float       groundAlignBaseline = 0.0f;
+        // Unreal / Unity 스타일 root motion 추출.
+        //   설정 시 AnimatorRuntime 이 매 프레임 해당 본 (보통 Mixamo "Hips") 의 Y 위치를
+        //   state 진입 시 캡처한 baseline 과 비교 → delta 계산.
+        //   delta 만큼 *모든 본의 mesh-local Y 를 차감* (visual mesh in-place)
+        //   동시에 RootMotionDeltaY() 로 외부 노출 — Application 이 inst.position.y 에 가산
+        //   해서 캐릭터 world Y 를 애니메이션 hip curve 그대로 따라가게 함.
+        //   airborne 윈도우에서만 적용 (anticipation/recovery 는 in-place 만, lift 없음).
+        std::string extractRootMotionFromBone;
     };
 
     // 한 State = 하나의 motion. 두 모드:

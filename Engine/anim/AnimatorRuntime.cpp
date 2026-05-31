@@ -187,6 +187,37 @@ namespace engine::anim
         if (!state.hasRootMotion) { return 0.0f; }
 
         const auto& rm = state.rootMotion;
+        // Extract 모드 활성 시 — palette 는 baseline 으로 in-place 고정 (BuildPalette 처리).
+        //   - peakHeight > 0: airborne 윈도우에서 parabola lift 적용 (Mixamo 처럼 in-place
+        //     animation 이라 자체 lift 가 없는 클립용).
+        //   - peakHeight == 0: extractedY 그대로 사용 (root motion 이 baked 된 클립용).
+        //   anticipation/recovery 에선 0 (mesh 가 이미 in-place 라 feet 안착).
+        if (!rm.extractRootMotionFromBone.empty())
+        {
+            const double duration = StateRepresentativeDuration(state);
+            if (duration <= 0.05) { return 0.0f; }
+            if (rm.takeoffNormTime >= rm.landingNormTime) { return 0.0f; }
+            const float n = static_cast<float>(m_currentStateTime / duration);
+            const auto sstep = [](float a, float b, float x) noexcept {
+                const float t = std::clamp((x - a) / (b - a), 0.0f, 1.0f);
+                return t * t * (3.0f - 2.0f * t);
+            };
+            const float fadeIn  = sstep(rm.takeoffNormTime - rm.fadeWindow,
+                                        rm.takeoffNormTime + rm.fadeWindow, n);
+            const float fadeOut = 1.0f - sstep(rm.landingNormTime - rm.fadeWindow,
+                                               rm.landingNormTime + rm.fadeWindow, n);
+            const float airborne = fadeIn * fadeOut;
+
+            if (rm.peakHeight != 0.0f)
+            {
+                const float local = std::clamp((n - rm.takeoffNormTime) /
+                                               (rm.landingNormTime - rm.takeoffNormTime),
+                                               0.0f, 1.0f);
+                const float s = std::sin(local * 3.14159265358979323846f);
+                return rm.peakHeight * s * s * airborne;
+            }
+            return m_rootMotionExtractedY * airborne;
+        }
         const bool hasParabola    = (rm.peakHeight != 0.0f) && (rm.takeoffNormTime < rm.landingNormTime);
         const bool hasCrouch      = (rm.crouchOffsetY != 0.0f);
         const bool hasCrouchDip   = (rm.crouchDepth != 0.0f) && (rm.takeoffNormTime > 0.0f);
@@ -531,6 +562,63 @@ namespace engine::anim
             XMStoreFloat4x4(&stored, boneGlobal);
             m_boneMeshLocalY[b] = stored.m[2][3];
             m_boneMeshLocalX[b] = stored.m[0][3];
+        }
+
+        // === Root motion 추출 (Unreal/Unity 스타일) ===
+        // current state 가 extractRootMotionFromBone 지정 시:
+        //   1) 해당 본의 mesh-local Y 를 baseline 과 비교 → delta 계산
+        //   2) 모든 본 팔레트의 Y translation 에서 delta 차감 (visual mesh in-place)
+        //   3) m_rootMotionExtractedY 에 delta 저장 — 외부 (Application) 가 inst.position
+        //      에 가산해서 캐릭터 world Y 가 애니메이션 hip curve 를 따라가게 함.
+        // state 가 바뀌면 baseline 재캡처 (delta=0 부터 시작 → pop 방지).
+        m_rootMotionExtractedY = 0.0f;
+        if (curState && !curState->rootMotion.extractRootMotionFromBone.empty())
+        {
+            const auto& boneName = curState->rootMotion.extractRootMotionFromBone;
+            std::wstring wname;
+            wname.reserve(boneName.size());
+            for (char c : boneName) { wname.push_back(static_cast<wchar_t>(c)); }
+            engine::int32 boneIdx = m_skeleton.FindIndex(wname);
+            if (boneIdx < 0)
+            {
+                for (size_t i = 0; i < m_skeleton.BoneCount(); ++i)
+                {
+                    if (m_skeleton.Bones()[i].name.find(wname) != std::wstring::npos)
+                    {
+                        boneIdx = static_cast<engine::int32>(i);
+                        break;
+                    }
+                }
+            }
+            if (boneIdx >= 0 && static_cast<size_t>(boneIdx) < m_boneMeshLocalY.size())
+            {
+                const float currentBoneY = m_boneMeshLocalY[static_cast<size_t>(boneIdx)];
+                // state 진입 시 baseline 캡처 (delta=0 시작 → 부드러운 진입)
+                if (m_rootMotionLastStateIdx != m_currentStateIndex)
+                {
+                    m_rootMotionBaselineY    = currentBoneY;
+                    m_rootMotionLastStateIdx = m_currentStateIndex;
+                }
+                const float delta = currentBoneY - m_rootMotionBaselineY;
+                m_rootMotionExtractedY = delta;
+
+                // 본 팔레트 *상시* 차감 (in-place 강제). Mixamo Jumping 처럼 foot 가
+                //   mesh-local 에 rigged 되어 있는 클립은 자체적으로 visual lift 가 없음.
+                //   palette 를 baseline 으로 고정 후, RootMotionY() 가 airborne 때만 delta 를
+                //   inst.position 에 가산 → 캐릭터가 capsule 처럼 hip curve 따라 lift.
+                if (delta != 0.0f)
+                {
+                    for (size_t b = 0; b < m_palette.size(); ++b)
+                    {
+                        m_palette[b].m[2][3] -= delta;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // state 가 root motion 미지정 → baseline 다음 진입 시 재캡처되도록 reset.
+            m_rootMotionLastStateIdx = static_cast<size_t>(-1);
         }
     }
 }

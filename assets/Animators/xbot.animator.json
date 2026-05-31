@@ -29,7 +29,8 @@
         "recoveryDepth": 0.0,
         "recoveryPeakNorm": 0.5,
         "groundAlignBone": "",
-        "groundAlignBaseline": 0.0
+        "groundAlignBaseline": 0.0,
+        "extractRootMotionFromBone": "Hips"
       }
     }
   ],
