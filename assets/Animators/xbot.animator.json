@@ -66,9 +66,9 @@
       "name": "Jump_Land",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
-      "speed": 1.93,
+      "speed": 1.5,
       "startNormTime": 0.705,
-      "endNormTime":   1.0,
+      "endNormTime":   0.80,
       "rootMotion": {
         "takeoffNormTime": 0.0,
         "landingNormTime": 1.0,
@@ -130,9 +130,9 @@
     {
       "fromStateName": "Jump_Land",
       "toStateName":   "Locomotion",
-      "crossfadeDuration": 0.1,
+      "crossfadeDuration": 0.30,
       "hasExitTime": true,
-      "exitTime": 0.9,
+      "exitTime": 0.6,
       "conditions": []
     }
   ]
