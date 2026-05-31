@@ -1,0 +1,75 @@
+{
+  "name": "Quinn",
+  "defaultStateName": "Locomotion",
+  "states": [
+    {
+      "name": "Locomotion",
+      "loop": true,
+      "speed": 1.0,
+      "blendParameter": "Speed",
+      "blendTree": [
+        { "motionClipPath": "Resources/FBX/UE/Quinn_Idle.fbx", "threshold": 0.0 },
+        { "motionClipPath": "Resources/FBX/UE/Quinn_Walk.fbx", "threshold": 0.5 },
+        { "motionClipPath": "Resources/FBX/UE/Quinn_Jog.fbx",  "threshold": 1.0 }
+      ],
+      "rootMotion": {
+        "takeoffNormTime": 0.0,
+        "landingNormTime": 1.0,
+        "peakHeight": 0.0,
+        "fadeWindow": 0.04,
+        "crouchOffsetY": 0.0,
+        "crouchDepth": 0.0,
+        "crouchPeakNorm": 0.5,
+        "recoveryDepth": 0.0,
+        "recoveryPeakNorm": 0.5,
+        "groundAlignBone": "",
+        "groundAlignBaseline": 0.0,
+        "extractRootMotionFromBone": "pelvis"
+      }
+    },
+    {
+      "name": "Jump",
+      "motionClipPath": "Resources/FBX/UE/Quinn_Jump.fbx",
+      "loop": false,
+      "speed": 1.0,
+      "rootMotion": {
+        "takeoffNormTime": 0.0,
+        "landingNormTime": 1.0,
+        "peakHeight": 0.0,
+        "fadeWindow": 0.04,
+        "crouchOffsetY": 0.0,
+        "crouchDepth": 0.0,
+        "crouchPeakNorm": 0.5,
+        "recoveryDepth": 0.0,
+        "recoveryPeakNorm": 0.5,
+        "groundAlignBone": "",
+        "groundAlignBaseline": 0.0,
+        "extractRootMotionFromBone": "pelvis"
+      }
+    }
+  ],
+  "parameters": [
+    { "name": "Speed", "type": "Float",   "defaultValue": 0.0 },
+    { "name": "Jump",  "type": "Trigger", "defaultValue": 0.0 }
+  ],
+  "transitions": [
+    {
+      "fromStateName": "",
+      "toStateName":   "Jump",
+      "crossfadeDuration": 0.1,
+      "hasExitTime": false,
+      "exitTime": 0.0,
+      "conditions": [
+        { "parameterName": "Jump", "op": "IfTrue", "value": 0.0 }
+      ]
+    },
+    {
+      "fromStateName": "Jump",
+      "toStateName":   "Locomotion",
+      "crossfadeDuration": 0.1,
+      "hasExitTime": true,
+      "exitTime": 0.95,
+      "conditions": []
+    }
+  ]
+}
