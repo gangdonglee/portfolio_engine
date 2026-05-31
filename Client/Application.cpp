@@ -660,7 +660,8 @@ namespace client
                 m_sceneRuntime->SetAnimatorTrigger("Jump");
                 // UE 패턴 — 점프 임펄스는 CharacterController (capsule) 가 처리.
                 //   애니메이션은 visual pose 만, 실제 world Y 는 controller 의 vy/gravity 적분.
-                if (m_thirdPersonActive && m_player)
+                //   3인칭/free-cam 무관 — physics 는 항상 동작 (free-cam 도 mesh Y 표시).
+                if (m_player)
                 {
                     m_player->Controller().Jump();
                 }
@@ -692,24 +693,23 @@ namespace client
             // Player.Update 가 transform.position 의 baseline (x, z) 을 먼저 쓰므로,
             //   jump 보정은 그 위에 *additive* 로 적용. 3인칭 비활성 시엔 baseline 이 0 이라
             //   absolute 와 동일 효과 — 양쪽 모드 코드 path 통합.
+            //   free-cam 모드는 controller.UpdatePhysics() 만 — XZ 이동은 카메라 전용,
+            //   캐릭터는 Y 점프만 가시화.
             if (m_thirdPersonActive && m_player)
             {
                 m_player->Update(m_window->GetInput(), dt,
                                  m_thirdPersonCamera ? m_thirdPersonCamera->Yaw() : 0.0f);
+            }
+            else if (m_player)
+            {
+                m_player->Controller().UpdatePhysics(dt);
             }
 
             if (engine::scene::Transform* xform = m_sceneRuntime->AnimatorInstanceTransform())
             {
                 if (m_thirdPersonActive)
                 {
-                    // jumpX 는 mesh-local 보정값. Player yaw 가 캐릭터를 회전시키므로 그 방향에
-                    //   맞춰 world (x, z) 로 분해해야 hip swing cancel 이 정확히 들어감.
-                    //   yaw=0 (facing +Z): cosYaw=1, sinYaw=0 → x += jumpX, z 변화 없음
-                    //                       → free-cam 시절 동작과 정확히 일치.
-                    //   yaw=π/2 (facing +X): cosYaw=0, sinYaw=1 → x 불변, z -= jumpX
-                    //                       → 캐릭터 right 방향으로 hip 보정 진행.
-                    //   부호 (z -= jumpX) 는 CharacterController 의 right = (cosYaw, 0, -sinYaw)
-                    //   convention 과 동일 — mesh-X 가 character right 으로 매핑.
+                    // jumpX 는 mesh-local 보정값. Player yaw 로 회전 분해.
                     const float yaw    = m_player ? m_player->Controller().Yaw() : 0.0f;
                     const float cosYaw = std::cos(yaw);
                     const float sinYaw = std::sin(yaw);
@@ -719,7 +719,10 @@ namespace client
                 }
                 else
                 {
-                    xform->position.y = jumpY;
+                    // free-cam: jumpY (animator) + controller 의 점프 Y 를 합산.
+                    //   controller.Position().y 는 capsule 물리 적분 결과.
+                    const float physicsY = m_player ? m_player->Controller().Position().y : 0.0f;
+                    xform->position.y = jumpY + physicsY;
                     xform->position.x = jumpX;
                 }
             }
@@ -738,11 +741,10 @@ namespace client
             m_freeCamera->Update(m_window->GetInput(), dt);
         }
 
-        // UE 패턴 — animator 가 캐릭터 물리 상태 읽음. Player.Update 후 controller 의
-        //   최신 isGrounded 를 animator 에 push → Jump→Locomotion 전이 (IsGrounded
-        //   조건) 가 실제 capsule 착지 시점에 발동. 애니메이션이 물리에 종속.
-        // 3인칭 비활성 시엔 기본값 (parameter defaultValue = 1.0 = true) 유지.
-        if (m_sceneRuntime->HasAnimatorRuntime() && m_thirdPersonActive && m_player)
+        // UE 패턴 — animator 가 캐릭터 물리 상태 읽음. controller 의 최신 isGrounded 를
+        //   animator 에 push → Jump→Locomotion 전이 (IsGrounded 조건) 가 capsule 착지
+        //   시점에 발동. 애니메이션이 물리에 종속. free-cam/3인칭 무관.
+        if (m_sceneRuntime->HasAnimatorRuntime() && m_player)
         {
             m_sceneRuntime->SetAnimatorBool("IsGrounded", m_player->Controller().IsGrounded());
         }

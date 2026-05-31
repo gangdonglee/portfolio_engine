@@ -35,6 +35,22 @@ namespace engine::game
         }
     }
 
+    void CharacterController::UpdatePhysics(float dt) noexcept
+    {
+        // UE NewFallVelocity + PhysFalling 패턴 — grounded 아닐 때 중력 적분 + floor snap.
+        if (!m_isGrounded)
+        {
+            m_velocityY -= m_gravity * dt;
+            m_position.y += m_velocityY * dt;
+            if (m_position.y <= 0.0f)
+            {
+                m_position.y = 0.0f;
+                m_velocityY  = 0.0f;
+                m_isGrounded = true;
+            }
+        }
+    }
+
     void CharacterController::Update(const engine::platform::Input& input, float dt, float cameraYaw)
     {
         using namespace DirectX;
@@ -81,20 +97,8 @@ namespace engine::game
             m_lastSpeed = 0.0f;
         }
 
-        // === Y 물리 (UE NewFallVelocity + PhysFalling 패턴) ===
-        // grounded 가 아니면 매 tick 중력 적분 + floor 충돌 검사.
-        if (!m_isGrounded)
-        {
-            m_velocityY -= m_gravity * dt;        // UE: Result += Gravity * dt (Gravity 음수)
-            m_position.y += m_velocityY * dt;     // Euler 적분
-
-            // 평면 floor (y=0) 충돌 — 실제 게임은 capsule sweep + GroundCheck.
-            if (m_position.y <= 0.0f)
-            {
-                m_position.y = 0.0f;
-                m_velocityY  = 0.0f;
-                m_isGrounded = true;
-            }
-        }
+        // Y 물리 — 추출된 UpdatePhysics 호출. Update() 와 UpdatePhysics() 둘 다 사용 시
+        //   중복 적분 유발하므로 호출자는 둘 중 하나만 쓰기.
+        UpdatePhysics(dt);
     }
 }

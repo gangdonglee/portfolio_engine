@@ -30,8 +30,13 @@ namespace engine::game
         // input: WASD (또는 Shift 부스트), dt: 초, cameraYaw: 카메라의 현재 yaw (rad).
         // WASD 가 cameraYaw 기준 forward/right 로 분해되어 "카메라 뒤에 있는 캐릭터가
         // 카메라 방향대로 이동" 하는 3인칭 표준 입력 매핑.
-        // Y 물리 (gravity + velocityY) 도 매 tick 적분.
+        // 내부에서 UpdatePhysics(dt) 도 호출 — Y 물리 매 tick 적분.
         void Update(const engine::platform::Input& input, float dt, float cameraYaw);
+
+        // *물리만* 적분 — 입력 처리 없이 Y 중력 + floor snap 만.
+        //   free-cam 모드처럼 input 분리해야 하는 케이스에서 사용. Update() 가 끝에서
+        //   호출하므로 Update() 와 동시 호출은 중복 적분 유발 — 둘 중 하나만 쓰기.
+        void UpdatePhysics(float dt) noexcept;
 
         // 점프 임펄스 — IsGrounded 일 때만 m_velocityY = jumpZVelocity, MOVE_Falling 시작.
         //   UE ACharacter::Jump() + UCharacterMovementComponent::DoJump() 패턴.
