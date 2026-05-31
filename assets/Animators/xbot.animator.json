@@ -15,28 +15,10 @@
     },
 
     {
-      "name": "Jump_Start",
+      "name": "Jump",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
-      "speed": 1.5,
-      "startNormTime": 0.167,
-      "endNormTime":   0.333,
-      "rootMotion": {
-        "takeoffNormTime": 0.0,
-        "landingNormTime": 1.0,
-        "peakHeight": 0.0,
-        "fadeWindow": 0.04,
-        "extractRootMotionFromBone": "Hips"
-      }
-    },
-
-    {
-      "name": "Jump_Air",
-      "motionClipPath": "Resources/FBX/Jumping.fbx",
-      "loop": true,
-      "speed": 1.0,
-      "startNormTime": 0.333,
-      "endNormTime":   0.345,
+      "speed": 3.03,
       "rootMotion": {
         "takeoffNormTime": 0.0,
         "landingNormTime": 1.0,
@@ -57,25 +39,15 @@
   "transitions": [
     {
       "fromStateName": "",
-      "toStateName":   "Jump_Start",
-      "crossfadeDuration": 0.05,
+      "toStateName":   "Jump",
+      "crossfadeDuration": 0.1,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "Jump", "op": "IfTrue", "value": 0.0 }
       ]
     },
-
     {
-      "fromStateName": "Jump_Start",
-      "toStateName":   "Jump_Air",
-      "crossfadeDuration": 0.05,
-      "hasExitTime": true,
-      "exitTime": 0.95,
-      "conditions": []
-    },
-
-    {
-      "fromStateName": "Jump_Air",
+      "fromStateName": "Jump",
       "toStateName":   "Locomotion",
       "crossfadeDuration": 0.15,
       "hasExitTime": false,
