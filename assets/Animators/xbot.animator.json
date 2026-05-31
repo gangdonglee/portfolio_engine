@@ -35,8 +35,9 @@
     }
   ],
   "parameters": [
-    { "name": "Speed", "type": "Float",   "defaultValue": 0.0 },
-    { "name": "Jump",  "type": "Trigger", "defaultValue": 0.0 }
+    { "name": "Speed",      "type": "Float",   "defaultValue": 0.0 },
+    { "name": "Jump",       "type": "Trigger", "defaultValue": 0.0 },
+    { "name": "IsGrounded", "type": "Bool",    "defaultValue": 1.0 }
   ],
   "transitions": [
     {
@@ -53,9 +54,11 @@
       "fromStateName": "Jump",
       "toStateName":   "Locomotion",
       "crossfadeDuration": 0.1,
-      "hasExitTime": true,
-      "exitTime": 0.98,
-      "conditions": []
+      "hasExitTime": false,
+      "exitTime": 0.0,
+      "conditions": [
+        { "parameterName": "IsGrounded", "op": "IfTrue", "value": 0.0 }
+      ]
     }
   ]
 }

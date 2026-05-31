@@ -737,6 +737,16 @@ namespace client
         {
             m_freeCamera->Update(m_window->GetInput(), dt);
         }
+
+        // UE 패턴 — animator 가 캐릭터 물리 상태 읽음. Player.Update 후 controller 의
+        //   최신 isGrounded 를 animator 에 push → Jump→Locomotion 전이 (IsGrounded
+        //   조건) 가 실제 capsule 착지 시점에 발동. 애니메이션이 물리에 종속.
+        // 3인칭 비활성 시엔 기본값 (parameter defaultValue = 1.0 = true) 유지.
+        if (m_sceneRuntime->HasAnimatorRuntime() && m_thirdPersonActive && m_player)
+        {
+            m_sceneRuntime->SetAnimatorBool("IsGrounded", m_player->Controller().IsGrounded());
+        }
+
         m_sceneRuntime->Tick(dt);
 
         D3D12_VIEWPORT viewport{};
