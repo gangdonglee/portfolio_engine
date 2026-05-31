@@ -18,7 +18,7 @@
       "name": "Jump_Start",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
-      "speed": 1.0,
+      "speed": 2.6,
       "startNormTime": 0.0,
       "endNormTime":   0.333,
       "rootMotion": {
@@ -66,7 +66,7 @@
       "name": "Jump_Land",
       "motionClipPath": "Resources/FBX/Jumping.fbx",
       "loop": false,
-      "speed": 1.0,
+      "speed": 1.93,
       "startNormTime": 0.705,
       "endNormTime":   1.0,
       "rootMotion": {
@@ -90,7 +90,7 @@
     {
       "fromStateName": "",
       "toStateName":   "Jump_Start",
-      "crossfadeDuration": 0.05,
+      "crossfadeDuration": 0.12,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "Jump", "op": "IfTrue", "value": 0.0 }
@@ -100,7 +100,7 @@
     {
       "fromStateName": "Jump_Start",
       "toStateName":   "Jump_Apex",
-      "crossfadeDuration": 0.05,
+      "crossfadeDuration": 0.12,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "VerticalSpeed", "op": "Less", "value": 100.0 }
@@ -110,7 +110,7 @@
     {
       "fromStateName": "Jump_Apex",
       "toStateName":   "Jump_Fall_Loop",
-      "crossfadeDuration": 0.05,
+      "crossfadeDuration": 0.12,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "VerticalSpeed", "op": "Less", "value": 0.0 }
@@ -120,7 +120,7 @@
     {
       "fromStateName": "Jump_Fall_Loop",
       "toStateName":   "Jump_Land",
-      "crossfadeDuration": 0.05,
+      "crossfadeDuration": 0.12,
       "hasExitTime": false,
       "conditions": [
         { "parameterName": "IsGrounded", "op": "IfTrue", "value": 0.0 }
