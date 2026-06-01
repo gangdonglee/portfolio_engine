@@ -28,5 +28,9 @@ namespace engine::render
         // 표준 패턴 — sin/cos 다중 주파수 합성. 시연 디폴트.
         //   x, z 가 큰 값일 때도 부드러운 언덕 + 작은 융기 패턴.
         float DefaultHeightFunc(float x, float z) noexcept;
+
+        // Foot IK / character placement 등에서 ground Y 조회 — Generate 와 동일 height func.
+        //   별도 함수 — Generate 의 콜백 캐시 없이도 sample 가능.
+        inline float SampleDefaultHeight(float x, float z) noexcept { return DefaultHeightFunc(x, z); }
     }
 }

@@ -118,6 +118,7 @@
     <ClCompile Include="scene\SceneSerializer.cpp" />
     <ClCompile Include="anim\AnimatorSerializer.cpp" />
     <ClCompile Include="anim\AnimatorRuntime.cpp" />
+    <ClCompile Include="anim\FootIKSolver.cpp" />
     <ClCompile Include="render\ThirdPersonCamera.cpp" />
     <ClCompile Include="game\CharacterController.cpp" />
   </ItemGroup>
@@ -159,6 +160,7 @@
     <ClInclude Include="anim\AnimatorController.h" />
     <ClInclude Include="anim\AnimatorSerializer.h" />
     <ClInclude Include="anim\AnimatorRuntime.h" />
+    <ClInclude Include="anim\FootIKSolver.h" />
     <ClInclude Include="render\ThirdPersonCamera.h" />
     <ClInclude Include="game\CharacterController.h" />
   </ItemGroup>

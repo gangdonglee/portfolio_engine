@@ -3,6 +3,7 @@
 #include "anim/AnimatorController.h"
 #include "anim/AnimatorRuntime.h"
 #include "anim/AnimatorSerializer.h"
+#include "anim/FootIKSolver.h"
 #include "core/Logger.h"
 #include "render/AnimClip.h"
 #include "render/Animator.h"
@@ -97,6 +98,9 @@ namespace client
                                engine::render::SrvDescriptorHeap& srvHeap,
                                engine::scene::Scene               scene)
         : m_scene(std::move(scene))
+        , m_footIKConfig(std::make_unique<engine::anim::FootIKConfig>())
+        , m_footIKBones(std::make_unique<engine::anim::FootIKBoneIndices>())
+        , m_footIKDebug(std::make_unique<engine::anim::FootIKDebug>())
     {
         // capacity 검증 — 초과 시 부팅 단계에서 throw.
         if (m_scene.dirLights.size() > kDirLightCapacity)
@@ -256,6 +260,23 @@ namespace client
 
                 m_animSkeleton = asset.skeleton.get();   // RecordDraw 가 skeleton 본 수 참조에 사용.
 
+                // Foot IK 본 캐시 — animator 활성 instance 의 스켈레톤에서 추출.
+                if (m_footIKBones && m_footIKConfig)
+                {
+                    *m_footIKBones = engine::anim::FindFootIKBones(*asset.skeleton, *m_footIKConfig);
+                }
+                // animator 가 활성인 *첫 번째 instance* 의 index 캐시 — Tick 의 world matrix 계산용.
+                {
+                    for (size_t mi = 0; mi < m_scene.meshes.size(); ++mi)
+                    {
+                        if (!m_scene.meshes[mi].animatorControllerPath.empty())
+                        {
+                            m_animatorInstanceIdx = mi;
+                            break;
+                        }
+                    }
+                }
+
                 engine::core::LogInfoA("[anim] AnimatorRuntime active: states=");
                 {
                     char buf[64];
@@ -360,6 +381,50 @@ namespace client
         // AnimatorRuntime (M1+) 가 활성이면 그것 우선. 폴백은 단일 클립 Animator (M0 호환).
         if (m_animatorRuntime) { m_animatorRuntime->Update(dt); }
         else if (m_animator)   { m_animator->Update(dt); }
+
+        // Foot IK — animator runtime 활성 + 활성 instance 의 mesh world matrix 계산 후 적용.
+        if (m_footIKEnabled && m_animatorRuntime && m_animSkeleton &&
+            m_animatorInstanceIdx < m_scene.meshes.size() && m_footIKBones && m_footIKConfig && m_footIKDebug)
+        {
+            using namespace DirectX;
+            const auto& inst       = m_scene.meshes[m_animatorInstanceIdx];
+            const XMMATRIX importM = ComposeWorld(inst.importTransform);
+            const XMMATRIX instM   = ComposeWorld(inst.transform);
+            const XMMATRIX meshW   = importM * instM;
+            XMVECTOR det;
+            const XMMATRIX meshWInv = XMMatrixInverse(&det, meshW);
+            if (XMVectorGetX(det) != 0.0f)
+            {
+                engine::anim::ApplyFootIK(*m_animatorRuntime, *m_animSkeleton,
+                                          *m_footIKBones, *m_footIKConfig,
+                                          meshW, meshWInv,
+                                          m_groundSampler,
+                                          *m_footIKDebug);
+            }
+        }
+    }
+
+    void SceneRuntime::SetFootIKConfig(const engine::anim::FootIKConfig& cfg)
+    {
+        if (!m_footIKConfig) { m_footIKConfig = std::make_unique<engine::anim::FootIKConfig>(); }
+        *m_footIKConfig = cfg;
+        // bone 이름 바뀌었을 수도 — 재캐시.
+        if (m_animSkeleton && m_footIKBones)
+        {
+            *m_footIKBones = engine::anim::FindFootIKBones(*m_animSkeleton, *m_footIKConfig);
+        }
+    }
+    const engine::anim::FootIKConfig& SceneRuntime::FootIKConfigRef() const noexcept
+    {
+        return *m_footIKConfig;
+    }
+    engine::anim::FootIKConfig& SceneRuntime::FootIKConfigMutable() noexcept
+    {
+        return *m_footIKConfig;
+    }
+    const engine::anim::FootIKDebug& SceneRuntime::LastFootIKDebug() const noexcept
+    {
+        return *m_footIKDebug;
     }
 
     bool SceneRuntime::HasAnimatorRuntime() const noexcept

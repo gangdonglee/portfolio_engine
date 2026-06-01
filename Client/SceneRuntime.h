@@ -8,6 +8,7 @@
 #include <DirectXMath.h>
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -17,6 +18,9 @@ namespace engine::anim
 {
     struct AnimatorController;
     class  AnimatorRuntime;
+    struct FootIKConfig;
+    struct FootIKBoneIndices;
+    struct FootIKDebug;
 }
 
 namespace engine::render
@@ -118,6 +122,18 @@ namespace client
         void SetAnimatorBool    (std::string_view name, bool  value);
         void SetAnimatorTrigger (std::string_view name);
 
+        // === Foot IK ===
+        // Tick(dt) 안에서 AnimatorRuntime::Update 직후 ApplyFootIK 호출.
+        //   활성 instance 의 importTransform * transform 으로 mesh world 계산.
+        //   ground sampler 가 nullptr 이면 Y=0 평면 사용.
+        void SetFootIKEnabled  (bool enabled) noexcept { m_footIKEnabled = enabled; }
+        bool FootIKEnabled     () const noexcept       { return m_footIKEnabled; }
+        void SetFootIKConfig   (const engine::anim::FootIKConfig& cfg);
+        const engine::anim::FootIKConfig&  FootIKConfigRef() const noexcept;
+        engine::anim::FootIKConfig&        FootIKConfigMutable() noexcept;
+        void SetGroundSampler  (std::function<float(float, float)> fn) { m_groundSampler = std::move(fn); }
+        const engine::anim::FootIKDebug&   LastFootIKDebug() const noexcept;
+
         // 디버그 — 현재 state 이름 (UI 표시용).
         std::string CurrentAnimatorStateName() const;
 
@@ -163,6 +179,16 @@ namespace client
         std::unordered_map<std::string,
             std::vector<std::unique_ptr<engine::render::AnimClip>>>            m_controllerClipCache;
         std::unique_ptr<engine::anim::AnimatorRuntime>                         m_animatorRuntime;
+
+        // Foot IK 상태 — Tick 안에서 AnimatorRuntime::Update 직후 ApplyFootIK 호출.
+        //   m_footIKBones: 첫 controller 로드 시 1회 캐시 (본 이름 → 인덱스).
+        //   m_groundSampler: nullable. nullptr 이면 Y=0 평면.
+        bool                                            m_footIKEnabled  = true;
+        std::unique_ptr<engine::anim::FootIKConfig>     m_footIKConfig;     // unique_ptr — incomplete type 회피
+        std::unique_ptr<engine::anim::FootIKBoneIndices> m_footIKBones;
+        std::unique_ptr<engine::anim::FootIKDebug>      m_footIKDebug;
+        std::function<float(float, float)>              m_groundSampler;
+        size_t                                          m_animatorInstanceIdx = 0;  // animator 활성 instance — world matrix 계산용
 
         // 인스턴스별 cbuffer (FrameConstants + BonePalette). 슬롯당 N프레임 in-flight.
         // SwapChain::kBackBufferCount 와 1소스 통일 — FrameRenderer 와의 frameIndex 정합 보장.

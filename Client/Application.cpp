@@ -16,6 +16,7 @@
 #include "render/FreeCamera.h"
 #include "render/ImageLoader.h"
 #include "render/PipelineState.h"
+#include "render/ProceduralTerrain.h"
 #include "render/RootSignature.h"
 #include "render/RtvDescriptorHeap.h"
 #include "render/ShaderCompiler.h"
@@ -406,6 +407,10 @@ namespace client
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(scene));
 
+        // Foot IK 의 ground sampler — procedural terrain 와 동일 height func.
+        m_sceneRuntime->SetGroundSampler(
+            [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+
         // Player 의 transform 바인딩 — AnimatorInstanceTransform() 이 nullptr 면 silent unbound.
         m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
 
@@ -508,6 +513,10 @@ namespace client
         // Tick 시작의 nullptr 가드가 한 프레임 skip 으로 안전.
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(newScene));
+
+        // Ground sampler — terrain height func.
+        m_sceneRuntime->SetGroundSampler(
+            [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
 
         // Player 의 transform 재바인딩 — 기존 instance 가 폐기되었으므로 새 ptr 로 갱신.
         if (m_player)
