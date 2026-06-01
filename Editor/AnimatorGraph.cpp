@@ -710,5 +710,18 @@ namespace editor
 
         // Layout 변경 시 Animator 패널 Save 활성화 — Save 시 layout JSON 도 같이 기록.
         if (state.layoutDirty) { outDirty = true; }
+
+        // 자동 저장 — 사용자가 마우스 다 놓은 시점에 layout JSON 즉시 기록.
+        // 드래그 도중에는 IO 부담 + 임시 위치 저장 회피 → 모든 마우스 버튼 release 일 때만.
+        if (state.layoutDirty
+            && !ImGui::IsMouseDown(ImGuiMouseButton_Left)
+            && !ImGui::IsMouseDown(ImGuiMouseButton_Middle)
+            && !animatorJsonPath.empty())
+        {
+            if (SaveAnimatorGraphLayout(animatorJsonPath, state))
+            {
+                state.layoutDirty = false;
+            }
+        }
     }
 }
