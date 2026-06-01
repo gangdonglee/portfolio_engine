@@ -581,6 +581,47 @@ namespace client
         return !outPairs.empty();
     }
 
+    bool SceneRuntime::GetSkeletonWorldJoints(
+        std::vector<DirectX::XMFLOAT3>& outPositions,
+        std::vector<int>&               outParent,
+        std::vector<std::string>&       outNames) const
+    {
+        outPositions.clear();
+        outParent.clear();
+        outNames.clear();
+        if (!m_animatorRuntime || !m_animSkeleton) { return false; }
+        if (m_animatorInstanceIdx >= m_scene.meshes.size()) { return false; }
+
+        using namespace DirectX;
+        const auto& boneGlobal = m_animatorRuntime->BoneGlobal();
+        const auto& bones      = m_animSkeleton->Bones();
+        if (boneGlobal.size() != bones.size() || bones.empty()) { return false; }
+
+        const auto& inst       = m_scene.meshes[m_animatorInstanceIdx];
+        const XMMATRIX importM = ComposeWorld(inst.importTransform);
+        const XMMATRIX instM   = ComposeWorld(inst.transform);
+        const XMMATRIX meshW   = importM * instM;
+
+        outPositions.reserve(bones.size());
+        outParent.reserve(bones.size());
+        outNames.reserve(bones.size());
+        for (size_t b = 0; b < bones.size(); ++b)
+        {
+            const XMFLOAT4X4& m = boneGlobal[b];
+            const XMVECTOR meshLocal = XMVectorSet(m.m[0][3], m.m[1][3], m.m[2][3], 1.0f);
+            const XMVECTOR world     = XMVector3TransformCoord(meshLocal, meshW);
+            XMFLOAT3 wp; XMStoreFloat3(&wp, world);
+            outPositions.push_back(wp);
+            outParent.push_back(static_cast<int>(bones[b].parentIndex));
+            // wstring 이름 → ascii (디버그 표시용, 비-ascii 는 '?').
+            const std::wstring& wn = bones[b].name;
+            std::string nm; nm.reserve(wn.size());
+            for (wchar_t c : wn) { nm.push_back(c < 128 ? static_cast<char>(c) : '?'); }
+            outNames.push_back(std::move(nm));
+        }
+        return true;
+    }
+
     void SceneRuntime::SetActiveClip(int clipIdx)
     {
         if (m_animSkeleton == nullptr || m_animClips == nullptr) { return; }

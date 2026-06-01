@@ -146,6 +146,16 @@ namespace client
         bool GetSkeletonWorldSegments(
             std::vector<std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>>& outPairs) const;
 
+        // 본 단위 데이터 — picking / 선택 / UI 용. 인덱스 = 본 인덱스 (정렬 일치).
+        //   outPositions: 각 본의 world 위치.
+        //   outParent:    각 본의 부모 인덱스 (-1 = 루트).
+        //   outNames:     각 본의 이름 (ascii).
+        // animator 활성 instance 없으면 false (셋 다 비움).
+        bool GetSkeletonWorldJoints(
+            std::vector<DirectX::XMFLOAT3>& outPositions,
+            std::vector<int>&               outParent,
+            std::vector<std::string>&       outNames) const;
+
         // Editor 전용 — 외부 Scene 의 transform / importTransform / ambient / lights 를
         // 내부 m_scene 으로 cheap-copy (자산 재로드 없음). path 필드는 무시 — 자산 교체는
         // 호출자가 SceneRuntime 재생성으로 처리해야 한다.

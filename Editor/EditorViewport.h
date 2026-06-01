@@ -108,6 +108,13 @@ namespace editor
         // 화면에 투영해 마우스와 거리 비교. 반환 false: 카메라 뒤 (clip).
         bool WorldToScreen(const DirectX::XMFLOAT3& world, float& outX, float& outY) const noexcept;
 
+        // 본 picking — RTT 화면 좌표 (screenX, screenY) 에 가장 가까운 본 선택.
+        //   pixelRadius 안에 본이 없으면 선택 해제 (-1). sceneRuntime 의 joints 사용.
+        void PickBone(client::SceneRuntime& sceneRuntime, float screenX, float screenY,
+                      float pixelRadius = 14.0f);
+        int  SelectedBone() const noexcept { return m_selectedBone; }
+        void SetSelectedBone(int idx) noexcept { m_selectedBone = idx; }
+
     private:
         void CreateRtv();        // RTT 텍스처 + RTV (1슬롯 RtvHeap) 생성/재생성.
         void UpdateCameraFromOrbit();   // m_orbit{...} → m_camera 의 position/target.
@@ -141,6 +148,7 @@ namespace editor
         // 디버그 그리기 — Y=0 격자 + 좌표축 (배치 워크플로우 시각 보조).
         std::unique_ptr<engine::render::DebugRenderer>  m_debug;
         bool                                            m_showSkeleton = true;
+        int                                             m_selectedBone = -1;  // 선택된 본 인덱스 (-1=없음)
 
         // Orbit camera 상태 + 실제 Camera 객체.
         std::unique_ptr<engine::render::Camera>         m_camera;

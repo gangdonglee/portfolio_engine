@@ -602,21 +602,53 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                         ImGui::EndDragDropTarget();
                     }
 
-                    // 브러시 LMB 배치 — Image 영역 내부 click 일 때만.
-                    // 같은 LMB 가 ImGui 의 패널 이동/드래그와 충돌할 수 있어 Image item click 가드.
-                    if (!assetBrowserState.brushMeshPath.empty() &&
-                        ImGui::IsItemClicked(ImGuiMouseButton_Left))
+                    // LMB 클릭 — 브러시 모드면 배치, 아니면 본 picking.
+                    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
                     {
                         const ImVec2 mp = ImGui::GetMousePos();
                         const float lx = mp.x - imageOrigin.x;
                         const float ly = mp.y - imageOrigin.y;
-                        placeAt(assetBrowserState.brushMeshPath, lx, ly);
+                        if (!assetBrowserState.brushMeshPath.empty())
+                        {
+                            placeAt(assetBrowserState.brushMeshPath, lx, ly);
+                        }
+                        else
+                        {
+                            // 본 picking — 가장 가까운 본 선택 (없으면 해제).
+                            viewport.PickBone(*sceneRuntime, lx, ly);
+                        }
                     }
 
-                    // ESC → 브러시 해제 (Viewport 호버 시).
+                    // ESC → 브러시 해제 / 본 선택 해제 (Viewport 호버 시).
                     if (hovered && ImGui::IsKeyPressed(ImGuiKey_Escape))
                     {
-                        assetBrowserState.brushMeshPath.clear();
+                        if (!assetBrowserState.brushMeshPath.empty())
+                        {
+                            assetBrowserState.brushMeshPath.clear();
+                        }
+                        else
+                        {
+                            viewport.SetSelectedBone(-1);
+                        }
+                    }
+
+                    // 선택 본 이름 오버레이 — Viewport 좌상단.
+                    if (viewport.SelectedBone() >= 0)
+                    {
+                        std::vector<DirectX::XMFLOAT3> jp;
+                        std::vector<int>              jpar;
+                        std::vector<std::string>      jn;
+                        if (sceneRuntime->GetSkeletonWorldJoints(jp, jpar, jn) &&
+                            static_cast<size_t>(viewport.SelectedBone()) < jn.size())
+                        {
+                            ImDrawList* dl = ImGui::GetWindowDrawList();
+                            char buf[256];
+                            std::snprintf(buf, sizeof(buf), "Bone [%d]: %s",
+                                          viewport.SelectedBone(),
+                                          jn[static_cast<size_t>(viewport.SelectedBone())].c_str());
+                            dl->AddText(ImVec2{ imageOrigin.x + 10.0f, imageOrigin.y + 10.0f },
+                                        IM_COL32(80, 255, 255, 255), buf);
+                        }
                     }
 
                     // 브러시 오버레이 — Viewport 우상단에 표시.

@@ -290,16 +290,31 @@ namespace editor
         // 스켈레톤 시각화 — 본 잡고 움직이는 기능의 기반. 노란 선분 + 선택 본 강조.
         if (m_showSkeleton)
         {
-            std::vector<std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>> segs;
-            if (sceneRuntime.GetSkeletonWorldSegments(segs))
+            std::vector<DirectX::XMFLOAT3> jp;
+            std::vector<int>              jparent;
+            std::vector<std::string>      jnames;
+            if (sceneRuntime.GetSkeletonWorldJoints(jp, jparent, jnames))
             {
                 std::vector<engine::render::DebugRenderer::LineVertex> lv;
-                lv.reserve(segs.size() * 2);
+                lv.reserve(jp.size() * 2 + 6);
                 const DirectX::XMFLOAT3 boneCol{ 1.0f, 0.85f, 0.2f };
-                for (const auto& s : segs)
+                // parent → child 선분.
+                for (size_t b = 0; b < jp.size(); ++b)
                 {
-                    lv.push_back({ s.first,  boneCol });
-                    lv.push_back({ s.second, boneCol });
+                    const int p = jparent[b];
+                    if (p < 0 || static_cast<size_t>(p) >= jp.size()) { continue; }
+                    lv.push_back({ jp[static_cast<size_t>(p)], boneCol });
+                    lv.push_back({ jp[b], boneCol });
+                }
+                // 선택 본 강조 — 시안색 작은 3축 십자.
+                if (m_selectedBone >= 0 && static_cast<size_t>(m_selectedBone) < jp.size())
+                {
+                    const DirectX::XMFLOAT3 c = jp[static_cast<size_t>(m_selectedBone)];
+                    const DirectX::XMFLOAT3 hi{ 0.2f, 1.0f, 1.0f };
+                    constexpr float k = 6.0f;
+                    lv.push_back({ { c.x - k, c.y, c.z }, hi }); lv.push_back({ { c.x + k, c.y, c.z }, hi });
+                    lv.push_back({ { c.x, c.y - k, c.z }, hi }); lv.push_back({ { c.x, c.y + k, c.z }, hi });
+                    lv.push_back({ { c.x, c.y, c.z - k }, hi }); lv.push_back({ { c.x, c.y, c.z + k }, hi });
                 }
                 m_debug->DrawLines(list, frameIndex, viewProj,
                                    lv.data(), static_cast<engine::uint32>(lv.size()));
@@ -367,5 +382,35 @@ namespace editor
         outX = (ndcX * 0.5f + 0.5f) * static_cast<float>(m_width);
         outY = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(m_height);
         return true;
+    }
+
+    void EditorViewport::PickBone(client::SceneRuntime& sceneRuntime,
+                                  float screenX, float screenY, float pixelRadius)
+    {
+        std::vector<DirectX::XMFLOAT3> jp;
+        std::vector<int>              jparent;
+        std::vector<std::string>      jnames;
+        if (!sceneRuntime.GetSkeletonWorldJoints(jp, jparent, jnames))
+        {
+            m_selectedBone = -1;
+            return;
+        }
+
+        int   best     = -1;
+        float bestDist2 = pixelRadius * pixelRadius;
+        for (size_t b = 0; b < jp.size(); ++b)
+        {
+            float sx, sy;
+            if (!WorldToScreen(jp[b], sx, sy)) { continue; }
+            const float dx = sx - screenX;
+            const float dy = sy - screenY;
+            const float d2 = dx * dx + dy * dy;
+            if (d2 < bestDist2)
+            {
+                bestDist2 = d2;
+                best      = static_cast<int>(b);
+            }
+        }
+        m_selectedBone = best;   // 반경 내 본 없으면 -1 (선택 해제)
     }
 }
