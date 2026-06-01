@@ -30,7 +30,17 @@ namespace editor
         //   draggingTransitionFromIdx: state 인덱스 (-1 = 비활성)
         bool        draggingTransitionFromAny = false;
         int         draggingTransitionFromIdx = -1;
+
+        // layout 영구 저장 — true 시 다음 Animator Save 에서 layout JSON 같이 기록.
+        // node drag / anyState drag / zoom / pan / add state / delete state 시 set.
+        bool        layoutDirty = false;
     };
+
+    // <animatorPath>.animator.json  →  <animatorPath>.animator.layout.json
+    //   nodePositions / anyStatePos / viewZoom / viewPan 직렬화. Editor-only metadata.
+    //   animator.json 자체엔 영향 없음 — 깨끗하게 분리.
+    bool LoadAnimatorGraphLayout(const std::string& animatorJsonPath, AnimatorGraphState& state);
+    bool SaveAnimatorGraphLayout(const std::string& animatorJsonPath, const AnimatorGraphState& state);
 
     // Animator Graph 패널 1프레임. controller=nullptr 면 안내 텍스트만.
     //   - 노드: 상태 박스, 현재 활성 state 는 초록, default 는 황갈, 선택 은 노랑 테두리
@@ -40,7 +50,9 @@ namespace editor
     //
     // controller 가 non-const — Inline editor 가 직접 수정. 변경 시 outDirty 를 true 로 set.
     // outDirty 를 호출자가 AnimatorPanelState.dirty 에 OR-in 해서 Save 활성화.
+    // animatorJsonPath: layout JSON 위치 파생용 (& 빈 문자열이면 layout I/O skip).
     void DrawAnimatorGraph(engine::anim::AnimatorController* controller,
+                           const std::string&                animatorJsonPath,
                            client::SceneRuntime*             sceneRuntime,
                            AnimatorGraphState&               graphState,
                            bool&                             outDirty);

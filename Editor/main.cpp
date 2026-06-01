@@ -507,6 +507,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                                               animatorPanelState))
                 {
                     needSceneRebuild = true;
+                    // Animator JSON 저장 시 layout JSON 도 같이 저장 — 노드 위치 영속화.
+                    if (animatorGraphState.layoutDirty)
+                    {
+                        editor::SaveAnimatorGraphLayout(animatorPanelState.loadedPath,
+                                                       animatorGraphState);
+                        animatorGraphState.layoutDirty = false;
+                    }
                 }
             }
             ImGui::End();
@@ -514,10 +521,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             // === Animator Graph 패널 ===
             // Animator 패널이 로드한 controller 를 시각적 노드+화살표 로 표시.
             // 화살표 클릭 → transition 선택 + inline editor — 편집 시 panelState.dirty 로 OR-in.
+            // animatorJsonPath 는 layout JSON 파생용.
             if (ImGui::Begin("Animator Graph"))
             {
                 bool graphDirty = false;
                 editor::DrawAnimatorGraph(animatorPanelState.controller.get(),
+                                          animatorPanelState.loadedPath,
                                           sceneRuntime.get(),
                                           animatorGraphState,
                                           graphDirty);

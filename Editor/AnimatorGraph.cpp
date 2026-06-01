@@ -6,10 +6,14 @@
 
 #include "imgui.h"
 
+#include <json.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <utility>
 #include <vector>
 
@@ -165,7 +169,97 @@ namespace editor
         }
     }
 
+    namespace
+    {
+        // "X.animator.json" → "X.animator.layout.json"
+        // (단순 .json → .layout.json 치환; 그 외 확장자도 그대로 .layout.json append)
+        std::string DeriveLayoutPath(const std::string& animatorJsonPath)
+        {
+            std::filesystem::path p{ animatorJsonPath };
+            const std::string ext = p.extension().string();
+            if (ext == ".json")
+            {
+                p.replace_extension("");
+                p += ".layout.json";
+                return p.string();
+            }
+            return animatorJsonPath + ".layout.json";
+        }
+    }
+
+    bool LoadAnimatorGraphLayout(const std::string& animatorJsonPath, AnimatorGraphState& state)
+    {
+        if (animatorJsonPath.empty()) { return false; }
+        const std::string layoutPath = DeriveLayoutPath(animatorJsonPath);
+        std::ifstream f(layoutPath);
+        if (!f.is_open()) { return false; }
+        try
+        {
+            nlohmann::json j;
+            f >> j;
+            state.nodePositions.clear();
+            if (j.contains("nodes") && j["nodes"].is_array())
+            {
+                for (const auto& n : j["nodes"])
+                {
+                    const std::string name = n.value("name", std::string{});
+                    if (name.empty()) { continue; }
+                    state.nodePositions[name] = ImVec2(
+                        n.value("x", 0.0f), n.value("y", 0.0f));
+                }
+            }
+            if (j.contains("anyStatePos"))
+            {
+                state.anyStatePos = ImVec2(
+                    j["anyStatePos"].value("x", 20.0f),
+                    j["anyStatePos"].value("y", 20.0f));
+            }
+            state.viewZoom = j.value("viewZoom", 1.0f);
+            if (j.contains("viewPan"))
+            {
+                state.viewPan = ImVec2(
+                    j["viewPan"].value("x", 0.0f),
+                    j["viewPan"].value("y", 0.0f));
+            }
+            state.layoutDirty = false;
+            return true;
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+    }
+
+    bool SaveAnimatorGraphLayout(const std::string& animatorJsonPath, const AnimatorGraphState& state)
+    {
+        if (animatorJsonPath.empty()) { return false; }
+        const std::string layoutPath = DeriveLayoutPath(animatorJsonPath);
+        try
+        {
+            nlohmann::json j;
+            auto& nodes = j["nodes"];
+            nodes = nlohmann::json::array();
+            for (const auto& [name, pos] : state.nodePositions)
+            {
+                nodes.push_back({ {"name", name}, {"x", pos.x}, {"y", pos.y} });
+            }
+            j["anyStatePos"] = { {"x", state.anyStatePos.x}, {"y", state.anyStatePos.y} };
+            j["viewZoom"]    = state.viewZoom;
+            j["viewPan"]     = { {"x", state.viewPan.x}, {"y", state.viewPan.y} };
+
+            std::ofstream f(layoutPath);
+            if (!f.is_open()) { return false; }
+            f << j.dump(2);
+            return true;
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+    }
+
     void DrawAnimatorGraph(engine::anim::AnimatorController* ctrl,
+                           const std::string&                animatorJsonPath,
                            client::SceneRuntime*             sceneRuntime,
                            AnimatorGraphState&               state,
                            bool&                             outDirty)
@@ -178,8 +272,14 @@ namespace editor
 
         if (state.lastLayoutFor != ctrl->name || state.nodePositions.empty())
         {
-            AutoLayout(*ctrl, state);
+            // 1순위: layout JSON 로드 시도. 실패 시 그리드 auto layout.
+            const bool loaded = LoadAnimatorGraphLayout(animatorJsonPath, state);
+            if (!loaded)
+            {
+                AutoLayout(*ctrl, state);
+            }
             state.lastLayoutFor = ctrl->name;
+            state.layoutDirty   = false;
         }
 
         const ImVec2 canvasPos  = ImGui::GetCursorScreenPos();
@@ -292,6 +392,7 @@ namespace editor
                 && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f))
             {
                 state.anyStatePos = state.anyStatePos + ImGui::GetIO().MouseDelta / zoom;
+                state.layoutDirty = true;
             }
         }
 
@@ -351,6 +452,7 @@ namespace editor
                 && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f))
             {
                 it->second = it->second + ImGui::GetIO().MouseDelta / zoom;
+                state.layoutDirty = true;
             }
 
             // 우클릭 → 노드 컨텍스트 메뉴.
@@ -370,6 +472,7 @@ namespace editor
                     state.nodePositions.erase(s.name);
                     state.selectedStateIdx = -1;
                     outDirty = true;
+                    state.layoutDirty = true;
                     stateListChanged = true;
                 }
                 ImGui::EndPopup();
@@ -477,10 +580,12 @@ namespace editor
                 // newZoom 으로 worldBefore 가 같은 스크린 mp 에 매핑되도록 pan 재계산.
                 state.viewPan = ImVec2(mp.x - canvasPos.x - worldBefore.x * newZoom,
                                        mp.y - canvasPos.y - worldBefore.y * newZoom);
+                state.layoutDirty = true;
             }
             if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 1.0f))
             {
                 state.viewPan = state.viewPan + ImGui::GetIO().MouseDelta;
+                state.layoutDirty = true;
             }
         }
 
@@ -507,12 +612,14 @@ namespace editor
                 state.nodePositions[ns.name] = mpWorld;
                 ctrl->states.push_back(std::move(ns));
                 outDirty = true;
+                state.layoutDirty = true;
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Reset View"))
             {
                 state.viewPan  = ImVec2(0.0f, 0.0f);
                 state.viewZoom = 1.0f;
+                state.layoutDirty = true;
             }
             ImGui::EndPopup();
         }
@@ -596,7 +703,12 @@ namespace editor
             ImGui::TextDisabled("  - 우클릭 (빈 영역) = Add State / Reset View");
             ImGui::TextDisabled("  - 우클릭 (노드) = Set as Default / Delete");
             ImGui::TextDisabled("  - 마우스 휠 = zoom (커서 중심)  /  중클릭 드래그 = pan");
-            ImGui::Text("zoom=%.2f  pan=(%.0f,%.0f)", state.viewZoom, state.viewPan.x, state.viewPan.y);
+            ImGui::Text("zoom=%.2f  pan=(%.0f,%.0f)  layout=%s",
+                        state.viewZoom, state.viewPan.x, state.viewPan.y,
+                        state.layoutDirty ? "DIRTY (Save 클릭 시 .layout.json 같이 저장)" : "saved");
         }
+
+        // Layout 변경 시 Animator 패널 Save 활성화 — Save 시 layout JSON 도 같이 기록.
+        if (state.layoutDirty) { outDirty = true; }
     }
 }
