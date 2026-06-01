@@ -183,7 +183,9 @@ namespace client
         // Foot IK 상태 — Tick 안에서 AnimatorRuntime::Update 직후 ApplyFootIK 호출.
         //   m_footIKBones: 첫 controller 로드 시 1회 캐시 (본 이름 → 인덱스).
         //   m_groundSampler: nullable. nullptr 이면 Y=0 평면.
-        bool                                            m_footIKEnabled  = true;
+        //   default DISABLED — MVP IK 알고리즘 (translation only) 가 mesh deformation
+        //   깨뜨림. rotation 정확 계산 추가될 때까지 비활성. 외부에서 SetFootIKEnabled(true) 로 활성.
+        bool                                            m_footIKEnabled  = false;
         std::unique_ptr<engine::anim::FootIKConfig>     m_footIKConfig;     // unique_ptr — incomplete type 회피
         std::unique_ptr<engine::anim::FootIKBoneIndices> m_footIKBones;
         std::unique_ptr<engine::anim::FootIKDebug>      m_footIKDebug;
