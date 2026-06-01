@@ -76,6 +76,16 @@ namespace engine::anim
         const std::vector<DirectX::XMFLOAT4X4>& Palette() const noexcept { return m_palette; }
         size_t                                  PaletteSize() const noexcept { return m_palette.size(); }
 
+        // 본 전역 변환 (model-space) — BuildPalette 가 evaluated 한 본의 global transform.
+        //   palette[b] = boneGlobal[b] * inverse_bind[b] (offsetMatrix)
+        //   IK 솔버가 본 위치 추출 + 회전 조정 시 필요. read-only 노출.
+        const std::vector<DirectX::XMFLOAT4X4>& BoneGlobal() const noexcept { return m_boneGlobal; }
+
+        // 본 transform 외부 덮어쓰기 — IK 솔버 통합용.
+        //   호출자가 BuildPalette 결과를 IK 로 후처리한 후 새 boneGlobal 을 푸시.
+        //   set 후 즉시 palette 갱신 (boneGlobal * offset).
+        void SetBoneGlobal(size_t boneIdx, const DirectX::XMFLOAT4X4& mat) noexcept;
+
         // *bone joint 의 mesh-local 위치* (currentBone × (0,0,0,1) 의 translation Y).
         //   자동 floor 정렬 등 — bone palette 의 translation 과 다름 (mesh origin 변환과 혼동 X).
         //   BuildPalette 내부에서 m_boneMeshLocalY 갱신.
@@ -162,6 +172,9 @@ namespace engine::anim
         float   m_crossfadeElapsed  = 0.0f;
 
         std::vector<DirectX::XMFLOAT4X4> m_palette;
+        // 본의 evaluated global (model-space) transform — IK 솔버 read/write.
+        // palette[b] = m_boneGlobal[b] * skeleton.Bones[b].offsetMatrix.
+        std::vector<DirectX::XMFLOAT4X4> m_boneGlobal;
         // *currentBone 의 translation Y* per bone — 자동 floor 정렬용.
         std::vector<float>               m_boneMeshLocalY;
         std::vector<float>               m_boneMeshLocalX;   // 진단용 — 수평축 변동 추적.

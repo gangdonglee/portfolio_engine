@@ -93,6 +93,7 @@ namespace engine::anim
         }
 
         m_palette.resize(skeleton.BoneCount());
+        m_boneGlobal.resize(skeleton.BoneCount());
         m_boneMeshLocalY.assign(skeleton.BoneCount(), 0.0f);
         m_boneMeshLocalX.assign(skeleton.BoneCount(), 0.0f);
         const XMFLOAT4X4 identity = []{
@@ -193,6 +194,17 @@ namespace engine::anim
             return full;
         }
         return 0.0;
+    }
+
+    void AnimatorRuntime::SetBoneGlobal(size_t boneIdx, const DirectX::XMFLOAT4X4& mat) noexcept
+    {
+        if (boneIdx >= m_boneGlobal.size()) { return; }
+        m_boneGlobal[boneIdx] = mat;
+        // palette 즉시 갱신 — boneGlobal * offset.
+        using namespace DirectX;
+        const XMMATRIX bg     = XMLoadFloat4x4(&mat);
+        const XMMATRIX offset = XMLoadFloat4x4(&m_skeleton.Bones()[boneIdx].offsetMatrix);
+        XMStoreFloat4x4(&m_palette[boneIdx], XMMatrixMultiply(bg, offset));
     }
 
     double AnimatorRuntime::StateDuration(std::string_view stateName) const
@@ -579,6 +591,8 @@ namespace engine::anim
             const XMMATRIX offsetMat = XMLoadFloat4x4(&m_skeleton.Bones()[b].offsetMatrix);
             const XMMATRIX combined  = XMMatrixMultiply(boneGlobal, offsetMat);
             XMStoreFloat4x4(&m_palette[b], combined);
+            // IK 솔버 read 용 — 본 transform model-space.
+            XMStoreFloat4x4(&m_boneGlobal[b], boneGlobal);
 
             // currentBone (= boneGlobal) 의 translation vertical — bone joint 의 mesh-local 높이.
             //   ConvertMatrix transpose 정책 으로 translation 은 m[0..2][3] (col 3, rows 0-2).
