@@ -191,7 +191,21 @@ namespace engine::render
                 device, static_cast<engine::uint32>(sizeof(DirectX::XMFLOAT4X4)));
         }
 
-        engine::core::LogInfo(L"[debug] DebugRenderer ready (axes + grid LineList, depth-off)\n");
+        // 동적 라인 VB — frame in-flight 별. capacity = kMaxDynamicLineVerts.
+        // 초기 내용은 0 으로 채운 dummy (Update 가 매 프레임 덮어씀).
+        {
+            std::vector<DebugVertex> zeroInit(kMaxDynamicLineVerts);
+            for (engine::uint32 f = 0; f < kFrameCount; ++f)
+            {
+                m_dynLineVBs[f] = std::make_unique<VertexBuffer>(
+                    device,
+                    zeroInit.data(),
+                    static_cast<std::uint32_t>(zeroInit.size() * sizeof(DebugVertex)),
+                    static_cast<std::uint32_t>(sizeof(DebugVertex)));
+            }
+        }
+
+        engine::core::LogInfo(L"[debug] DebugRenderer ready (axes + grid + dynamic lines, depth-off)\n");
     }
 
     DebugRenderer::~DebugRenderer() = default;
@@ -250,5 +264,36 @@ namespace engine::render
         list->SetGraphicsRootConstantBufferView(0, m_cbs[frameIndex]->GpuAddress());
 
         list->DrawInstanced(m_gridVertexCount, 1, 0, 0);
+    }
+
+    void DebugRenderer::DrawLines(ID3D12GraphicsCommandList*       list,
+                                  engine::uint32                   frameIndex,
+                                  const DirectX::XMMATRIX&         viewProj,
+                                  const LineVertex*                verts,
+                                  engine::uint32                   count)
+    {
+        if (list == nullptr || frameIndex >= kFrameCount) { return; }
+        if (verts == nullptr || count == 0) { return; }
+        // LineVertex 와 내부 DebugVertex 는 layout 동일 (pos float3 + color float3).
+        static_assert(sizeof(LineVertex) == sizeof(DebugVertex), "LineVertex/DebugVertex layout 불일치");
+
+        engine::uint32 n = count;
+        if (n > kMaxDynamicLineVerts) { n = kMaxDynamicLineVerts; }   // capacity clamp
+
+        m_dynLineVBs[frameIndex]->Update(
+            verts, static_cast<std::uint32_t>(n * sizeof(LineVertex)));
+
+        DirectX::XMFLOAT4X4 vpStored;
+        DirectX::XMStoreFloat4x4(&vpStored, viewProj);
+        m_cbs[frameIndex]->Update(&vpStored, static_cast<engine::uint32>(sizeof(vpStored)));
+
+        list->SetGraphicsRootSignature(m_rootSig.Get());
+        list->SetPipelineState(m_pso.Get());
+        list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+
+        m_dynLineVBs[frameIndex]->Bind(list, 0);
+        list->SetGraphicsRootConstantBufferView(0, m_cbs[frameIndex]->GpuAddress());
+
+        list->DrawInstanced(n, 1, 0, 0);
     }
 }

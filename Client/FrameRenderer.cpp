@@ -128,6 +128,24 @@ namespace client
         {
             m_debugRenderer->DrawGrid(list, fi, camera.ViewProjection());
             m_debugRenderer->DrawAxes(list, fi, camera.ViewProjection(), 100.0f);
+
+            // 스켈레톤 시각화 — 본 parent→child world 선분. Foot IK 기반 + 좌표 진단.
+            //   각 선분을 LineVertex 2개 (노란색) 로. depth-off 라 mesh 뒤에서도 가시.
+            std::vector<std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>> segs;
+            if (sceneRuntime.GetSkeletonWorldSegments(segs))
+            {
+                std::vector<engine::render::DebugRenderer::LineVertex> lv;
+                lv.reserve(segs.size() * 2);
+                const DirectX::XMFLOAT3 boneCol{ 1.0f, 0.85f, 0.2f };
+                for (const auto& s : segs)
+                {
+                    lv.push_back({ s.first,  boneCol });
+                    lv.push_back({ s.second, boneCol });
+                }
+                m_debugRenderer->DrawLines(
+                    list, fi, camera.ViewProjection(),
+                    lv.data(), static_cast<engine::uint32>(lv.size()));
+            }
         }
 
         // ⑤c ImGui draw data — Application 이 ImGui::Render() 호출 후라면 valid.

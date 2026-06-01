@@ -41,6 +41,13 @@ namespace engine::render
     class DebugRenderer final
     {
     public:
+        // 동적 라인 정점 — DrawLines 입력. LineList (2개씩 한 선분).
+        struct LineVertex
+        {
+            DirectX::XMFLOAT3 position;
+            DirectX::XMFLOAT3 color;
+        };
+
         // rtvFormat: SwapChain 백버퍼 포맷과 일치.
         // dsvFormat: depth-test OFF 라 사용 안 함. DXGI_FORMAT_D32_FLOAT 같은 메인 dsv 와 *같이*
         //   바인딩되어도 동작 — depth write/test 둘 다 OFF.
@@ -65,8 +72,19 @@ namespace engine::render
                       engine::uint32                   frameIndex,
                       const DirectX::XMMATRIX&         viewProj);
 
+        // 동적 라인 리스트 — 매 프레임 바뀌는 정점 (본 스켈레톤 등). LineList topology.
+        //   verts: 2개씩 한 선분 (count 는 짝수 권장). viewProj 는 world-space 정점 기준.
+        //   frame in-flight 별 dynamic VB 에 Update 후 draw. 최대 capacity 초과 시 truncate.
+        void DrawLines(ID3D12GraphicsCommandList*       list,
+                       engine::uint32                   frameIndex,
+                       const DirectX::XMMATRIX&         viewProj,
+                       const LineVertex*                verts,
+                       engine::uint32                   count);
+
     private:
         static constexpr engine::uint32 kFrameCount = engine::render::SwapChain::kBackBufferCount;
+        // 동적 라인 VB 최대 정점 수 — 256본 × (선분 2 + joint cross 6) ≈ 2048 여유.
+        static constexpr engine::uint32 kMaxDynamicLineVerts = 4096;
 
         Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSig;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pso;
@@ -75,5 +93,7 @@ namespace engine::render
         engine::uint32                              m_gridVertexCount = 0;
         float                                       m_currentAxisLength = -1.0f;  // VB 재업로드 트리거
         std::array<std::unique_ptr<ConstantBuffer>, kFrameCount> m_cbs;
+        // frame in-flight 별 동적 라인 VB — DrawLines 가 매 프레임 Update.
+        std::array<std::unique_ptr<VertexBuffer>, kFrameCount>   m_dynLineVBs;
     };
 }

@@ -39,15 +39,21 @@ namespace engine::render
         VertexBuffer(VertexBuffer&&)                 = delete;
         VertexBuffer& operator=(VertexBuffer&&)      = delete;
 
-        // CommandList 의 IA 단계에 정점 버퍼 슬롯 바인딩.
+        // CommandList 의 IA 단계에 정점 버퍼 슬롯 바인딩. live 크기 (Update 로 갱신) 기준.
         void Bind(ID3D12GraphicsCommandList* list, std::uint32_t slot = 0) const;
+
+        // 동적 갱신 — UPLOAD heap 이라 re-map 후 memcpy. newByteSize 는 생성 capacity 이하.
+        //   debug line buffer 처럼 매 프레임 내용이 바뀌는 용도. stride 는 불변.
+        //   newByteSize == 0 이면 빈 버퍼 (DrawInstanced 0 — no-op).
+        void Update(const void* data, std::uint32_t newByteSize);
 
         std::uint32_t VertexCount() const noexcept;
 
     private:
         Microsoft::WRL::ComPtr<ID3D12Resource> m_buffer;
-        std::uint64_t m_gpuAddress = 0;  // D3D12_GPU_VIRTUAL_ADDRESS == UINT64
-        std::uint32_t m_byteSize   = 0;
-        std::uint32_t m_stride     = 0;
+        std::uint64_t m_gpuAddress    = 0;  // D3D12_GPU_VIRTUAL_ADDRESS == UINT64
+        std::uint32_t m_byteSize      = 0;  // capacity (생성 시 고정)
+        std::uint32_t m_liveByteSize  = 0;  // 현재 유효 바이트 (Update 로 갱신, ≤ capacity)
+        std::uint32_t m_stride        = 0;
     };
 }

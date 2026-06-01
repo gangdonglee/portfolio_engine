@@ -24,7 +24,7 @@ namespace engine::render
                                const void*   data,
                                std::uint32_t byteSize,
                                std::uint32_t stride)
-        : m_byteSize(byteSize), m_stride(stride)
+        : m_byteSize(byteSize), m_liveByteSize(byteSize), m_stride(stride)
     {
         if (data == nullptr || byteSize == 0 || stride == 0)
         {
@@ -87,13 +87,29 @@ namespace engine::render
     {
         D3D12_VERTEX_BUFFER_VIEW view{};
         view.BufferLocation = m_gpuAddress;
-        view.SizeInBytes    = m_byteSize;
+        view.SizeInBytes    = m_liveByteSize;
         view.StrideInBytes  = m_stride;
         list->IASetVertexBuffers(slot, 1, &view);
     }
 
+    void VertexBuffer::Update(const void* data, std::uint32_t newByteSize)
+    {
+        if (newByteSize > m_byteSize)
+        {
+            throw std::runtime_error("VertexBuffer::Update — newByteSize 가 capacity 초과");
+        }
+        m_liveByteSize = newByteSize;
+        if (newByteSize == 0 || data == nullptr) { return; }
+
+        void* mapped = nullptr;
+        const D3D12_RANGE readRange{ 0, 0 };
+        ThrowIfFailed(m_buffer->Map(0, &readRange, &mapped), "ID3D12Resource::Map(VB Update)");
+        std::memcpy(mapped, data, newByteSize);
+        m_buffer->Unmap(0, nullptr);
+    }
+
     std::uint32_t VertexBuffer::VertexCount() const noexcept
     {
-        return m_byteSize / m_stride;
+        return (m_stride > 0) ? (m_liveByteSize / m_stride) : 0;
     }
 }

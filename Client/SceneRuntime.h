@@ -137,6 +137,15 @@ namespace client
         // 디버그 — 현재 state 이름 (UI 표시용).
         std::string CurrentAnimatorStateName() const;
 
+        // === 스켈레톤 시각화 ===
+        // 본 parent→child 의 *world-space* 선분 끝점 쌍을 outPairs 에 채움.
+        //   각 본 b (parent>=0): {parentWorldPos, boneWorldPos}.
+        //   world = boneMeshLocalPos * (importTransform * instTransform).
+        //   animator 활성 instance 의 skeleton + BoneGlobal 사용. 없으면 false.
+        // Foot IK 기반 작업 (관절 위치 파악) + 좌표 규약 진단용.
+        bool GetSkeletonWorldSegments(
+            std::vector<std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>>& outPairs) const;
+
         // Editor 전용 — 외부 Scene 의 transform / importTransform / ambient / lights 를
         // 내부 m_scene 으로 cheap-copy (자산 재로드 없음). path 필드는 무시 — 자산 교체는
         // 호출자가 SceneRuntime 재생성으로 처리해야 한다.
