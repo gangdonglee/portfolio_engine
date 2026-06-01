@@ -512,12 +512,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             ImGui::End();
 
             // === Animator Graph 패널 ===
-            // Animator 패널이 로드한 controller 를 시각적 노드+화살표 로. 같은 panel state 의 controller 사용.
+            // Animator 패널이 로드한 controller 를 시각적 노드+화살표 로 표시.
+            // 화살표 클릭 → transition 선택 + inline editor — 편집 시 panelState.dirty 로 OR-in.
             if (ImGui::Begin("Animator Graph"))
             {
+                bool graphDirty = false;
                 editor::DrawAnimatorGraph(animatorPanelState.controller.get(),
                                           sceneRuntime.get(),
-                                          animatorGraphState);
+                                          animatorGraphState,
+                                          graphDirty);
+                if (graphDirty) { animatorPanelState.dirty = true; }
             }
             ImGui::End();
 
