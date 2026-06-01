@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cwctype>
 #include <queue>
+#include <unordered_map>
 
 namespace engine::anim
 {
@@ -82,6 +83,75 @@ namespace engine::anim
             m.m[0][3] = XMVectorGetX(newPos);
             m.m[1][3] = XMVectorGetY(newPos);
             m.m[2][3] = XMVectorGetZ(newPos);
+        }
+
+        // 두 방향 vec a → b 사이 최단 회전 quaternion. 둘 다 non-zero 라고 가정.
+        XMVECTOR QuaternionFromTo(XMVECTOR a, XMVECTOR b)
+        {
+            using namespace DirectX;
+            a = XMVector3Normalize(a);
+            b = XMVector3Normalize(b);
+            float dot = XMVectorGetX(XMVector3Dot(a, b));
+            if (dot > 0.99999f)  { return XMQuaternionIdentity(); }
+            if (dot < -0.99999f)
+            {
+                // 정반대 — 임의 perpendicular axis 로 180°.
+                XMVECTOR axis = XMVector3Cross(a, XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f));
+                if (XMVectorGetX(XMVector3LengthSq(axis)) < 1e-6f)
+                {
+                    axis = XMVector3Cross(a, XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
+                }
+                axis = XMVector3Normalize(axis);
+                return XMQuaternionRotationAxis(axis, 3.14159265358979f);
+            }
+            const XMVECTOR axis = XMVector3Normalize(XMVector3Cross(a, b));
+            const float    ang  = std::acos(dot);
+            return XMQuaternionRotationAxis(axis, ang);
+        }
+
+        // matrix → rotation-only matrix (translation 제거).
+        XMMATRIX RotationOnly(const XMFLOAT4X4& m)
+        {
+            XMFLOAT4X4 r = m;
+            r.m[0][3] = 0.0f; r.m[1][3] = 0.0f; r.m[2][3] = 0.0f;
+            r.m[3][0] = 0.0f; r.m[3][1] = 0.0f; r.m[3][2] = 0.0f; r.m[3][3] = 1.0f;
+            return XMLoadFloat4x4(&r);
+        }
+
+        // bone matrix 의 rotation 을 quaternion R 만큼 추가 회전 — pivot 위치는 그대로.
+        XMFLOAT4X4 RotateRotationBy(const XMFLOAT4X4& bone, const XMVECTOR& addRotQuat)
+        {
+            using namespace DirectX;
+            const XMVECTOR oldPos = XMVectorSet(bone.m[0][3], bone.m[1][3], bone.m[2][3], 1.0f);
+            const XMMATRIX oldRotM = RotationOnly(bone);
+            const XMMATRIX addRotM = XMMatrixRotationQuaternion(addRotQuat);
+            const XMMATRIX newRotM = XMMatrixMultiply(oldRotM, addRotM);   // row-vector convention.
+            XMFLOAT4X4 result;
+            XMStoreFloat4x4(&result, newRotM);
+            result.m[0][3] = XMVectorGetX(oldPos);
+            result.m[1][3] = XMVectorGetY(oldPos);
+            result.m[2][3] = XMVectorGetZ(oldPos);
+            return result;
+        }
+
+        // child 의 *local transform* 보존하면서 새 parent 의 global 기준으로 child global 재계산.
+        //   oldChild = oldParent * local  →  local = inverse(oldParent) * oldChild
+        //   newChild = newParent * local
+        XMFLOAT4X4 RecomputeChildGlobal(const XMFLOAT4X4& oldParent,
+                                        const XMFLOAT4X4& newParent,
+                                        const XMFLOAT4X4& oldChild)
+        {
+            using namespace DirectX;
+            const XMMATRIX oldP   = XMLoadFloat4x4(&oldParent);
+            const XMMATRIX newP   = XMLoadFloat4x4(&newParent);
+            const XMMATRIX oldC   = XMLoadFloat4x4(&oldChild);
+            XMVECTOR det;
+            const XMMATRIX invOld = XMMatrixInverse(&det, oldP);
+            const XMMATRIX local  = XMMatrixMultiply(oldC, invOld);   // row-vec: local = oldC * inv(oldP)
+            const XMMATRIX newC   = XMMatrixMultiply(local, newP);
+            XMFLOAT4X4 r;
+            XMStoreFloat4x4(&r, newC);
+            return r;
         }
 
         // Hip → Knee → Ankle 의 새 위치 계산 (Two-bone IK).
@@ -261,28 +331,65 @@ namespace engine::anim
         const TwoBoneSolution sol = SolveTwoBoneIK(
             hipMS, kneeMS, ankleMS, targetMS, bendHint, cfg.maxLegExtension);
 
-        // boneGlobal 갱신 — translation 만 새 위치로 (rotation/scale 유지).
-        //   이 방식은 정확한 회전이 아니지만 시각적으로 다리가 target 까지 닿게 함.
-        //   더 정확하려면 hip/knee global rotation 도 재계산 필요 — MVP 단계 미지원.
-        XMFLOAT4X4 newKneeM  = boneGlobal[kneeIdx];
-        XMFLOAT4X4 newAnkleM = boneGlobal[ankleIdx];
-        SetTranslation(newKneeM,  sol.newKnee);
+        // === Rotation 재구성 — hip, knee 의 global rotation 을 새 방향에 맞춤. ===
+        using DirectX::XMVectorSubtract;
+        using DirectX::XMQuaternionInverse;
+
+        // Hip: oldHipToKnee → newHipToKnee 방향으로 align.
+        const XMVECTOR oldHipToKnee = XMVectorSubtract(kneeMS, hipMS);
+        const XMVECTOR newHipToKnee = XMVectorSubtract(sol.newKnee, hipMS);
+        const XMVECTOR rHipAlign    = QuaternionFromTo(oldHipToKnee, newHipToKnee);
+
+        // Knee: oldKneeToAnkle → newKneeToAnkle (new knee 기준!).
+        const XMVECTOR oldKneeToAnkle = XMVectorSubtract(ankleMS,    kneeMS);
+        const XMVECTOR newKneeToAnkle = XMVectorSubtract(sol.newAnkle, sol.newKnee);
+        const XMVECTOR rKneeAlign     = QuaternionFromTo(oldKneeToAnkle, newKneeToAnkle);
+
+        // 새 global matrices.
+        const XMFLOAT4X4 oldHipM   = boneGlobal[hipIdx];
+        const XMFLOAT4X4 oldKneeM  = boneGlobal[kneeIdx];
+        const XMFLOAT4X4 oldAnkleM = boneGlobal[ankleIdx];
+
+        // Hip: translation 유지 + rotation × rHipAlign.
+        XMFLOAT4X4 newHipM = RotateRotationBy(oldHipM, rHipAlign);
+
+        // Knee: translation = newKnee, rotation × rKneeAlign.
+        XMFLOAT4X4 newKneeM = RotateRotationBy(oldKneeM, rKneeAlign);
+        SetTranslation(newKneeM, sol.newKnee);
+
+        // Ankle: translation = newAnkle, rotation 유지 (animation 그대로).
+        XMFLOAT4X4 newAnkleM = oldAnkleM;
         SetTranslation(newAnkleM, sol.newAnkle);
 
+        anim.SetBoneGlobal(static_cast<size_t>(hipIdx),   newHipM);
         anim.SetBoneGlobal(static_cast<size_t>(kneeIdx),  newKneeM);
         anim.SetBoneGlobal(static_cast<size_t>(ankleIdx), newAnkleM);
 
-        // 자손 본 (toe 등) 도 ankle 의 delta 만큼 평행이동.
-        //   더 정확하려면 ankle 의 새 rotation 따라 자손도 회전 — MVP 단계 평행이동만.
-        const XMVECTOR ankleDelta = DirectX::XMVectorSubtract(sol.newAnkle, ankleMS);
+        // === 자손 본 (Toe 등) FK 재계산 — local transform 보존하면서 새 parent global 기준. ===
+        // BFS 순서 (parent 가 child 보다 먼저). cache 에 새 global 보관.
+        std::unordered_map<engine::int32, XMFLOAT4X4> newGlobals;
+        newGlobals[hipIdx]   = newHipM;
+        newGlobals[kneeIdx]  = newKneeM;
+        newGlobals[ankleIdx] = newAnkleM;
+
         const std::vector<engine::int32> descs = CollectDescendants(skel, ankleIdx);
         for (engine::int32 d : descs)
         {
             if (static_cast<size_t>(d) >= boneGlobal.size()) { continue; }
-            XMFLOAT4X4 newM    = boneGlobal[d];
-            const XMVECTOR pos = GetTranslation(newM);
-            SetTranslation(newM, DirectX::XMVectorAdd(pos, ankleDelta));
-            anim.SetBoneGlobal(static_cast<size_t>(d), newM);
+            const engine::int32 parent = skel.Bones()[static_cast<size_t>(d)].parentIndex;
+            if (parent < 0) { continue; }
+
+            const XMFLOAT4X4& oldParent = boneGlobal[static_cast<size_t>(parent)];
+            const auto itNewP = newGlobals.find(parent);
+            const XMFLOAT4X4& newParent = (itNewP != newGlobals.end())
+                ? itNewP->second
+                : boneGlobal[static_cast<size_t>(parent)];
+
+            const XMFLOAT4X4& oldChild = boneGlobal[static_cast<size_t>(d)];
+            const XMFLOAT4X4  newChild = RecomputeChildGlobal(oldParent, newParent, oldChild);
+
+            newGlobals[d] = newChild;
+            anim.SetBoneGlobal(static_cast<size_t>(d), newChild);
         }
 
         outValid = true;

@@ -411,6 +411,10 @@ namespace client
         m_sceneRuntime->SetGroundSampler(
             [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
 
+        // Player CharacterController 도 같은 ground sampler — terrain 따라 캐릭터 transform.y 갱신.
+        m_player->Controller().SetGroundSampler(
+            [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+
         // Player 의 transform 바인딩 — AnimatorInstanceTransform() 이 nullptr 면 silent unbound.
         m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
 

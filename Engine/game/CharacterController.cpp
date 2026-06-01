@@ -41,6 +41,11 @@ namespace engine::game
         m_jumpApexThisFrame = false;
         m_landedThisFrame   = false;
 
+        // 현재 (x, z) 의 ground Y — sampler 있으면 호출, 없으면 평지 (0).
+        const float groundY = m_groundSampler
+            ? m_groundSampler(m_position.x, m_position.z)
+            : 0.0f;
+
         // UE NewFallVelocity + PhysFalling 패턴 — grounded 아닐 때 중력 적분 + floor snap.
         if (!m_isGrounded)
         {
@@ -52,13 +57,19 @@ namespace engine::game
                 m_jumpApexThisFrame = true;
             }
             m_position.y += m_velocityY * dt;
-            if (m_position.y <= 0.0f)
+            if (m_position.y <= groundY)
             {
-                m_position.y      = 0.0f;
+                m_position.y      = groundY;
                 m_velocityY       = 0.0f;
                 m_isGrounded      = true;
                 m_landedThisFrame = true;   // UE Landed() 등가.
             }
+        }
+        else
+        {
+            // Grounded 시 매 frame ground Y 강제 — XZ 이동 후 새 위치의 terrain Y 따라가게.
+            //   (이전 frame 의 m_position.y 와 다를 수 있음 — terrain slope).
+            m_position.y = groundY;
         }
     }
 

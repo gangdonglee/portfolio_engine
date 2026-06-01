@@ -2,6 +2,8 @@
 
 #include <DirectXMath.h>
 
+#include <functional>
+
 namespace engine::platform { class Input; }
 
 namespace engine::game
@@ -71,6 +73,11 @@ namespace engine::game
         void  SetJumpZVelocity(float unitsPerSec) noexcept { m_jumpZVelocity = unitsPerSec; }
         void  SetGravity      (float unitsPerSec2) noexcept { m_gravity = unitsPerSec2; }
 
+        // Ground sampler — terrain height at world (x, z). nullptr 이면 평지 (Y=0).
+        //   매 tick UpdatePhysics 가 호출 — grounded 시 m_position.y = sample(x,z) 강제.
+        //   Jump 도 sample 기준 (점프 시작 시 capsule 위치에서 Vy 추가).
+        void SetGroundSampler(std::function<float(float, float)> fn) noexcept { m_groundSampler = std::move(fn); }
+
     private:
         DirectX::XMFLOAT3 m_position { 0.0f, 0.0f, 0.0f };
         float             m_yaw       = 0.0f;   // rad — Y axis 회전.
@@ -93,5 +100,8 @@ namespace engine::game
         bool              m_isGrounded        = true;
         bool              m_jumpApexThisFrame = false;    // Vy 부호 전환 frame 만 true.
         bool              m_landedThisFrame   = false;    // airborne → grounded 전환 frame 만 true.
+
+        // Ground sampler — Application 이 procedural terrain height func 주입.
+        std::function<float(float, float)> m_groundSampler;
     };
 }
