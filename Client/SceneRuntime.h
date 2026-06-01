@@ -183,8 +183,12 @@ namespace client
         // Foot IK 상태 — Tick 안에서 AnimatorRuntime::Update 직후 ApplyFootIK 호출.
         //   m_footIKBones: 첫 controller 로드 시 1회 캐시 (본 이름 → 인덱스).
         //   m_groundSampler: nullable. nullptr 이면 Y=0 평면.
-        //   rotation 정확 계산 + 자손 본 FK 갱신 추가 후 default 활성.
-        bool                                            m_footIKEnabled  = true;
+        //   default DISABLED — FBX 로더가 본 행렬을 비표준 규약(ConvertMatrix transpose +
+        //   matReflect Y/Z swap, vertical=m[2][3])으로 저장. FootIK 의 rotation 재구성이
+        //   표준 DirectX 행렬 연산을 이 비표준 행렬에 적용 → mesh 뒤틀림.
+        //   제대로 하려면 skeleton 을 표준 좌표 공간으로 정규화하는 선행 작업 필요 (FBX 로더
+        //   재작업 수준). 그 전까지 비활성. ground snap(CharacterController)은 정상 작동.
+        bool                                            m_footIKEnabled  = false;
         std::unique_ptr<engine::anim::FootIKConfig>     m_footIKConfig;     // unique_ptr — incomplete type 회피
         std::unique_ptr<engine::anim::FootIKBoneIndices> m_footIKBones;
         std::unique_ptr<engine::anim::FootIKDebug>      m_footIKDebug;
