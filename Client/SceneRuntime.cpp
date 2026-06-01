@@ -14,6 +14,7 @@
 #include "render/FbxLoader.h"
 #include "render/Mesh.h"
 #include "render/ObjLoader.h"
+#include "render/ProceduralTerrain.h"
 #include "render/Skeleton.h"
 #include "render/SrvDescriptorHeap.h"
 #include "render/StructuredBuffer.h"
@@ -119,7 +120,21 @@ namespace client
             const auto ext = p.extension().string();
             const std::wstring full = std::filesystem::absolute(p).wstring();
 
-            if (ext == ".fbx" || ext == ".FBX")
+            if (inst.meshAssetPath == "__Terrain__")
+            {
+                // Procedural heightmap terrain — 절차적 mesh 생성 (FBX 로드 우회).
+                //   5000 × 5000 units, 100 × 100 segments = 10201 vertices / 20000 triangles.
+                //   기본 height func (sin/cos 합성). caller 가 width/height 커스터마이즈하려면
+                //   별도 path 토큰 (__Terrain_Large__ 등) 으로 분기 추가 가능.
+                asset.mesh = engine::render::procedural_terrain::Generate(
+                    device,
+                    /*width*/      5000.0f,
+                    /*depth*/      5000.0f,
+                    /*segmentsX*/  100,
+                    /*segmentsZ*/  100,
+                    engine::render::procedural_terrain::DefaultHeightFunc);
+            }
+            else if (ext == ".fbx" || ext == ".FBX")
             {
                 engine::render::fbx_loader::LoadedFbxModel loaded =
                     engine::render::fbx_loader::LoadFbx(

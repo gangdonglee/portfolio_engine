@@ -70,6 +70,20 @@ namespace client
             engine::render::SrvDescriptorHeap& m_heap;
         };
 
+        // Procedural terrain instance — SceneRuntime 이 meshAssetPath="__Terrain__" 을
+        // 보면 FBX 로드 대신 procedural_terrain::Generate 호출.
+        //   기본 5000 × 5000 units, sin/cos 다주파 height func — 넓은 언덕 지형.
+        //   다른 scene 에도 추가하려면 동일 instance 푸시 한 번만 하면 됨.
+        engine::scene::MeshInstance MakeTerrainInstance()
+        {
+            engine::scene::MeshInstance t;
+            t.name          = "Terrain";
+            t.meshAssetPath = "__Terrain__";
+            t.transform.position = { 0.0f, 0.0f, 0.0f };
+            // importTransform 은 identity — terrain 정점이 world 그대로.
+            return t;
+        }
+
         engine::scene::Scene BuildDefaultScene()
         {
             engine::scene::Scene s;
@@ -78,6 +92,8 @@ namespace client
             s.cameraStart.position = { 0.0f, 100.0f, -300.0f };
             s.cameraStart.target   = { 0.0f,  50.0f,    0.0f };
             s.cameraStart.fovYRad  = DirectX::XM_PIDIV4;
+
+            s.meshes.push_back(MakeTerrainInstance());
 
             engine::scene::MeshInstance dragon;
             dragon.name          = "Dragon";
@@ -357,6 +373,17 @@ namespace client
             scene = BuildDefaultScene();
         }
 
+        // Procedural terrain 자동 주입 — LoadJson 으로 load 된 scene 에도 동일 적용.
+        // 이미 "__Terrain__" instance 가 있으면 skip (BuildDefaultScene 경로 등).
+        {
+            bool hasTerrain = false;
+            for (const auto& m : scene.meshes)
+            {
+                if (m.meshAssetPath == "__Terrain__") { hasTerrain = true; break; }
+            }
+            if (!hasTerrain) { scene.meshes.push_back(MakeTerrainInstance()); }
+        }
+
         // 카메라 — Scene 의 cameraStart 기준.
         m_camera = std::make_unique<engine::render::Camera>();
         m_camera->SetPosition(scene.cameraStart.position);
@@ -444,6 +471,16 @@ namespace client
         // LoadJson 이 가장 깨지기 쉬운 step (파일 부재 / 파싱 오류). 기존 SceneRuntime 폐기 *전*
         // 에 시도 — 실패 시 throw 가 기존 자산을 보존한 채 호출자로 전파됨 (강한 예외 보장).
         engine::scene::Scene newScene = engine::scene::LoadJson(scenePath);
+
+        // Procedural terrain 자동 주입 — 새 scene 에 terrain instance 없으면 푸시.
+        {
+            bool hasTerrain = false;
+            for (const auto& m : newScene.meshes)
+            {
+                if (m.meshAssetPath == "__Terrain__") { hasTerrain = true; break; }
+            }
+            if (!hasTerrain) { newScene.meshes.push_back(MakeTerrainInstance()); }
+        }
 
         // === Teardown phase (이 시점부터 실패 시 기존 자산 회복 불가 — 약한 예외 보장) ===
         // ① GPU 작업 완료 보장 — 기존 자산이 GPU 에서 미사용 상태.
