@@ -100,6 +100,14 @@ namespace editor
         // 배치(brush) 워크플로우용 — 외부 좌표는 ImGui::GetMousePos - ItemRectMin 으로 계산.
         bool RaycastToGround(float screenX, float screenY, DirectX::XMFLOAT3& outWorld) const noexcept;
 
+        // 스켈레톤 디버그 draw 토글 (본 잡고 움직이기 기반).
+        void SetShowSkeleton(bool show) noexcept { m_showSkeleton = show; }
+        bool ShowSkeleton() const noexcept       { return m_showSkeleton; }
+
+        // world 좌표 → RTT 화면 좌표 (좌상단 0,0). 본 picking 용 — 본 world 위치를
+        // 화면에 투영해 마우스와 거리 비교. 반환 false: 카메라 뒤 (clip).
+        bool WorldToScreen(const DirectX::XMFLOAT3& world, float& outX, float& outY) const noexcept;
+
     private:
         void CreateRtv();        // RTT 텍스처 + RTV (1슬롯 RtvHeap) 생성/재생성.
         void UpdateCameraFromOrbit();   // m_orbit{...} → m_camera 의 position/target.
@@ -132,6 +140,7 @@ namespace editor
 
         // 디버그 그리기 — Y=0 격자 + 좌표축 (배치 워크플로우 시각 보조).
         std::unique_ptr<engine::render::DebugRenderer>  m_debug;
+        bool                                            m_showSkeleton = true;
 
         // Orbit camera 상태 + 실제 Camera 객체.
         std::unique_ptr<engine::render::Camera>         m_camera;

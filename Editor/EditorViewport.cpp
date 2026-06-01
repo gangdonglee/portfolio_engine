@@ -21,6 +21,8 @@
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace editor
 {
@@ -285,6 +287,25 @@ namespace editor
         m_debug->DrawGrid(list, frameIndex, viewProj);
         m_debug->DrawAxes(list, frameIndex, viewProj, 100.0f);
 
+        // 스켈레톤 시각화 — 본 잡고 움직이는 기능의 기반. 노란 선분 + 선택 본 강조.
+        if (m_showSkeleton)
+        {
+            std::vector<std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>> segs;
+            if (sceneRuntime.GetSkeletonWorldSegments(segs))
+            {
+                std::vector<engine::render::DebugRenderer::LineVertex> lv;
+                lv.reserve(segs.size() * 2);
+                const DirectX::XMFLOAT3 boneCol{ 1.0f, 0.85f, 0.2f };
+                for (const auto& s : segs)
+                {
+                    lv.push_back({ s.first,  boneCol });
+                    lv.push_back({ s.second, boneCol });
+                }
+                m_debug->DrawLines(list, frameIndex, viewProj,
+                                   lv.data(), static_cast<engine::uint32>(lv.size()));
+            }
+        }
+
         // RTT 전이: RENDER_TARGET → SHADER_RESOURCE (ImGui::Image 가 sample 가능)
         D3D12_RESOURCE_BARRIER toSrv{};
         toSrv.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -329,6 +350,22 @@ namespace editor
         const XMVECTOR hit = XMVectorAdd(nearW, XMVectorScale(rayDir, t));
         XMStoreFloat3(&outWorld, hit);
         outWorld.y = 0.0f;   // 평면 위 — 수치 노이즈 제거
+        return true;
+    }
+
+    bool EditorViewport::WorldToScreen(const DirectX::XMFLOAT3& world,
+                                       float& outX, float& outY) const noexcept
+    {
+        using namespace DirectX;
+        if (m_width == 0 || m_height == 0) { return false; }
+        const XMMATRIX viewProj = m_camera->ViewProjection();
+        const XMVECTOR p = XMVector3Transform(XMLoadFloat3(&world), viewProj);
+        const float w = XMVectorGetW(p);
+        if (w <= 1e-5f) { return false; }   // 카메라 뒤 / 평면
+        const float ndcX = XMVectorGetX(p) / w;
+        const float ndcY = XMVectorGetY(p) / w;
+        outX = (ndcX * 0.5f + 0.5f) * static_cast<float>(m_width);
+        outY = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(m_height);
         return true;
     }
 }
