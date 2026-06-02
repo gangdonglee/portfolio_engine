@@ -156,6 +156,18 @@ namespace client
             std::vector<int>&               outParent,
             std::vector<std::string>&       outNames) const;
 
+        // === 본 수동 포징 (manual posing) ===
+        // 선택 본을 모델공간 회전축(axisModel) 둘레로 angleDelta(rad) 만큼 누적 회전.
+        //   boneGlobal 은 매 Tick BuildPalette 가 애니메이션에서 재생성하므로, 누적 회전을
+        //   별도 맵에 저장하고 Tick 의 Update 직후 subtree 에 적용 (palette 덮어씀).
+        //   같은 본에 반복 호출 시 회전 누적 (드래그 연속).
+        //   axisWorld 는 *world-space* 회전축 (camera right/up 등) — 내부에서 mesh-local 로 변환.
+        void AddBoneManualRotation(int boneIdx,
+                                   const DirectX::XMFLOAT3& axisWorld,
+                                   float angleDelta);
+        void ClearBoneManualPosing() noexcept;
+        bool HasBoneManualPosing() const noexcept;
+
         // Editor 전용 — 외부 Scene 의 transform / importTransform / ambient / lights 를
         // 내부 m_scene 으로 cheap-copy (자산 재로드 없음). path 필드는 무시 — 자산 교체는
         // 호출자가 SceneRuntime 재생성으로 처리해야 한다.
@@ -163,6 +175,10 @@ namespace client
         void SyncEditableFieldsFrom(const engine::scene::Scene& source) noexcept;
 
     private:
+        // 수동 포징 적용 — Tick 의 Update 직후 호출. m_boneManualRot 의 각 본 subtree 에
+        //   rotate-about-pivot (모델공간 column-convention) 적용 후 SetBoneGlobal.
+        void ApplyManualBonePosing();
+
         struct LoadedAsset
         {
             std::unique_ptr<engine::render::Mesh>                  mesh;
@@ -208,6 +224,11 @@ namespace client
         //   제대로 하려면 skeleton 을 표준 좌표 공간으로 정규화하는 선행 작업 필요 (FBX 로더
         //   재작업 수준). 그 전까지 비활성. ground snap(CharacterController)은 정상 작동.
         bool                                            m_footIKEnabled  = false;
+
+        // 본 수동 포징 — boneIdx → 누적 모델공간 회전 (quaternion). Tick 의 Update 직후
+        //   각 본 subtree 에 rotate-about-pivot 적용 (BuildPalette 결과 덮어씀).
+        //   hierarchy 순서 (인덱스 오름차순 ≈ parent-first) 로 적용 — 중첩 조작 합성.
+        std::unordered_map<int, DirectX::XMFLOAT4>      m_boneManualRot;
         std::unique_ptr<engine::anim::FootIKConfig>     m_footIKConfig;     // unique_ptr — incomplete type 회피
         std::unique_ptr<engine::anim::FootIKBoneIndices> m_footIKBones;
         std::unique_ptr<engine::anim::FootIKDebug>      m_footIKDebug;

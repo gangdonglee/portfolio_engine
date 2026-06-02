@@ -384,6 +384,26 @@ namespace editor
         return true;
     }
 
+    void EditorViewport::CameraRightUp(DirectX::XMFLOAT3& outRight,
+                                       DirectX::XMFLOAT3& outUp) const noexcept
+    {
+        using namespace DirectX;
+        const XMFLOAT3 camPos = m_camera->Position();
+        const XMFLOAT3 tgt    = m_orbit.target;
+        const XMVECTOR fwd    = XMVector3Normalize(
+            XMVectorSubtract(XMLoadFloat3(&tgt), XMLoadFloat3(&camPos)));
+        const XMVECTOR worldUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        XMVECTOR right = XMVector3Cross(worldUp, fwd);
+        if (XMVectorGetX(XMVector3LengthSq(right)) < 1e-6f)
+        {
+            right = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);   // fwd 가 거의 수직일 때 fallback
+        }
+        right = XMVector3Normalize(right);
+        const XMVECTOR up = XMVector3Normalize(XMVector3Cross(fwd, right));
+        XMStoreFloat3(&outRight, right);
+        XMStoreFloat3(&outUp,    up);
+    }
+
     void EditorViewport::PickBone(client::SceneRuntime& sceneRuntime,
                                   float screenX, float screenY, float pixelRadius)
     {

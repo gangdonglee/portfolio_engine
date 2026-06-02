@@ -115,6 +115,9 @@ namespace editor
         int  SelectedBone() const noexcept { return m_selectedBone; }
         void SetSelectedBone(int idx) noexcept { m_selectedBone = idx; }
 
+        // 카메라의 world-space right / up 축 — 본 드래그 회전축 계산용.
+        void CameraRightUp(DirectX::XMFLOAT3& outRight, DirectX::XMFLOAT3& outUp) const noexcept;
+
     private:
         void CreateRtv();        // RTT 텍스처 + RTV (1슬롯 RtvHeap) 생성/재생성.
         void UpdateCameraFromOrbit();   // m_orbit{...} → m_camera 의 position/target.

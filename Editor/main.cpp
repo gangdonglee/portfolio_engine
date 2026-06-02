@@ -619,6 +619,27 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                         }
                     }
 
+                    // 본 조작 — 본 선택 + LMB 드래그 → camera-relative 축 둘레로 subtree 회전.
+                    //   수평 드래그 = camera up 축 yaw, 수직 = camera right 축 pitch.
+                    //   자식 본 FK 따라옴 (SceneRuntime.ApplyManualBonePosing). 브러시 모드 제외.
+                    if (assetBrowserState.brushMeshPath.empty() &&
+                        viewport.SelectedBone() >= 0 &&
+                        hovered &&
+                        ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f))
+                    {
+                        const ImVec2 d = io2.MouseDelta;
+                        if (d.x != 0.0f || d.y != 0.0f)
+                        {
+                            constexpr float kRotSpeed = 0.01f;   // rad / px
+                            DirectX::XMFLOAT3 camRight, camUp;
+                            viewport.CameraRightUp(camRight, camUp);
+                            // 수평 드래그 → up 축 회전, 수직 → right 축 회전.
+                            sceneRuntime->AddBoneManualRotation(viewport.SelectedBone(), camUp,    -d.x * kRotSpeed);
+                            sceneRuntime->AddBoneManualRotation(viewport.SelectedBone(), camRight, -d.y * kRotSpeed);
+                            modified = true;
+                        }
+                    }
+
                     // ESC → 브러시 해제 / 본 선택 해제 (Viewport 호버 시).
                     if (hovered && ImGui::IsKeyPressed(ImGuiKey_Escape))
                     {

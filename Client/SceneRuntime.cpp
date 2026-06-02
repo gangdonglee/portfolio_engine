@@ -376,11 +376,60 @@ namespace client
 
     SceneRuntime::~SceneRuntime() = default;
 
+    namespace
+    {
+        // column-vector convention 4x4 곱 — C = A·B (수학적 행렬곱, B 먼저 적용 후 A).
+        DirectX::XMFLOAT4X4 MatMulCol(const DirectX::XMFLOAT4X4& A, const DirectX::XMFLOAT4X4& B)
+        {
+            DirectX::XMFLOAT4X4 C;
+            for (int i = 0; i < 4; ++i)
+                for (int j = 0; j < 4; ++j)
+                {
+                    float s = 0.0f;
+                    for (int k = 0; k < 4; ++k) { s += A.m[i][k] * B.m[k][j]; }
+                    C.m[i][j] = s;
+                }
+            return C;
+        }
+
+        // column-convention rotate-about-pivot: T = Trans(pivot)·Rot·Trans(-pivot).
+        //   axis 정규화 가정 X — 내부에서 정규화. angle rad.
+        DirectX::XMFLOAT4X4 RotateAboutPivotCol(const DirectX::XMFLOAT3& axis, float angle,
+                                                const DirectX::XMFLOAT3& pivot)
+        {
+            using namespace DirectX;
+            const float len = std::sqrt(axis.x*axis.x + axis.y*axis.y + axis.z*axis.z);
+            if (len < 1e-6f)
+            {
+                XMFLOAT4X4 I; XMStoreFloat4x4(&I, XMMatrixIdentity()); return I;
+            }
+            const float x = axis.x/len, y = axis.y/len, z = axis.z/len;
+            const float c = std::cos(angle), s = std::sin(angle), t = 1.0f - c;
+            // column-convention 3x3 rotation (R·v rotates v).
+            XMFLOAT4X4 R{};
+            R.m[0][0] = t*x*x + c;   R.m[0][1] = t*x*y - s*z; R.m[0][2] = t*x*z + s*y; R.m[0][3] = 0.0f;
+            R.m[1][0] = t*x*y + s*z; R.m[1][1] = t*y*y + c;   R.m[1][2] = t*y*z - s*x; R.m[1][3] = 0.0f;
+            R.m[2][0] = t*x*z - s*y; R.m[2][1] = t*y*z + s*x; R.m[2][2] = t*z*z + c;   R.m[2][3] = 0.0f;
+            R.m[3][0] = 0.0f; R.m[3][1] = 0.0f; R.m[3][2] = 0.0f; R.m[3][3] = 1.0f;
+            // Trans(pivot) (column): translation in right column.
+            // T = Tp · R · T(-p). column convention: new = Tp·R·Tmp.
+            XMFLOAT4X4 Tp{}, Tmp{};
+            XMStoreFloat4x4(&Tp,  XMMatrixIdentity());
+            XMStoreFloat4x4(&Tmp, XMMatrixIdentity());
+            Tp.m[0][3]  =  pivot.x; Tp.m[1][3]  =  pivot.y; Tp.m[2][3]  =  pivot.z;
+            Tmp.m[0][3] = -pivot.x; Tmp.m[1][3] = -pivot.y; Tmp.m[2][3] = -pivot.z;
+            return MatMulCol(MatMulCol(Tp, R), Tmp);
+        }
+    }
+
     void SceneRuntime::Tick(float dt)
     {
         // AnimatorRuntime (M1+) 가 활성이면 그것 우선. 폴백은 단일 클립 Animator (M0 호환).
         if (m_animatorRuntime) { m_animatorRuntime->Update(dt); }
         else if (m_animator)   { m_animator->Update(dt); }
+
+        // 수동 포징 — BuildPalette(Update 내부) 직후 manual 회전을 subtree 에 적용.
+        if (m_animatorRuntime && !m_boneManualRot.empty()) { ApplyManualBonePosing(); }
 
         // Foot IK — animator runtime 활성 + 활성 instance 의 mesh world matrix 계산 후 적용.
         if (m_footIKEnabled && m_animatorRuntime && m_animSkeleton &&
@@ -620,6 +669,95 @@ namespace client
             outNames.push_back(std::move(nm));
         }
         return true;
+    }
+
+    void SceneRuntime::AddBoneManualRotation(int boneIdx,
+                                             const DirectX::XMFLOAT3& axisWorld,
+                                             float angleDelta)
+    {
+        using namespace DirectX;
+        if (boneIdx < 0) { return; }
+        if (std::abs(angleDelta) < 1e-7f) { return; }
+        if (m_animatorInstanceIdx >= m_scene.meshes.size()) { return; }
+
+        // world-space 축 → mesh-local(model) 축. model→world = importTransform*instTransform (row-vec).
+        //   world→model 방향 변환 = inverse(meshWorld) 의 3x3 부분 적용.
+        const auto& inst       = m_scene.meshes[m_animatorInstanceIdx];
+        const XMMATRIX meshW   = ComposeWorld(inst.importTransform) * ComposeWorld(inst.transform);
+        XMVECTOR det;
+        const XMMATRIX meshWInv = XMMatrixInverse(&det, meshW);
+        if (XMVectorGetX(det) == 0.0f) { return; }
+        XMVECTOR axisModelV = XMVector3TransformNormal(XMLoadFloat3(&axisWorld), meshWInv);
+        const float mlen = XMVectorGetX(XMVector3Length(axisModelV));
+        if (mlen < 1e-6f) { return; }
+        const XMVECTOR axis = XMVectorScale(axisModelV, 1.0f / mlen);
+        const XMVECTOR dq   = XMQuaternionRotationAxis(axis, angleDelta);
+
+        auto it = m_boneManualRot.find(boneIdx);
+        if (it == m_boneManualRot.end())
+        {
+            XMFLOAT4 q; XMStoreFloat4(&q, dq);
+            m_boneManualRot.emplace(boneIdx, q);
+        }
+        else
+        {
+            const XMVECTOR cur = XMLoadFloat4(&it->second);
+            // 모델공간 누적 — 새 회전을 기존 앞에 곱 (dq * cur).
+            XMStoreFloat4(&it->second, XMQuaternionNormalize(XMQuaternionMultiply(cur, dq)));
+        }
+    }
+
+    void SceneRuntime::ClearBoneManualPosing() noexcept { m_boneManualRot.clear(); }
+    bool SceneRuntime::HasBoneManualPosing() const noexcept { return !m_boneManualRot.empty(); }
+
+    void SceneRuntime::ApplyManualBonePosing()
+    {
+        using namespace DirectX;
+        if (!m_animatorRuntime || !m_animSkeleton) { return; }
+        const auto& bones = m_animSkeleton->Bones();
+        const auto& bg    = m_animatorRuntime->BoneGlobal();
+        if (bg.size() != bones.size()) { return; }
+
+        // 각 manipulated 본을 인덱스 오름차순으로 적용 (parent-first ≈ Mixamo 계층 순).
+        std::vector<int> order;
+        order.reserve(m_boneManualRot.size());
+        for (const auto& kv : m_boneManualRot) { order.push_back(kv.first); }
+        std::sort(order.begin(), order.end());
+
+        for (int boneIdx : order)
+        {
+            if (boneIdx < 0 || static_cast<size_t>(boneIdx) >= bones.size()) { continue; }
+
+            // pivot = 본의 현재 모델공간 위치 (column-convention translation = 오른쪽 열).
+            const XMFLOAT4X4& bm = bg[static_cast<size_t>(boneIdx)];
+            const XMFLOAT3 pivot{ bm.m[0][3], bm.m[1][3], bm.m[2][3] };
+
+            // 누적 quat → axis/angle → column-convention rotate-about-pivot.
+            const XMVECTOR q = XMLoadFloat4(&m_boneManualRot[boneIdx]);
+            XMVECTOR axisV; float angle;
+            XMQuaternionToAxisAngle(&axisV, &angle, q);
+            if (std::abs(angle) < 1e-6f) { continue; }
+            XMFLOAT3 axis; XMStoreFloat3(&axis, axisV);
+            const XMFLOAT4X4 T = RotateAboutPivotCol(axis, angle, pivot);
+
+            // BFS subtree (본 + 모든 자손). new_col = T · old_col.
+            std::vector<int> stack{ boneIdx };
+            std::vector<char> visited(bones.size(), 0);
+            while (!stack.empty())
+            {
+                const int cur = stack.back(); stack.pop_back();
+                if (visited[static_cast<size_t>(cur)]) { continue; }
+                visited[static_cast<size_t>(cur)] = 1;
+
+                const XMFLOAT4X4 newM = MatMulCol(T, bg[static_cast<size_t>(cur)]);
+                m_animatorRuntime->SetBoneGlobal(static_cast<size_t>(cur), newM);
+
+                for (size_t b = 0; b < bones.size(); ++b)
+                {
+                    if (bones[b].parentIndex == cur) { stack.push_back(static_cast<int>(b)); }
+                }
+            }
+        }
     }
 
     void SceneRuntime::SetActiveClip(int clipIdx)
