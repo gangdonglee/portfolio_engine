@@ -163,6 +163,7 @@ namespace client
         {
             float leftAnkleY   = 0.0f;  float leftGroundY  = 0.0f;  float leftPlant  = 0.0f;
             float rightAnkleY  = 0.0f;  float rightGroundY = 0.0f;  float rightPlant = 0.0f;
+            float bodyLower    = 0.0f;  // 낮은 발 닿게 몸(root) 하강량(pelvis IK)
             bool  valid = false;
         };
         const FootIKReadout& FootIKReadoutRef() const noexcept { return m_footIKReadout; }
@@ -281,6 +282,7 @@ namespace client
         float                                           m_footIKWeight   = 1.0f;   // 속도 기반 페이드 (게임이 설정)
         FootIKReadout                                   m_footIKReadout;           // 디버그 오버레이 calibration
         float                                           m_footIKCorrSmooth[2] = { 0.0f, 0.0f }; // 발[L,R] 보정 temporal lerp (plant/swing 전환 pop 방지)
+        float                                           m_footIKBodyLower     = 0.0f; // 낮은 발이 닿게 몸(root) 하강량 — terrain-keyed, 강한 스무딩(보행 bob 방지)
 
         // 본 수동 포징 — boneIdx → 누적 모델공간 회전 (quaternion). Tick 의 Update 직후
         //   각 본 subtree 에 rotate-about-pivot 적용 (BuildPalette 결과 덮어씀).

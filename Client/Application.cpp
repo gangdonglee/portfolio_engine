@@ -250,7 +250,7 @@ namespace client
                         fk.leftAnkleY, fk.leftGroundY, fk.leftAnkleY - fk.leftGroundY, fk.leftPlant);
             ImGui::Text("FootIK R: ankle=%.1f ground=%.1f gap=%.1f plant=%.2f",
                         fk.rightAnkleY, fk.rightGroundY, fk.rightAnkleY - fk.rightGroundY, fk.rightPlant);
-            ImGui::Text("Speed=%.2f (gap target = ankleOffset)", m_currentSpeed);
+            ImGui::Text("Speed=%.2f  bodyLower=%.1f", m_currentSpeed, fk.bodyLower);
         }
 
         // 포스트프로세싱 bloom — 실시간 조절 (FrameRenderer 가 매 프레임 반영).

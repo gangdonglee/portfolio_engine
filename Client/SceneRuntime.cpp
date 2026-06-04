@@ -789,13 +789,14 @@ namespace client
         const XMMATRIX meshWInv = XMMatrixInverse(&det, meshW);
         if (XMVectorGetX(det) == 0.0f) { return; }
 
-        // Root lift — 캐릭터 배치가 지면보다 *상수만큼 낮게* 잡혀(sampler↔bone 좌표 offset) 발이 묻힘.
-        //   delta 는 상대라 그 offset 을 못 고침 → 스켈레톤 전체를 상수만큼 *위로* 올려 발을 지표로.
-        //   몸·발이 함께 올라가므로 다리는 곧게 유지(크라우치 없음). 평지 자연 gap(-7)→+7(지표) = +14.
-        const float kRootLift = 4.0f;
-        // 몸(루트) 기준 지면 — delta 보정 기준. 평지면 delta=0 → 애니 그대로(곧은 다리, 크라우치 없음).
-        const float bodyGroundY = m_groundSampler
-            ? m_groundSampler(inst.transform.position.x, inst.transform.position.z) : 0.0f;
+        // Root lift — 리그의 발이 메쉬 원점보다 *상수(≈toe depth)만큼 아래* 에 있는데 컨트롤러가 그 원점을
+        //   지면에 핀(pos.y=지면) → 발이 그 상수만큼 묻힘. 진단(2026-06): 순수 애니 toe world Y ≈ −14.6
+        //   (몸 원점=지면=0 기준) → 스켈레톤 전체를 +14.6 올려 평지서 발(sole)이 지표에 닿게. 몸·발이 함께
+        //   올라가 다리는 자연 포즈 유지(크라우치/뜸 없음). 이게 정확해야 절대 접지 IK 가 보정 0(평지)이 됨.
+        const float kRootLift = 14.6f;
+        // 실제 적용 root lift = kRootLift − bodyLower. 낮은 발이 다리 길이로 못 닿으면 몸을 내려(bodyLower)
+        //   닿게 함. solveLeg(목표 = ground+aboveToe−effectiveLift)·최종 translate 모두 이 값을 씀.
+        float effectiveLift = kRootLift;
 
         auto bonePos = [&](int b) -> XMVECTOR {
             const XMFLOAT4X4& m = m_animatorRuntime->BoneGlobal()[static_cast<size_t>(b)];
@@ -847,6 +848,15 @@ namespace client
         const auto [leftAnimY,  leftG]  = footYG(m_footIKBones->leftAnkle);
         const auto [rightAnimY, rightG] = footYG(m_footIKBones->rightAnkle);
         const float minAnkleY = std::min(leftAnimY, rightAnimY);
+
+        // Toe 본 — 절대 접지의 핀 지점(발바닥 앞). 이름으로 한 번 찾아 solveLeg 에 전달.
+        auto findBone = [&](const wchar_t* sub) -> int {
+            for (size_t b = 0; b < bones.size(); ++b)
+                if (bones[b].name.find(sub) != std::wstring::npos) { return static_cast<int>(b); }
+            return -1;
+        };
+        const int leftToe  = findBone(L"LeftToe");
+        const int rightToe = findBone(L"RightToe");
         auto plantWeight = [&](float ay, float groundAtFoot) -> float {
             const float rel = std::clamp(1.0f - ((ay - minAnkleY)      - 2.0f)  / 10.0f, 0.0f, 1.0f);
             const float abs = std::clamp(1.0f - ((ay - groundAtFoot)   - 28.0f) / 22.0f, 0.0f, 1.0f);
@@ -865,39 +875,44 @@ namespace client
             if (lrLen > 1e-3f) { lrAxis = XMVectorScale(lrAxis, 1.0f / lrLen); lrValid = true; }
         }
 
-        // 한 다리 analytic two-bone IK — ankle 을 발밑 지면 차이만큼 보정. pw=plant weight, footIdx=0/1.
-        auto solveLeg = [&](int hip, int knee, int ankle, float pw, int footIdx)
+        // 한 다리 analytic two-bone IK — *절대 접지*: 발바닥(toe)을 발밑 지면에 핀. pw=plant weight.
+        auto solveLeg = [&](int hip, int knee, int ankle, int toe, float pw, int footIdx)
         {
             if (hip < 0 || knee < 0 || ankle < 0) { return; }
             if (static_cast<size_t>(ankle) >= bones.size()) { return; }
 
-            // ankle 현재 world 위치 → 발밑 지면 샘플.
+            // ankle·toe 현재 world 위치(pre-IK, pre-lift).
             const XMVECTOR ankleWorld = XMVector3TransformCoord(bonePos(ankle), meshW);
             const float ax = XMVectorGetX(ankleWorld);
             const float ay = XMVectorGetY(ankleWorld);
             const float az = XMVectorGetZ(ankleWorld);
-            // delta(상대) 보정만 — 발밑 지면이 몸 기준보다 높/낮은 *차이* 만큼만 발을 올리/내림.
-            //   평지면 0 = 애니 그대로(곧은 다리). 두 ground sample 의 차라서 sampler 의 절대 offset 이
-            //   상쇄됨 → 지면 *기울기/단차* 만 정확히 따라감. 절대 배치(묻힘)는 아래 root lift 로 보정.
-            const float groundAtFoot = m_groundSampler ? m_groundSampler(ax, az) : 0.0f;
-            const float blend        = cfg.weight * pw * m_footIKWeight;
-            const float rawCorr      = (groundAtFoot - bodyGroundY) * blend;   // 이번 프레임 목표 보정량
-            // *temporal smoothing* — 보정량을 프레임간 lerp. 달리기에서 plant↔swing 이 빨라 보정이
-            //   확 켜졌다 꺼지면 발이 *툭* 튐. 매 프레임(swing 포함) lerp 해서 보정이 부드럽게 들고
-            //   빠지게 함(swing 땐 blend≈0 → rawCorr≈0 → 보정이 0 으로 서서히 감쇠). pw<0.05 라도
-            //   early-out 안 하고 lerp 갱신해야 다음 plant 때 stale 값에서 안 튄다.
+            const float groundAtAnkle = m_groundSampler ? m_groundSampler(ax, az) : 0.0f;
+
+            // === 절대 접지 목표 ===
+            //   sole(≈toe)을 *제 발밑 지면* 에 올림. ankle 은 sole 위로 ankleAboveToe(현 포즈 발목−toe)
+            //   만큼 떠야 함 → desiredAnkleY = groundUnderToe + ankleAboveToe. 단 발끝/발목 지면 중 *높은*
+            //   쪽 기준으로(max) 업/다운슬로프 모두 관통 방지(오르막=toe 지면↑ 가 발 들어올림, 내리막=ankle
+            //   지면이 기준 → 발끝은 모서리 밖으로 자연히 넘어감). root lift(+kRootLift)가 뒤에 더해지므로
+            //   여기선 그만큼 빼서(pre-lift 공간) 최종이 정확히 지표에 오게. 평지선 보정 0(크라우치/뜸 없음).
+            float ankleAboveToe = 7.2f;        // fallback(진단 측정값) — toe 본 없으면 사용
+            float groundUnderToe = groundAtAnkle;
+            if (toe >= 0 && static_cast<size_t>(toe) < bones.size())
+            {
+                const XMVECTOR toeWorld = XMVector3TransformCoord(bonePos(toe), meshW);
+                ankleAboveToe  = ay - XMVectorGetY(toeWorld);
+                groundUnderToe = m_groundSampler
+                    ? m_groundSampler(XMVectorGetX(toeWorld), XMVectorGetZ(toeWorld)) : groundAtAnkle;
+            }
+            const float plantGround   = std::max(groundUnderToe, groundAtAnkle);
+            const float desiredAnkleY = plantGround + ankleAboveToe - effectiveLift;
+            const float blend         = cfg.weight * pw * m_footIKWeight;
+            const float rawCorr       = (desiredAnkleY - ay) * blend;
+            // *temporal smoothing* — 보정량을 프레임간 lerp(달리기 plant↔swing 전환에서 발 *툭* 튐 방지).
+            //   swing 땐 blend≈0 → rawCorr≈0 → 보정이 0 으로 부드럽게 감쇠. pw<0.05 라도 early-out 없이
+            //   매 프레임 lerp 갱신해야 다음 plant 에서 stale 값으로 안 튄다.
             float& sc = m_footIKCorrSmooth[footIdx];
             sc += (rawCorr - sc) * 0.25f;
-            // floor — 발이 *발밑 지면* 의 자연 planted 높이보다 아래로는 안 내려가게(경사/단차에서 한 발
-            //   묻힘 방지). delta 는 gap 이 애니 발높이에만 의존해, 높은 지면 위 발이 낮은 애니 포즈면
-            //   묻힘. kFootFloor=자연 planted gap(ankle−groundSample≈-7, sampler offset) 이라 평지선
-            //   거의 무영향(크라우치 없음) — 경사에서 묻히는 발만 표면으로 들어올림.
-            float targetY = ay + sc;
-            // floor 는 *root lift(=liftWorld 4) 보정 후 gap≈0*(표면) 이 되게 = groundAtFoot - 4.
-            //   평지 디딘 발은 gap≈+7 이라 무영향(크라우치 없음) — 경사에서 표면 아래로 묻히는 발만 표면으로.
-            const float kFootFloor = -4.0f;
-            const float floorY = groundAtFoot + kFootFloor;
-            if (targetY < floorY) { targetY = floorY; }      // 발이 자연 위면 무영향 — 묻힘만 들어올림
+            const float targetY = ay + sc;
             if (std::abs(targetY - ay) < 0.5f) { return; }   // 보정 미미(swing/평지) — IK·정렬 미적용
 
             const XMVECTOR targetModel =
@@ -1015,19 +1030,55 @@ namespace client
         const float leftPlant  = plantWeight(leftAnimY,  leftG);
         const float rightPlant = plantWeight(rightAnimY, rightG);
 
+        // === Body lower (pelvis IK) — 낮은 발의 절대 목표가 다리 길이로 못 닿으면 그 *부족분(reach
+        //   deficit)* 만큼 몸 전체를 내려서 닿게 함. terrain(지면)·다리 길이 기준이라 *보행 사이클에
+        //   비의존* → 예전 anim-keyed 골반 하강처럼 출렁이지 않음. 강한 스무딩(lerp 0.1)으로 더 안정.
+        //   cap 으로 깊은 구덩이서 과한 스쿼트 방지(잔여 뜸은 허용 — 묻힘보다 덜 거슬림).
+        auto reachDeficit = [&](int hip, int knee, int ankle, int toe, float pw) -> float {
+            if (hip < 0 || knee < 0 || ankle < 0 || pw < 0.05f) { return 0.0f; }
+            const XMVECTOR hipW   = XMVector3TransformCoord(bonePos(hip),   meshW);
+            const XMVECTOR kneeW  = XMVector3TransformCoord(bonePos(knee),  meshW);
+            const XMVECTOR ankleW = XMVector3TransformCoord(bonePos(ankle), meshW);
+            const float ax = XMVectorGetX(ankleW), ay = XMVectorGetY(ankleW), az = XMVectorGetZ(ankleW);
+            const float gA = m_groundSampler ? m_groundSampler(ax, az) : 0.0f;
+            float aboveToe = 7.2f, gT = gA;
+            if (toe >= 0 && static_cast<size_t>(toe) < bones.size())
+            {
+                const XMVECTOR tW = XMVector3TransformCoord(bonePos(toe), meshW);
+                aboveToe = ay - XMVectorGetY(tW);
+                gT = m_groundSampler ? m_groundSampler(XMVectorGetX(tW), XMVectorGetZ(tW)) : gA;
+            }
+            const float desiredAnkleWorldY = std::max(gT, gA) + aboveToe;   // 최종 절대 목표(world)
+            const float legLen =
+                XMVectorGetX(XMVector3Length(XMVectorSubtract(kneeW,  hipW))) +
+                XMVectorGetX(XMVector3Length(XMVectorSubtract(ankleW, kneeW)));
+            const float finalHipY = XMVectorGetY(hipW) + kRootLift;        // lift 후 hip(근사 — bodyLower 전)
+            const float horiz = std::hypot(ax - XMVectorGetX(hipW), az - XMVectorGetZ(hipW));
+            const float vReach = std::sqrt(std::max(legLen * legLen - horiz * horiz, 0.0f)) * 0.98f;
+            const float lowestReachableY = finalHipY - vReach;            // 다리로 닿는 최저 ankle Y
+            return std::max(lowestReachableY - desiredAnkleWorldY, 0.0f) * pw;  // 못 닿는 깊이
+        };
+        const float kMaxBodyLower = 8.0f;   // 깊은 구덩이 과스쿼트 방지(잔여 뜸 허용)
+        const float bodyLowerRaw  = std::min(kMaxBodyLower,
+            std::max(reachDeficit(m_footIKBones->leftHip,  m_footIKBones->leftKnee,  m_footIKBones->leftAnkle,  leftToe,  leftPlant),
+                     reachDeficit(m_footIKBones->rightHip, m_footIKBones->rightKnee, m_footIKBones->rightAnkle, rightToe, rightPlant)));
+        m_footIKBodyLower += (bodyLowerRaw - m_footIKBodyLower) * 0.1f;    // 강한 스무딩(bob 방지)
+        effectiveLift = kRootLift - m_footIKBodyLower;
+
         // (골반 하강 #2 는 제거 — 디딘 발 animAnkleY 가 보행 사이클마다 변해 pelvisTarget 이 매 프레임
         //  요동 → 몸 전체가 위아래로 출렁임. 하이브리드 타깃이 standing 을 보존하므로 과신전도 드묾.
         //  단차용 골반 보정이 필요하면 *지면 높이차* 기반(보행 사이클 비의존)으로 재설계 필요.)
 
         // plant weight 는 height ramp 자체가 부드럽고 즉각적 → 발 IK 별도 temporal 스무딩 없음.
-        solveLeg(m_footIKBones->leftHip,  m_footIKBones->leftKnee,  m_footIKBones->leftAnkle,  leftPlant,  0);
-        solveLeg(m_footIKBones->rightHip, m_footIKBones->rightKnee, m_footIKBones->rightAnkle, rightPlant, 1);
+        solveLeg(m_footIKBones->leftHip,  m_footIKBones->leftKnee,  m_footIKBones->leftAnkle,  leftToe,  leftPlant,  0);
+        solveLeg(m_footIKBones->rightHip, m_footIKBones->rightKnee, m_footIKBones->rightAnkle, rightToe, rightPlant, 1);
 
-        // Root lift — 스켈레톤 전체를 world up 으로 kRootLift 만큼 올려 묻힘 보정(곧은 다리 유지).
-        if (kRootLift != 0.0f)
+        // Root lift — 스켈레톤 전체를 world up 으로 effectiveLift(=kRootLift−bodyLower) 만큼 올려
+        //   묻힘 보정(곧은 다리 유지) + 낮은 발 닿게 몸 하강 반영.
+        if (effectiveLift != 0.0f)
         {
             const XMVECTOR modelLift =
-                XMVector3TransformNormal(XMVectorSet(0.0f, kRootLift, 0.0f, 0.0f), meshWInv);
+                XMVector3TransformNormal(XMVectorSet(0.0f, effectiveLift, 0.0f, 0.0f), meshWInv);
             translateAllBones(modelLift);
         }
 
@@ -1040,6 +1091,7 @@ namespace client
         m_footIKReadout.leftGroundY = leftG;   m_footIKReadout.leftPlant  = leftPlant;
         m_footIKReadout.rightAnkleY = ankleWorldY(m_footIKBones->rightAnkle);
         m_footIKReadout.rightGroundY= rightG;  m_footIKReadout.rightPlant = rightPlant;
+        m_footIKReadout.bodyLower = m_footIKBodyLower;
         m_footIKReadout.valid = true;
     }
 
