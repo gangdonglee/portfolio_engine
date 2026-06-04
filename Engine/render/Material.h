@@ -31,5 +31,7 @@ namespace engine::render
         DirectX::XMFLOAT3            diffuseColor{ 1.0f, 1.0f, 1.0f };
         std::shared_ptr<Texture>     albedoTexture;     // nullable
         D3D12_GPU_DESCRIPTOR_HANDLE  albedoSrvGpu{};    // CreateSrv 후 채워짐, 없으면 0
+        std::shared_ptr<Texture>     normalTexture;     // nullable — tangent-space normal map (t3)
+        D3D12_GPU_DESCRIPTOR_HANDLE  normalSrvGpu{};    // 없으면 0 → 셰이더가 평탄 노멀 사용
     };
 }

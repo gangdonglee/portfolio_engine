@@ -89,6 +89,11 @@ namespace engine::scene
                 e["importTransform"] = serializeTransform(m.importTransform);
             }
             e["transform"]     = serializeTransform(m.transform);
+            // PBR 머티리얼 — 기본값 아니면 기록.
+            if (m.roughness != 0.6f) { e["roughness"] = m.roughness; }
+            if (m.metallic  != 0.0f) { e["metallic"]  = m.metallic; }
+            if (m.normalStrength != 2.5f) { e["normalStrength"] = m.normalStrength; }
+            if (m.normalFlipY)            { e["normalFlipY"]    = true; }
             meshes.push_back(std::move(e));
         }
         root["meshes"] = std::move(meshes);
@@ -186,6 +191,10 @@ namespace engine::scene
                 };
                 if (auto tit = e.find("transform");       tit != e.end() && tit->is_object()) { parseTransform(*tit, m.transform); }
                 if (auto tit = e.find("importTransform"); tit != e.end() && tit->is_object()) { parseTransform(*tit, m.importTransform); }
+                if (auto rit = e.find("roughness"); rit != e.end() && rit->is_number()) { m.roughness = rit->get<float>(); }
+                if (auto mit = e.find("metallic");  mit != e.end() && mit->is_number()) { m.metallic  = mit->get<float>(); }
+                if (auto nit = e.find("normalStrength"); nit != e.end() && nit->is_number())  { m.normalStrength = nit->get<float>(); }
+                if (auto fit = e.find("normalFlipY");    fit != e.end() && fit->is_boolean()) { m.normalFlipY    = fit->get<bool>(); }
                 scene.meshes.push_back(std::move(m));
             }
         }

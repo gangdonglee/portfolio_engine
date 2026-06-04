@@ -104,6 +104,37 @@ namespace engine::render::fbx_loader
             return name ? std::string(name) : std::string{};
         }
 
+        // normal map 의 상대 경로 — sNormalMap → sBump 순. 둘 다 없으면 빈 문자열(호출자가 네이밍 폴백).
+        std::string ExtractNormalTexRelative(FbxSurfaceMaterial* mat)
+        {
+            if (mat == nullptr) { return {}; }
+            const char* props[] = { FbxSurfaceMaterial::sNormalMap, FbxSurfaceMaterial::sBump };
+            for (const char* pn : props)
+            {
+                FbxProperty prop = mat->FindProperty(pn);
+                if (!prop.IsValid() || prop.GetSrcObjectCount() <= 0) { continue; }
+                FbxFileTexture* tex = prop.GetSrcObject<FbxFileTexture>(0);
+                if (tex == nullptr) { continue; }
+                const char* name = tex->GetRelativeFileName();
+                if (name != nullptr && name[0] != '\0') { return std::string(name); }
+            }
+            return {};
+        }
+
+        // "..._Diffuse.png" → "..._Normal.png" 네이밍 폴백 (FBX 머티리얼이 normal 을 안 링크한 경우).
+        std::string DeriveNormalFromDiffuse(const std::string& diffRel)
+        {
+            for (const char* key : { "Diffuse", "diffuse", "Albedo", "albedo", "BaseColor", "Color" })
+            {
+                const size_t pos = diffRel.rfind(key);
+                if (pos != std::string::npos)
+                {
+                    return diffRel.substr(0, pos) + "Normal" + diffRel.substr(pos + std::char_traits<char>::length(key));
+                }
+            }
+            return {};
+        }
+
         int32 ResolveElementIndex(const FbxLayerElementTemplate<FbxVector4>* elem,
                                   int32 controlPointIdx,
                                   int32 vertexCounter) noexcept
@@ -551,6 +582,16 @@ namespace engine::render::fbx_loader
                         if (mat->albedoTexture)
                         {
                             mat->albedoSrvGpu = mat->albedoTexture->SrvGpuHandle();
+                        }
+
+                        // normal map — FBX 프로퍼티 우선, 없으면 diffuse 네이밍 폴백.
+                        std::string normRel = ExtractNormalTexRelative(surf);
+                        if (normRel.empty() && !diffRel.empty()) { normRel = DeriveNormalFromDiffuse(diffRel); }
+                        mat->normalTexture = LoadDiffuseTexture(   // 범용 이미지 로더 재사용
+                            normRel, fbmDir, device, queue, list, srvHeap, texCache);
+                        if (mat->normalTexture)
+                        {
+                            mat->normalSrvGpu = mat->normalTexture->SrvGpuHandle();
                         }
                     }
                     outMaterials.push_back(mat);

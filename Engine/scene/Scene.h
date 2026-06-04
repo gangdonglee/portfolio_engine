@@ -46,6 +46,11 @@ namespace engine::scene
         Transform   importTransform;
         // 게임 런타임 인스턴스 transform — 캐릭터 위치/회전/스케일.
         Transform   transform;
+        // PBR 머티리얼 — 오브젝트별 표면 속성 (금속/천/피부 구분). 셰이더 cbuffer 로 전달.
+        float       roughness      = 0.6f;   // 0=거울 ~ 1=완전 거침
+        float       metallic       = 0.0f;   // 0=비금속(dielectric) ~ 1=금속
+        float       normalStrength = 2.5f;   // normal map 섭동 세기 (0=평탄, 1=원본, 2~3=강조)
+        bool        normalFlipY    = false;  // normal map Y(녹색) 채널 반전 (OpenGL↔DirectX 규약)
     };
 
     // 무한 거리에서 평행하게 입사하는 라이트 (태양). 방향만 의미 — 위치 없음.

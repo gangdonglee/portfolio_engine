@@ -284,6 +284,18 @@ namespace editor::panels
                 }
 
                 ImGui::Separator();
+                // PBR 머티리얼 — 실시간 조절 (셰이더 cbuffer 로 즉시 반영).
+                ImGui::Text("PBR Material");
+                changed |= ImGui::SliderFloat("roughness", &m.roughness, 0.0f, 1.0f);
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("0=매끈/거울, 1=거침/무광"); }
+                changed |= ImGui::SliderFloat("metallic",  &m.metallic,  0.0f, 1.0f);
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("0=비금속(피부/천), 1=금속"); }
+                changed |= ImGui::SliderFloat("normal strength", &m.normalStrength, 0.0f, 5.0f);
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("normal map 세기. 0=평탄(끔), 1=원본, 2~3=강조"); }
+                changed |= ImGui::Checkbox("normal Y-flip", &m.normalFlipY);
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("녹색 채널 반전 — 그림자가 반대로 파이면 토글 (OpenGL↔DirectX)"); }
+
+                ImGui::Separator();
                 // importTransform — FBX 가져오기 보정 (좌표계 변환). 자산별 1회 설정 후 보통 변경 없음.
                 if (ImGui::CollapsingHeader("Import Transform (FBX 좌표계 보정)",
                                             ImGuiTreeNodeFlags_DefaultOpen))
