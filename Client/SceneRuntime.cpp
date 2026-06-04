@@ -978,7 +978,7 @@ namespace client
             //   swing 땐 blend≈0 → rawCorr≈0 → 보정이 0 으로 부드럽게 감쇠. pw<0.05 라도 early-out 없이
             //   매 프레임 lerp 갱신해야 다음 plant 에서 stale 값으로 안 튄다.
             float& sc = m_footIKCorrSmooth[footIdx];
-            sc += (rawCorr - sc) * 0.25f;
+            sc += (rawCorr - sc) * 0.18f;   // 약간 느리게 — 접지 보정이 부드럽게 안착(plant 덜그럭 완화)
             const float targetY = ay + sc;
             if (std::abs(targetY - ay) < 0.5f) { return; }   // 보정 미미(swing/평지) — IK·정렬 미적용
 
@@ -1066,10 +1066,12 @@ namespace client
             //   유한차분으로 발밑 지면 normal 추정 → world up→normal 회전을 ankle subtree 에 적용.
             //   평지면 normal=up → 무회전(애니 발 포즈 유지 = toe-down 은 애니라 그대로). 경사만 기울임.
             //   model 공간에서 from/to 정렬(leg IK 와 동일 패턴) → 컨벤션 reflection 안전.
-            //   cap ~22° + plant·전역 weight → 가파른 경사 over-roll(바깥날) 방지.
+            //   cap + plant·전역 weight → 가파른 경사 over-roll(바깥날) 방지.
+            //   e(샘플 반경)는 *발 크기* 로 — 작으면 작은 범프마다 normal 이 휙휙 바뀌어 발바닥이
+            //   매 스텝 *덜그럭*. 발 길이만큼 넓게(18) 샘플해 *전체 경사* 만 따라가고 잔 범프는 무시.
             if (m_groundSampler && pw > 0.1f)
             {
-                const float e  = 6.0f;
+                const float e  = 18.0f;   // 발 크기 — 잔 범프 무시(덜그럭 방지), 큰 경사만 반영
                 const float hL = m_groundSampler(ax - e, az), hR = m_groundSampler(ax + e, az);
                 const float hB = m_groundSampler(ax, az - e), hF = m_groundSampler(ax, az + e);
                 const XMVECTOR nWorld = XMVector3Normalize(XMVectorSet(hL - hR, 2.0f * e, hB - hF, 0.0f));
@@ -1083,7 +1085,7 @@ namespace client
                     axisV = XMVectorScale(axisV, 1.0f / al);
                     float ang = std::acos(std::clamp(
                         XMVectorGetX(XMVector3Dot(upModel, nModel)), -1.0f, 1.0f));
-                    ang = std::min(ang, 0.39f) * pw * m_footIKWeight;   // ~22° cap
+                    ang = std::min(ang, 0.28f) * pw * m_footIKWeight;   // ~16° cap (덜그럭 줄이게 완화)
                     if (ang > 1e-4f)
                     {
                         XMFLOAT3 axis;  XMStoreFloat3(&axis,  axisV);
