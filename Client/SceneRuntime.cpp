@@ -18,6 +18,7 @@
 #include "render/ProceduralTerrain.h"
 #include "render/Skeleton.h"
 #include "render/SrvDescriptorHeap.h"
+#include "render/ShadowMap.h"
 #include "render/StructuredBuffer.h"
 #include "render/Texture.h"
 
@@ -51,13 +52,24 @@ namespace client
         {
             DirectX::XMFLOAT4X4 mvp;
             DirectX::XMFLOAT4X4 world;
-            DirectX::XMFLOAT3   cameraPosWS;  float _pad0;
-            DirectX::XMFLOAT3   ambient;      float _pad1;
+            DirectX::XMFLOAT4X4 lightViewProj;                   // 그림자 — 방향광 view-proj
+            DirectX::XMFLOAT3   cameraPosWS;  float roughness;   // PBR
+            DirectX::XMFLOAT3   ambient;      float metallic;    // PBR
             std::uint32_t       dirLightCount;
             std::uint32_t       pointLightCount;
-            std::uint32_t       _pad2[2];
+            std::uint32_t       shadowEnabled;                   // 1=그림자 샘플
+            std::uint32_t       normalFlipY;                     // 1=normal map Y 반전
+            float               normalStrength;                  // normal map 섭동 세기
+            std::uint32_t       applyTonemap;                    // 1=셰이더 톤맵(에디터), 0=선형HDR(게임)
+            std::uint32_t       _pad[2];
         };
         static_assert(sizeof(FrameConstants) % 16 == 0, "FrameConstants 16바이트 정렬 깨짐");
+
+        // 그림자 깊이 패스 cbuffer — worldLightMVP 한 행렬 (b0).
+        struct ShadowConstants
+        {
+            DirectX::XMFLOAT4X4 worldLightMVP;
+        };
 
         // 본 팔레트 cbuffer — HLSL bones[256].
         constexpr std::uint32_t kMaxBones = 256;
@@ -351,8 +363,9 @@ namespace client
 
         // 인스턴스 × frame ConstantBuffer.
         const auto instCount = m_scene.meshes.size();
-        m_instFrameCBs.resize(instCount);
-        m_instBoneCBs .resize(instCount);
+        m_instFrameCBs .resize(instCount);
+        m_instBoneCBs  .resize(instCount);
+        m_instShadowCBs.resize(instCount);
         for (size_t i = 0; i < instCount; ++i)
         {
             for (engine::uint32 f = 0; f < kFrameCount; ++f)
@@ -361,6 +374,8 @@ namespace client
                     device, static_cast<engine::uint32>(sizeof(FrameConstants)));
                 m_instBoneCBs [i][f] = std::make_unique<engine::render::ConstantBuffer>(
                     device, static_cast<engine::uint32>(sizeof(BonePalette)));
+                m_instShadowCBs[i][f] = std::make_unique<engine::render::ConstantBuffer>(
+                    device, static_cast<engine::uint32>(sizeof(ShadowConstants)));
             }
         }
 
@@ -371,6 +386,14 @@ namespace client
                 device, kDirLightCapacity,   static_cast<engine::uint32>(sizeof(DirectionalLightGpu)));
             m_pointLightSBs[f] = std::make_unique<engine::render::StructuredBuffer>(
                 device, kPointLightCapacity, static_cast<engine::uint32>(sizeof(PointLightGpu)));
+        }
+
+        // normal map 폴백 — 1x1 평탄 노멀(탄젠트 +Z). 머티리얼에 normal map 없으면 t3 에 바인딩.
+        {
+            const std::uint8_t kFlatNormal[4] = { 128, 128, 255, 255 };
+            m_flatNormalTex = std::make_unique<engine::render::Texture>(
+                device, queue, uploadList, kFlatNormal, 1, 1);
+            m_flatNormalTex->CreateSrv(device, srvHeap);
         }
     }
 
@@ -431,26 +454,9 @@ namespace client
         // 수동 포징 — BuildPalette(Update 내부) 직후 manual 회전을 subtree 에 적용.
         if (m_animatorRuntime && !m_boneManualRot.empty()) { ApplyManualBonePosing(); }
 
-        // Foot IK — animator runtime 활성 + 활성 instance 의 mesh world matrix 계산 후 적용.
-        if (m_footIKEnabled && m_animatorRuntime && m_animSkeleton &&
-            m_animatorInstanceIdx < m_scene.meshes.size() && m_footIKBones && m_footIKConfig && m_footIKDebug)
-        {
-            using namespace DirectX;
-            const auto& inst       = m_scene.meshes[m_animatorInstanceIdx];
-            const XMMATRIX importM = ComposeWorld(inst.importTransform);
-            const XMMATRIX instM   = ComposeWorld(inst.transform);
-            const XMMATRIX meshW   = importM * instM;
-            XMVECTOR det;
-            const XMMATRIX meshWInv = XMMatrixInverse(&det, meshW);
-            if (XMVectorGetX(det) != 0.0f)
-            {
-                engine::anim::ApplyFootIK(*m_animatorRuntime, *m_animSkeleton,
-                                          *m_footIKBones, *m_footIKConfig,
-                                          meshW, meshWInv,
-                                          m_groundSampler,
-                                          *m_footIKDebug);
-            }
-        }
+        // Foot IK — Update(BuildPalette) + manual posing 직후. CCD rotate-about-pivot 로 두 발을
+        //   각자 발밑 지면에 안착 (검증된 SolveBoneIK 기법, mesh 정상 변형).
+        if (m_footIKEnabled) { ApplyFootIKRuntime(); }
     }
 
     void SceneRuntime::SetFootIKConfig(const engine::anim::FootIKConfig& cfg)
@@ -692,11 +698,17 @@ namespace client
         if (mlen < 1e-6f) { return; }
         const XMVECTOR axis = XMVectorScale(axisModelV, 1.0f / mlen);
         const XMVECTOR dq   = XMQuaternionRotationAxis(axis, angleDelta);
+        AccumulateBoneModelQuat(boneIdx, dq);
+    }
 
+    void SceneRuntime::AccumulateBoneModelQuat(int boneIdx, DirectX::FXMVECTOR dq)
+    {
+        using namespace DirectX;
+        if (boneIdx < 0) { return; }
         auto it = m_boneManualRot.find(boneIdx);
         if (it == m_boneManualRot.end())
         {
-            XMFLOAT4 q; XMStoreFloat4(&q, dq);
+            XMFLOAT4 q; XMStoreFloat4(&q, XMQuaternionNormalize(dq));
             m_boneManualRot.emplace(boneIdx, q);
         }
         else
@@ -760,6 +772,375 @@ namespace client
         }
     }
 
+    void SceneRuntime::ApplyFootIKRuntime()
+    {
+        using namespace DirectX;
+        if (!m_animatorRuntime || !m_animSkeleton || !m_footIKBones || !m_footIKConfig) { return; }
+        if (m_animatorInstanceIdx >= m_scene.meshes.size()) { return; }
+        const auto& cfg = *m_footIKConfig;
+        if (cfg.weight <= 0.001f || m_footIKWeight <= 0.01f) { return; }   // 속도 페이드로 꺼지면 skip
+
+        const auto& bones = m_animSkeleton->Bones();
+        if (m_animatorRuntime->BoneGlobal().size() != bones.size()) { return; }
+
+        const auto& inst     = m_scene.meshes[m_animatorInstanceIdx];
+        const XMMATRIX meshW = ComposeWorld(inst.importTransform) * ComposeWorld(inst.transform);
+        XMVECTOR det;
+        const XMMATRIX meshWInv = XMMatrixInverse(&det, meshW);
+        if (XMVectorGetX(det) == 0.0f) { return; }
+
+        // Root lift — 캐릭터 배치가 지면보다 *상수만큼 낮게* 잡혀(sampler↔bone 좌표 offset) 발이 묻힘.
+        //   delta 는 상대라 그 offset 을 못 고침 → 스켈레톤 전체를 상수만큼 *위로* 올려 발을 지표로.
+        //   몸·발이 함께 올라가므로 다리는 곧게 유지(크라우치 없음). 평지 자연 gap(-7)→+7(지표) = +14.
+        const float kRootLift = 4.0f;
+        // 몸(루트) 기준 지면 — delta 보정 기준. 평지면 delta=0 → 애니 그대로(곧은 다리, 크라우치 없음).
+        const float bodyGroundY = m_groundSampler
+            ? m_groundSampler(inst.transform.position.x, inst.transform.position.z) : 0.0f;
+
+        auto bonePos = [&](int b) -> XMVECTOR {
+            const XMFLOAT4X4& m = m_animatorRuntime->BoneGlobal()[static_cast<size_t>(b)];
+            return XMVectorSet(m.m[0][3], m.m[1][3], m.m[2][3], 1.0f);
+        };
+        // joint subtree 를 live BoneGlobal 에 직접 rotate-about-pivot (column-convention) 적용.
+        auto rotateSubtreeLive = [&](int joint, const XMFLOAT3& axis, float angle, const XMFLOAT3& pivot)
+        {
+            const XMFLOAT4X4 T = RotateAboutPivotCol(axis, angle, pivot);
+            std::vector<int>  stack{ joint };
+            std::vector<char> visited(bones.size(), 0);
+            while (!stack.empty())
+            {
+                const int cur = stack.back(); stack.pop_back();
+                if (visited[static_cast<size_t>(cur)]) { continue; }
+                visited[static_cast<size_t>(cur)] = 1;
+                const XMFLOAT4X4 newM =
+                    MatMulCol(T, m_animatorRuntime->BoneGlobal()[static_cast<size_t>(cur)]);
+                m_animatorRuntime->SetBoneGlobal(static_cast<size_t>(cur), newM);
+                for (size_t b = 0; b < bones.size(); ++b)
+                {
+                    if (bones[b].parentIndex == cur) { stack.push_back(static_cast<int>(b)); }
+                }
+            }
+        };
+        // 모든 본을 model-space 벡터만큼 평행이동 (root lift — 스켈레톤 전체를 강체 이동).
+        auto translateAllBones = [&](XMVECTOR modelDelta)
+        {
+            const float dx = XMVectorGetX(modelDelta);
+            const float dy = XMVectorGetY(modelDelta);
+            const float dz = XMVectorGetZ(modelDelta);
+            for (size_t b = 0; b < bones.size(); ++b)
+            {
+                XMFLOAT4X4 m = m_animatorRuntime->BoneGlobal()[b];
+                m.m[0][3] += dx; m.m[1][3] += dy; m.m[2][3] += dz;
+                m_animatorRuntime->SetBoneGlobal(b, m);
+            }
+        };
+        // === Foot phase — swing(든)/airborne 발 감지. 디딘 발만 IK.
+        //   (a) 상대: 두 발 애니 world Y 중 낮은 발=디딘 발 (걷기 swing 구분).
+        //   (b) 절대: 발이 *제 발밑 지면* 위로 떠 있는 높이 (달리기 flight 양발 공중 구분).
+        //   둘 다 낮아야(min) 디딘 발 → flight 에선 양발 모두 IK 제외. 경사/단차도 안전.
+        auto footYG = [&](int ankle) -> std::pair<float, float> {   // {animWorldY, groundAtFoot}
+            if (ankle < 0 || static_cast<size_t>(ankle) >= bones.size()) { return { 1e9f, 0.0f }; }
+            const XMVECTOR w = XMVector3TransformCoord(bonePos(ankle), meshW);
+            const float g = m_groundSampler ? m_groundSampler(XMVectorGetX(w), XMVectorGetZ(w)) : 0.0f;
+            return { XMVectorGetY(w), g };
+        };
+        const auto [leftAnimY,  leftG]  = footYG(m_footIKBones->leftAnkle);
+        const auto [rightAnimY, rightG] = footYG(m_footIKBones->rightAnkle);
+        const float minAnkleY = std::min(leftAnimY, rightAnimY);
+        auto plantWeight = [&](float ay, float groundAtFoot) -> float {
+            const float rel = std::clamp(1.0f - ((ay - minAnkleY)      - 2.0f)  / 10.0f, 0.0f, 1.0f);
+            const float abs = std::clamp(1.0f - ((ay - groundAtFoot)   - 28.0f) / 22.0f, 0.0f, 1.0f);
+            return std::min(rel, abs);   // 둘 다 디딘 상태여야 IK
+        };
+
+        // 골반 좌우축(두 고관절 사이) — 무릎 굽힘 평면 고정용. 보행/달리기 중에도 안정적이라
+        //   무릎을 *sagittal(앞뒤) 평면* 에만 가두면 좌우 jitter 가 원천 제거됨. (hip 은 IK pivot 이라
+        //   solveLeg 들이 회전해도 위치 불변 → 한 번만 계산.)
+        XMVECTOR lrAxis = XMVectorZero();
+        bool     lrValid = false;
+        if (m_footIKBones->leftHip >= 0 && m_footIKBones->rightHip >= 0)
+        {
+            lrAxis = XMVectorSubtract(bonePos(m_footIKBones->rightHip), bonePos(m_footIKBones->leftHip));
+            const float lrLen = XMVectorGetX(XMVector3Length(lrAxis));
+            if (lrLen > 1e-3f) { lrAxis = XMVectorScale(lrAxis, 1.0f / lrLen); lrValid = true; }
+        }
+
+        // 한 다리 analytic two-bone IK — ankle 을 발밑 지면 차이만큼 보정. pw=plant weight, footIdx=0/1.
+        auto solveLeg = [&](int hip, int knee, int ankle, float pw, int footIdx)
+        {
+            if (hip < 0 || knee < 0 || ankle < 0) { return; }
+            if (static_cast<size_t>(ankle) >= bones.size()) { return; }
+
+            // ankle 현재 world 위치 → 발밑 지면 샘플.
+            const XMVECTOR ankleWorld = XMVector3TransformCoord(bonePos(ankle), meshW);
+            const float ax = XMVectorGetX(ankleWorld);
+            const float ay = XMVectorGetY(ankleWorld);
+            const float az = XMVectorGetZ(ankleWorld);
+            // delta(상대) 보정만 — 발밑 지면이 몸 기준보다 높/낮은 *차이* 만큼만 발을 올리/내림.
+            //   평지면 0 = 애니 그대로(곧은 다리). 두 ground sample 의 차라서 sampler 의 절대 offset 이
+            //   상쇄됨 → 지면 *기울기/단차* 만 정확히 따라감. 절대 배치(묻힘)는 아래 root lift 로 보정.
+            const float groundAtFoot = m_groundSampler ? m_groundSampler(ax, az) : 0.0f;
+            const float blend        = cfg.weight * pw * m_footIKWeight;
+            const float rawCorr      = (groundAtFoot - bodyGroundY) * blend;   // 이번 프레임 목표 보정량
+            // *temporal smoothing* — 보정량을 프레임간 lerp. 달리기에서 plant↔swing 이 빨라 보정이
+            //   확 켜졌다 꺼지면 발이 *툭* 튐. 매 프레임(swing 포함) lerp 해서 보정이 부드럽게 들고
+            //   빠지게 함(swing 땐 blend≈0 → rawCorr≈0 → 보정이 0 으로 서서히 감쇠). pw<0.05 라도
+            //   early-out 안 하고 lerp 갱신해야 다음 plant 때 stale 값에서 안 튄다.
+            float& sc = m_footIKCorrSmooth[footIdx];
+            sc += (rawCorr - sc) * 0.25f;
+            if (std::abs(sc) < 0.5f) { return; }         // 보정 미미(swing/평지) — IK·정렬 미적용
+            const float targetY = ay + sc;
+
+            const XMVECTOR targetModel =
+                XMVector3TransformCoord(XMVectorSet(ax, targetY, az, 1.0f), meshWInv);
+
+            // === Analytic two-bone IK — 결정론적(지터 없음) + 무릎 굽힘 방향 고정(앞으로) ===
+            const XMVECTOR hipP   = bonePos(hip);
+            const XMVECTOR kneeP  = bonePos(knee);
+            const XMVECTOR ankleP = bonePos(ankle);
+            const float L1 = XMVectorGetX(XMVector3Length(XMVectorSubtract(kneeP,  hipP)));
+            const float L2 = XMVectorGetX(XMVector3Length(XMVectorSubtract(ankleP, kneeP)));
+            if (L1 < 1e-3f || L2 < 1e-3f) { return; }
+
+            XMVECTOR toTarget = XMVectorSubtract(targetModel, hipP);
+            float L = XMVectorGetX(XMVector3Length(toTarget));
+            if (L < 1e-3f) { return; }
+            const float maxL = (L1 + L2) * 0.999f;
+            if (L > maxL) { toTarget = XMVectorScale(XMVector3Normalize(toTarget), maxL); L = maxL; }
+            const XMVECTOR newAnkle    = XMVectorAdd(hipP, toTarget);
+            const XMVECTOR dirToTarget = XMVectorScale(toTarget, 1.0f / L);
+
+            // 무릎 굽힘 방향(pole) — *애니 무릎의 leg 수직 성분* 을 그대로 사용(연속적).
+            //   예전엔 cross(leg,좌우축) 의 부호를 애니 무릎 쪽으로 *binary flip* 했는데, 달리기 중
+            //   애니 무릎이 그 평면을 지나는 순간 부호가 휙 뒤집혀 무릎이 반대편으로 *툭* 튐. 대신
+            //   애니 무릎 방향(hip→knee 의 leg 수직 성분)을 직접 쓰면 부호가 안 뒤집힌다(연속). 거기서
+            //   *좌우(lrAxis) 성분만 제거* 해 sagittal 평면에 가두면 좌우 wobble 도 없앤다 → 둘 다 해결.
+            XMVECTOR bend;
+            {
+                const XMVECTOR hk = XMVectorSubtract(kneeP, hipP);
+                XMVECTOR fwd = XMVectorSubtract(hk,
+                    XMVectorScale(dirToTarget, XMVectorGetX(XMVector3Dot(hk, dirToTarget))));
+                if (lrValid)   // 좌우 성분 제거 → sagittal 평면 (wobble 방지)
+                {
+                    fwd = XMVectorSubtract(fwd,
+                        XMVectorScale(lrAxis, XMVectorGetX(XMVector3Dot(fwd, lrAxis))));
+                }
+                float bl = XMVectorGetX(XMVector3Length(fwd));
+                if (bl < 1e-3f)
+                {   // 다리 거의 일직선 — 굽힘 방향 모호(이때 무릎 위치는 bend 에 거의 무관).
+                    if (!lrValid) { return; }
+                    fwd = XMVector3Cross(dirToTarget, lrAxis);   // 안전 폴백
+                    bl  = XMVectorGetX(XMVector3Length(fwd));
+                    if (bl < 1e-3f) { return; }
+                }
+                bend = XMVectorScale(fwd, 1.0f / bl);
+            }
+
+            // 코사인 법칙 — hip 정점 각. knee 를 dirToTarget 에서 bend 쪽으로 hipAngle 회전.
+            const float cosH = std::clamp((L1*L1 + L*L - L2*L2) / (2.0f * L1 * L), -1.0f, 1.0f);
+            const float hipAngle = std::acos(cosH);
+            const XMVECTOR kneeDir = XMVectorAdd(
+                XMVectorScale(dirToTarget, std::cos(hipAngle)),
+                XMVectorScale(bend,        std::sin(hipAngle)));
+            const XMVECTOR newKnee = XMVectorAdd(hipP, XMVectorScale(kneeDir, L1));
+
+            // from→to 정렬 회전을 joint subtree 에 적용 (model 축).
+            auto applyAlign = [&](int joint, XMVECTOR fromV, XMVECTOR toV, const XMVECTOR& pivotV)
+            {
+                const float lf = XMVectorGetX(XMVector3Length(fromV));
+                const float lt = XMVectorGetX(XMVector3Length(toV));
+                if (lf < 1e-4f || lt < 1e-4f) { return; }
+                fromV = XMVectorScale(fromV, 1.0f / lf);
+                toV   = XMVectorScale(toV,   1.0f / lt);
+                XMVECTOR axisV = XMVector3Cross(fromV, toV);
+                const float al = XMVectorGetX(XMVector3Length(axisV));
+                if (al < 1e-5f) { return; }
+                axisV = XMVectorScale(axisV, 1.0f / al);
+                const float ang = std::acos(std::clamp(XMVectorGetX(XMVector3Dot(fromV, toV)), -1.0f, 1.0f));
+                if (ang < 1e-5f) { return; }
+                XMFLOAT3 axis;  XMStoreFloat3(&axis,  axisV);
+                XMFLOAT3 pivot; XMStoreFloat3(&pivot, pivotV);
+                rotateSubtreeLive(joint, axis, ang, pivot);
+            };
+
+            // 1) hip: hip→knee 를 hip→newKnee 방향으로 (leg subtree 전체 회전).
+            applyAlign(hip, XMVectorSubtract(kneeP, hipP), XMVectorSubtract(newKnee, hipP), hipP);
+            // 2) knee: (1 적용 후) knee→ankle 를 newKnee→newAnkle 방향으로.
+            const XMVECTOR kneeP2  = bonePos(knee);
+            const XMVECTOR ankleP2 = bonePos(ankle);
+            applyAlign(knee, XMVectorSubtract(ankleP2, kneeP2),
+                             XMVectorSubtract(newAnkle, newKnee), kneeP2);
+
+            // === 발 방향 정렬 (#1) — 발바닥을 지면 *경사* 에 맞춰 기울임.
+            //   유한차분으로 발밑 지면 normal 추정 → world up→normal 회전을 ankle subtree 에 적용.
+            //   평지면 normal=up → 무회전(애니 발 포즈 유지 = toe-down 은 애니라 그대로). 경사만 기울임.
+            //   model 공간에서 from/to 정렬(leg IK 와 동일 패턴) → 컨벤션 reflection 안전.
+            //   cap ~22° + plant·전역 weight → 가파른 경사 over-roll(바깥날) 방지.
+            if (m_groundSampler && pw > 0.1f)
+            {
+                const float e  = 6.0f;
+                const float hL = m_groundSampler(ax - e, az), hR = m_groundSampler(ax + e, az);
+                const float hB = m_groundSampler(ax, az - e), hF = m_groundSampler(ax, az + e);
+                const XMVECTOR nWorld = XMVector3Normalize(XMVectorSet(hL - hR, 2.0f * e, hB - hF, 0.0f));
+                const XMVECTOR nModel  = XMVector3Normalize(XMVector3TransformNormal(nWorld, meshWInv));
+                const XMVECTOR upModel = XMVector3Normalize(
+                    XMVector3TransformNormal(XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f), meshWInv));
+                XMVECTOR axisV = XMVector3Cross(upModel, nModel);
+                const float al = XMVectorGetX(XMVector3Length(axisV));
+                if (al > 1e-5f)
+                {
+                    axisV = XMVectorScale(axisV, 1.0f / al);
+                    float ang = std::acos(std::clamp(
+                        XMVectorGetX(XMVector3Dot(upModel, nModel)), -1.0f, 1.0f));
+                    ang = std::min(ang, 0.39f) * pw * m_footIKWeight;   // ~22° cap
+                    if (ang > 1e-4f)
+                    {
+                        XMFLOAT3 axis;  XMStoreFloat3(&axis,  axisV);
+                        XMFLOAT3 pivot; XMStoreFloat3(&pivot, bonePos(ankle));
+                        rotateSubtreeLive(ankle, axis, ang, pivot);
+                    }
+                }
+            }
+        };
+
+        const float leftPlant  = plantWeight(leftAnimY,  leftG);
+        const float rightPlant = plantWeight(rightAnimY, rightG);
+
+        // (골반 하강 #2 는 제거 — 디딘 발 animAnkleY 가 보행 사이클마다 변해 pelvisTarget 이 매 프레임
+        //  요동 → 몸 전체가 위아래로 출렁임. 하이브리드 타깃이 standing 을 보존하므로 과신전도 드묾.
+        //  단차용 골반 보정이 필요하면 *지면 높이차* 기반(보행 사이클 비의존)으로 재설계 필요.)
+
+        // plant weight 는 height ramp 자체가 부드럽고 즉각적 → 발 IK 별도 temporal 스무딩 없음.
+        solveLeg(m_footIKBones->leftHip,  m_footIKBones->leftKnee,  m_footIKBones->leftAnkle,  leftPlant,  0);
+        solveLeg(m_footIKBones->rightHip, m_footIKBones->rightKnee, m_footIKBones->rightAnkle, rightPlant, 1);
+
+        // Root lift — 스켈레톤 전체를 world up 으로 kRootLift 만큼 올려 묻힘 보정(곧은 다리 유지).
+        if (kRootLift != 0.0f)
+        {
+            const XMVECTOR modelLift =
+                XMVector3TransformNormal(XMVectorSet(0.0f, kRootLift, 0.0f, 0.0f), meshWInv);
+            translateAllBones(modelLift);
+        }
+
+        // === calibration readout (디버그 오버레이) — 최종 ankle world Y vs 발밑 지면.
+        auto ankleWorldY = [&](int a) -> float {
+            if (a < 0 || static_cast<size_t>(a) >= bones.size()) { return 0.0f; }
+            return XMVectorGetY(XMVector3TransformCoord(bonePos(a), meshW));
+        };
+        m_footIKReadout.leftAnkleY  = ankleWorldY(m_footIKBones->leftAnkle);
+        m_footIKReadout.leftGroundY = leftG;   m_footIKReadout.leftPlant  = leftPlant;
+        m_footIKReadout.rightAnkleY = ankleWorldY(m_footIKBones->rightAnkle);
+        m_footIKReadout.rightGroundY= rightG;  m_footIKReadout.rightPlant = rightPlant;
+        m_footIKReadout.valid = true;
+    }
+
+    void SceneRuntime::SolveBoneIK(int endBoneIdx,
+                                   const DirectX::XMFLOAT3& targetWorld,
+                                   int chainLength,
+                                   int iterations)
+    {
+        using namespace DirectX;
+        if (!m_animatorRuntime || !m_animSkeleton) { return; }
+        const auto& bones = m_animSkeleton->Bones();
+        if (endBoneIdx < 0 || static_cast<size_t>(endBoneIdx) >= bones.size()) { return; }
+        if (m_animatorInstanceIdx >= m_scene.meshes.size()) { return; }
+        if (chainLength < 1) { chainLength = 1; }
+        if (iterations  < 1) { iterations  = 1; }
+
+        // target(world) → mesh-local(model). model→world = importTransform*instTransform (row-vec).
+        const auto& inst     = m_scene.meshes[m_animatorInstanceIdx];
+        const XMMATRIX meshW = ComposeWorld(inst.importTransform) * ComposeWorld(inst.transform);
+        XMVECTOR det;
+        const XMMATRIX meshWInv = XMMatrixInverse(&det, meshW);
+        if (XMVectorGetX(det) == 0.0f) { return; }
+        const XMVECTOR targetModel = XMVector3TransformCoord(XMLoadFloat3(&targetWorld), meshWInv);
+
+        // 회전 체인 — 끝 관절의 부모를 위로 chainLength 단계 (effector tip 인 끝 관절은 제외).
+        //   예) 손을 잡으면 [팔꿈치(아래팔본), 어깨(위팔본)] → two-bone IK.
+        std::vector<int> chain;
+        chain.reserve(static_cast<size_t>(chainLength));
+        for (int j = bones[static_cast<size_t>(endBoneIdx)].parentIndex, n = 0;
+             n < chainLength && j >= 0;
+             j = bones[static_cast<size_t>(j)].parentIndex, ++n)
+        {
+            chain.push_back(j);
+        }
+        if (chain.empty()) { return; }
+
+        // 작업 복사본 — 현재 렌더 포즈 (애니메이션 + 기존 manual posing). CCD 가 여기서 관절
+        //   위치를 계산/갱신하고, 산출된 증분만 m_boneManualRot 에 누적 (단일 source-of-truth).
+        std::vector<XMFLOAT4X4> work = m_animatorRuntime->BoneGlobal();
+        if (work.size() != bones.size()) { return; }
+
+        auto colPos = [](const XMFLOAT4X4& m) -> XMVECTOR {
+            return XMVectorSet(m.m[0][3], m.m[1][3], m.m[2][3], 1.0f);
+        };
+        // joint subtree 에 model-space rotate-about-pivot 적용 (work 갱신). new_col = T · old_col.
+        auto rotateSubtree = [&](int joint, const XMFLOAT3& axis, float angle, const XMFLOAT3& pivot)
+        {
+            const XMFLOAT4X4 T = RotateAboutPivotCol(axis, angle, pivot);
+            std::vector<int>  stack{ joint };
+            std::vector<char> visited(bones.size(), 0);
+            while (!stack.empty())
+            {
+                const int cur = stack.back(); stack.pop_back();
+                if (visited[static_cast<size_t>(cur)]) { continue; }
+                visited[static_cast<size_t>(cur)] = 1;
+                work[static_cast<size_t>(cur)] = MatMulCol(T, work[static_cast<size_t>(cur)]);
+                for (size_t b = 0; b < bones.size(); ++b)
+                {
+                    if (bones[b].parentIndex == cur) { stack.push_back(static_cast<int>(b)); }
+                }
+            }
+        };
+
+        // 누적 증분 quat (joint → model quat). solve 종료 후 m_boneManualRot 에 합산.
+        std::unordered_map<int, XMVECTOR> deltaQ;
+
+        constexpr float kMaxStep = 0.35f;   // iteration·joint 당 회전 상한 (rad) — 안정성/부드러움.
+        for (int iter = 0; iter < iterations; ++iter)
+        {
+            for (int joint : chain)   // effector 가까운 쪽 (체인 앞)부터 — 표준 CCD 순.
+            {
+                const XMVECTOR jp  = colPos(work[static_cast<size_t>(joint)]);
+                const XMVECTOR eff = colPos(work[static_cast<size_t>(endBoneIdx)]);
+                XMVECTOR v1 = XMVectorSubtract(eff,         jp);   // joint → effector
+                XMVECTOR v2 = XMVectorSubtract(targetModel, jp);   // joint → target
+                const float l1 = XMVectorGetX(XMVector3Length(v1));
+                const float l2 = XMVectorGetX(XMVector3Length(v2));
+                if (l1 < 1e-4f || l2 < 1e-4f) { continue; }
+                v1 = XMVectorScale(v1, 1.0f / l1);
+                v2 = XMVectorScale(v2, 1.0f / l2);
+
+                XMVECTOR axisV = XMVector3Cross(v1, v2);
+                const float axisLen = XMVectorGetX(XMVector3Length(axisV));
+                if (axisLen < 1e-5f) { continue; }   // 평행 (이미 정렬 / 정반대)
+                axisV = XMVectorScale(axisV, 1.0f / axisLen);
+
+                float dot = XMVectorGetX(XMVector3Dot(v1, v2));
+                dot = std::clamp(dot, -1.0f, 1.0f);
+                float angle = std::acos(dot);
+                if (angle < 1e-5f) { continue; }
+                if (angle > kMaxStep) { angle = kMaxStep; }
+
+                XMFLOAT3 axis;  XMStoreFloat3(&axis,  axisV);
+                XMFLOAT3 pivot; XMStoreFloat3(&pivot, jp);
+                rotateSubtree(joint, axis, angle, pivot);
+
+                const XMVECTOR dq = XMQuaternionRotationAxis(axisV, angle);
+                auto it = deltaQ.find(joint);
+                if (it == deltaQ.end()) { deltaQ.emplace(joint, dq); }
+                else { it->second = XMQuaternionNormalize(XMQuaternionMultiply(it->second, dq)); }
+            }
+        }
+
+        // 증분 결과를 manual posing 에 합산 → 다음 Tick 의 ApplyManualBonePosing 가 replay.
+        for (const auto& kv : deltaQ)
+        {
+            AccumulateBoneModelQuat(kv.first, XMQuaternionNormalize(kv.second));
+        }
+    }
+
     void SceneRuntime::SetActiveClip(int clipIdx)
     {
         if (m_animSkeleton == nullptr || m_animClips == nullptr) { return; }
@@ -793,6 +1174,10 @@ namespace client
             m_scene.meshes[i].transform       = source.meshes[i].transform;
             m_scene.meshes[i].importTransform = source.meshes[i].importTransform;
             m_scene.meshes[i].name            = source.meshes[i].name;
+            m_scene.meshes[i].roughness       = source.meshes[i].roughness;   // PBR 라이브 편집 반영
+            m_scene.meshes[i].metallic        = source.meshes[i].metallic;
+            m_scene.meshes[i].normalStrength  = source.meshes[i].normalStrength;
+            m_scene.meshes[i].normalFlipY     = source.meshes[i].normalFlipY;
         }
         const size_t nd = std::min(m_scene.dirLights.size(), source.dirLights.size());
         for (size_t i = 0; i < nd; ++i) { m_scene.dirLights[i] = source.dirLights[i]; }
@@ -832,6 +1217,28 @@ namespace client
             dirGpu.empty()  ? nullptr : dirGpu.data(),  static_cast<engine::uint32>(dirGpu.size()));
         m_pointLightSBs[frameIndex]->UpdateRange(
             pointGpu.empty()? nullptr : pointGpu.data(), static_cast<engine::uint32>(pointGpu.size()));
+
+        // 그림자 — 첫 방향광 + 캐릭터(없으면 카메라 타깃) 중심으로 ortho light view-proj 구성.
+        using namespace DirectX;
+        m_shadowActive = (m_shadowMap != nullptr) && !m_scene.dirLights.empty();
+        if (m_shadowActive)
+        {
+            XMFLOAT3 centerF = camera.Target();
+            if (m_animatorInstanceIdx < m_scene.meshes.size())
+            {
+                centerF = m_scene.meshes[m_animatorInstanceIdx].transform.position;
+            }
+            const XMVECTOR center   = XMLoadFloat3(&centerF);
+            XMVECTOR       lightDir  = XMVector3Normalize(XMLoadFloat3(&m_scene.dirLights[0].directionWS));
+            const float    dist      = 800.0f;
+            const XMVECTOR eye       = XMVectorSubtract(center, XMVectorScale(lightDir, dist));
+            const XMVECTOR up        = (std::abs(XMVectorGetY(lightDir)) > 0.95f)
+                                         ? XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)
+                                         : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+            const XMMATRIX view = XMMatrixLookAtLH(eye, center, up);
+            const XMMATRIX proj = XMMatrixOrthographicLH(700.0f, 700.0f, 1.0f, 1600.0f);
+            m_cachedLightViewProj = XMMatrixMultiply(view, proj);
+        }
     }
 
     void SceneRuntime::RecordDraw(ID3D12GraphicsCommandList*    list,
@@ -841,6 +1248,10 @@ namespace client
         // frame-shared 라이트 SRV — RootSig [3]=t1, [4]=t2.
         list->SetGraphicsRootShaderResourceView(3, m_dirLightSBs  [frameIndex]->GpuAddress());
         list->SetGraphicsRootShaderResourceView(4, m_pointLightSBs[frameIndex]->GpuAddress());
+
+        // frame-shared 그림자맵 SRV — RootSig [6]=t4. 없으면 평탄노멀을 더미로(샘플 안 함).
+        list->SetGraphicsRootDescriptorTable(
+            6, m_shadowMap ? m_shadowMap->SrvGpu() : m_flatNormalTex->SrvGpuHandle());
 
         // 본 팔레트 — AnimatorRuntime(M1+) 우선, 폴백 Animator(M0), 없으면 identity.
         BonePalette palette = IdentityPalette();
@@ -877,10 +1288,17 @@ namespace client
             FrameConstants cb{};
             XMStoreFloat4x4(&cb.mvp,   mvp);
             XMStoreFloat4x4(&cb.world, world);
+            XMStoreFloat4x4(&cb.lightViewProj, m_cachedLightViewProj);
             cb.cameraPosWS     = m_cachedCameraPos;
             cb.ambient         = m_scene.ambient;
+            cb.roughness       = inst.roughness;   // PBR — 오브젝트별 머티리얼
+            cb.metallic        = inst.metallic;
             cb.dirLightCount   = static_cast<std::uint32_t>(m_scene.dirLights.size());
             cb.pointLightCount = static_cast<std::uint32_t>(m_scene.pointLights.size());
+            cb.shadowEnabled   = m_shadowActive ? 1u : 0u;
+            cb.normalFlipY     = inst.normalFlipY ? 1u : 0u;
+            cb.normalStrength  = inst.normalStrength;
+            cb.applyTonemap    = m_applyTonemap ? 1u : 0u;
 
             m_instFrameCBs[i][frameIndex]->Update(&cb,     sizeof(cb));
             m_instBoneCBs [i][frameIndex]->Update(&palette, sizeof(palette));
@@ -889,7 +1307,49 @@ namespace client
             list->SetGraphicsRootConstantBufferView(1, m_instBoneCBs [i][frameIndex]->GpuAddress());
 
             asset.mesh->BindVertexBuffer(list);
-            asset.mesh->DrawAll(list, /*materialRootParam*/2, fallbackSrv);
+            asset.mesh->DrawAll(list, /*materialRootParam*/2, fallbackSrv,
+                                /*normalRootParam*/5, m_flatNormalTex->SrvGpuHandle());
+        }
+    }
+
+    void SceneRuntime::RecordShadowDraw(ID3D12GraphicsCommandList* list, engine::uint32 frameIndex)
+    {
+        if (!m_shadowActive) { return; }
+        using namespace DirectX;
+
+        // 본 팔레트 — 메인 패스와 동일 (같은 값이라 m_instBoneCBs 재사용 안전).
+        BonePalette palette = IdentityPalette();
+        if (m_animatorRuntime)
+        {
+            const auto& src = m_animatorRuntime->Palette();
+            const size_t n = (src.size() < kMaxBones) ? src.size() : kMaxBones;
+            for (size_t i = 0; i < n; ++i) { palette.bones[i] = src[i]; }
+        }
+        else if (m_animator)
+        {
+            const auto& src = m_animator->Palette();
+            const size_t n = (src.size() < kMaxBones) ? src.size() : kMaxBones;
+            for (size_t i = 0; i < n; ++i) { palette.bones[i] = src[i]; }
+        }
+
+        // 그림자 rootsig: [0]b0 = worldLightMVP, [1]b1 = bone palette.
+        for (size_t i = 0; i < m_scene.meshes.size(); ++i)
+        {
+            const auto& inst  = m_scene.meshes[i];
+            const auto& asset = m_assetCache.at(inst.meshAssetPath);
+
+            const XMMATRIX world = ComposeWorld(inst.importTransform) * ComposeWorld(inst.transform);
+            ShadowConstants sc{};
+            XMStoreFloat4x4(&sc.worldLightMVP, XMMatrixMultiply(world, m_cachedLightViewProj));
+
+            m_instShadowCBs[i][frameIndex]->Update(&sc,      sizeof(sc));
+            m_instBoneCBs  [i][frameIndex]->Update(&palette, sizeof(palette));
+
+            list->SetGraphicsRootConstantBufferView(0, m_instShadowCBs[i][frameIndex]->GpuAddress());
+            list->SetGraphicsRootConstantBufferView(1, m_instBoneCBs  [i][frameIndex]->GpuAddress());
+
+            asset.mesh->BindVertexBuffer(list);
+            asset.mesh->DrawAllDepthOnly(list);
         }
     }
 }

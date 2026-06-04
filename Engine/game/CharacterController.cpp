@@ -67,9 +67,21 @@ namespace engine::game
         }
         else
         {
-            // Grounded 시 매 frame ground Y 강제 — XZ 이동 후 새 위치의 terrain Y 따라가게.
-            //   (이전 frame 의 m_position.y 와 다를 수 있음 — terrain slope).
-            m_position.y = groundY;
+            // Grounded 시 새 위치의 terrain Y 를 *부드럽게* 따라간다(critically-damped lerp).
+            //   매 frame groundY 로 *즉시 snap* 하면, 빠르게 달릴 때 굴곡 지면에서 몸이 위아래로
+            //   딱딱 끊겨 보임(사용자 "뛸때 끊김"). 지수 보간으로 고주파 지터를 제거하고 저주파
+            //   지형 형상만 따라가게 한다. 큰 단차(>일정값)는 즉시 따라가 발이 지면을 뚫지 않게.
+            const float diff = groundY - m_position.y;
+            if (std::abs(diff) > 40.0f)
+            {
+                m_position.y = groundY;                              // 큰 단차/순간이동 — 즉시
+            }
+            else
+            {
+                const float rate  = 12.0f;                          // 시상수 ≈ 1/12 ≈ 0.083 s
+                const float alpha = std::min(1.0f, dt * rate);
+                m_position.y += diff * alpha;
+            }
         }
     }
 

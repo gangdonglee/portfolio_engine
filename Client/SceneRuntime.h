@@ -33,6 +33,7 @@ namespace engine::render
     class ConstantBuffer;
     class Device;
     class Mesh;
+    class ShadowMap;
     class Skeleton;
     class SrvDescriptorHeap;
     class StructuredBuffer;
@@ -86,6 +87,26 @@ namespace client
                         engine::uint32                frameIndex,
                         const engine::render::Texture& fallbackAlbedo);
 
+        // 그림자 깊이 패스 — 라이트 시점에서 모든 인스턴스의 깊이만 기록. RecordDraw 이전에 호출.
+        void RecordShadowDraw(ID3D12GraphicsCommandList* list, engine::uint32 frameIndex);
+
+        // 그림자맵 주입 (nullptr=그림자 비활성). PrepareGpuResources 가 lightViewProj 계산.
+        void SetShadowMap(const engine::render::ShadowMap* map) noexcept { m_shadowMap = map; }
+
+        // 셰이더 톤맵 여부. true(기본)=셰이더에서 Reinhard(에디터). false=선형 HDR(게임, bloom composite 가 톤맵).
+        void SetApplyTonemap(bool v) noexcept { m_applyTonemap = v; }
+
+        // 태양을 향하는 방향(=-dirLights[0].directionWS, 정규화). 없으면 위쪽. 스카이박스 cbuffer 용.
+        DirectX::XMFLOAT3 SunDirectionWS() const noexcept
+        {
+            if (m_scene.dirLights.empty()) { return DirectX::XMFLOAT3{ 0.0f, 1.0f, 0.0f }; }
+            const auto& d = m_scene.dirLights[0].directionWS;
+            DirectX::XMFLOAT3 r{};
+            DirectX::XMStoreFloat3(
+                &r, DirectX::XMVector3Normalize(DirectX::XMVectorSet(-d.x, -d.y, -d.z, 0.0f)));
+            return r;
+        }
+
         // 카메라 초기 위치/대상 (Scene 의 CameraStart). Application 이 첫 Camera 구성에 사용.
         const engine::scene::CameraStart& InitialCameraStart() const noexcept { return m_scene.cameraStart; }
 
@@ -127,12 +148,24 @@ namespace client
         //   활성 instance 의 importTransform * transform 으로 mesh world 계산.
         //   ground sampler 가 nullptr 이면 Y=0 평면 사용.
         void SetFootIKEnabled  (bool enabled) noexcept { m_footIKEnabled = enabled; }
+        // Foot IK 전역 weight (0..1) — 호출자(게임)가 *이동 속도* 로 페이드. 빠른 달리기에선 낮춰
+        //   IK 간섭을 줄임(발이 너무 빨라 IK 가 득보다 실 — 프로덕션 표준). 보정량·무릎굽힘에 곱해짐.
+        void SetFootIKWeight   (float w) noexcept { m_footIKWeight = (w < 0.0f) ? 0.0f : (w > 1.0f ? 1.0f : w); }
         bool FootIKEnabled     () const noexcept       { return m_footIKEnabled; }
         void SetFootIKConfig   (const engine::anim::FootIKConfig& cfg);
         const engine::anim::FootIKConfig&  FootIKConfigRef() const noexcept;
         engine::anim::FootIKConfig&        FootIKConfigMutable() noexcept;
         void SetGroundSampler  (std::function<float(float, float)> fn) { m_groundSampler = std::move(fn); }
         const engine::anim::FootIKDebug&   LastFootIKDebug() const noexcept;
+
+        // Foot IK 캘리브레이션 readout — 디버그 오버레이용. 마지막 프레임의 ankle world Y / 발밑 지면 Y.
+        struct FootIKReadout
+        {
+            float leftAnkleY   = 0.0f;  float leftGroundY  = 0.0f;  float leftPlant  = 0.0f;
+            float rightAnkleY  = 0.0f;  float rightGroundY = 0.0f;  float rightPlant = 0.0f;
+            bool  valid = false;
+        };
+        const FootIKReadout& FootIKReadoutRef() const noexcept { return m_footIKReadout; }
 
         // 디버그 — 현재 state 이름 (UI 표시용).
         std::string CurrentAnimatorStateName() const;
@@ -168,6 +201,17 @@ namespace client
         void ClearBoneManualPosing() noexcept;
         bool HasBoneManualPosing() const noexcept;
 
+        // === 끝 관절 IK (CCD) — Phase 3 ===
+        // 끝 관절(endBoneIdx)을 targetWorld 로 끌어당기도록 그 *부모 체인* (chainLength 단계)을
+        //   CCD (Cyclic Coordinate Descent) 로 굽힌다. 끝 관절 자체는 effector tip — 회전 안 함.
+        //   각 체인 joint 의 증분 회전을 m_boneManualRot 에 누적 (FK 드래그와 동일 경로 →
+        //   rigid subtree 회전이라 mesh 안 깨짐). 드래그 연속 호출로 매 프레임 커서로 수렴.
+        //   targetWorld 는 내부에서 mesh-local(model) 공간으로 변환.
+        void SolveBoneIK(int endBoneIdx,
+                         const DirectX::XMFLOAT3& targetWorld,
+                         int chainLength,
+                         int iterations);
+
         // Editor 전용 — 외부 Scene 의 transform / importTransform / ambient / lights 를
         // 내부 m_scene 으로 cheap-copy (자산 재로드 없음). path 필드는 무시 — 자산 교체는
         // 호출자가 SceneRuntime 재생성으로 처리해야 한다.
@@ -178,6 +222,16 @@ namespace client
         // 수동 포징 적용 — Tick 의 Update 직후 호출. m_boneManualRot 의 각 본 subtree 에
         //   rotate-about-pivot (모델공간 column-convention) 적용 후 SetBoneGlobal.
         void ApplyManualBonePosing();
+
+        // 본 boneIdx 의 누적 모델공간 회전에 dq(모델공간 quaternion)를 합성. AddBoneManualRotation
+        //   과 SolveBoneIK 의 공통 누적 경로 — 둘 다 최종적으로 m_boneManualRot 에 기록.
+        void AccumulateBoneModelQuat(int boneIdx, DirectX::FXMVECTOR dq);
+
+        // 런타임 Foot IK — Tick 의 Update(BuildPalette) 직후 호출. 두 발(ankle)을 각자 발밑 지면
+        //   높이로 끌어당기도록 leg chain(hip/knee)을 CCD(rotate-about-pivot, column-convention)로
+        //   *직접 BoneGlobal 에* 적용 (누적 X, 매 프레임 애니 포즈에서 새로). SolveBoneIK 와 동일한
+        //   검증된 기법이라 mesh 정상 변형. (예전 ApplyFootIK 의 rotation 재구성 결함 회피.)
+        void ApplyFootIKRuntime();
 
         struct LoadedAsset
         {
@@ -224,6 +278,9 @@ namespace client
         //   제대로 하려면 skeleton 을 표준 좌표 공간으로 정규화하는 선행 작업 필요 (FBX 로더
         //   재작업 수준). 그 전까지 비활성. ground snap(CharacterController)은 정상 작동.
         bool                                            m_footIKEnabled  = false;
+        float                                           m_footIKWeight   = 1.0f;   // 속도 기반 페이드 (게임이 설정)
+        FootIKReadout                                   m_footIKReadout;           // 디버그 오버레이 calibration
+        float                                           m_footIKCorrSmooth[2] = { 0.0f, 0.0f }; // 발[L,R] 보정 temporal lerp (plant/swing 전환 pop 방지)
 
         // 본 수동 포징 — boneIdx → 누적 모델공간 회전 (quaternion). Tick 의 Update 직후
         //   각 본 subtree 에 rotate-about-pivot 적용 (BuildPalette 결과 덮어씀).
@@ -240,6 +297,9 @@ namespace client
         static constexpr engine::uint32 kFrameCount = engine::render::SwapChain::kBackBufferCount;
         std::vector<std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount>> m_instFrameCBs;
         std::vector<std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount>> m_instBoneCBs;
+        // 그림자 깊이 패스용 인스턴스별 cbuffer (worldLightMVP 1행렬). 메인과 별도 — 같은 프레임에
+        //   두 패스가 다른 행렬을 쓰므로 cbuffer 를 공유하면 GPU 가 마지막 값만 봄.
+        std::vector<std::array<std::unique_ptr<engine::render::ConstantBuffer>, kFrameCount>> m_instShadowCBs;
 
         // 라이트 StructuredBuffer (frame-shared, 모든 인스턴스에 동일).
         static constexpr engine::uint32 kDirLightCapacity   = 16;
@@ -247,8 +307,17 @@ namespace client
         std::array<std::unique_ptr<engine::render::StructuredBuffer>, kFrameCount> m_dirLightSBs;
         std::array<std::unique_ptr<engine::render::StructuredBuffer>, kFrameCount> m_pointLightSBs;
 
+        // normal map 없는 머티리얼용 폴백 — 1x1 평탄 노멀(128,128,255 = 탄젠트 +Z). 효과 없음.
+        std::unique_ptr<engine::render::Texture> m_flatNormalTex;
+
         // 매 프레임 PrepareGpuResources 에서 갱신, RecordDraw 에서 사용.
         DirectX::XMMATRIX m_cachedViewProj{};
         DirectX::XMFLOAT3 m_cachedCameraPos{};
+
+        // 그림자 — PrepareGpuResources 에서 방향광+캐릭터 위치로 lightViewProj 계산.
+        const engine::render::ShadowMap* m_shadowMap = nullptr;   // nullptr=비활성(에디터 등)
+        DirectX::XMMATRIX m_cachedLightViewProj{};
+        bool              m_shadowActive = false;   // 이번 프레임 그림자 샘플 여부
+        bool              m_applyTonemap = true;    // 셰이더 톤맵(기본 on=에디터). 게임은 false 설정.
     };
 }
