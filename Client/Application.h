@@ -32,6 +32,8 @@ namespace engine::render
     class DepthStencilBuffer;
     class RootSignature;
     class PipelineState;
+    class RenderTexture;
+    class ShadowMap;
     class Texture;
     class Camera;
     class FreeCamera;
@@ -105,6 +107,31 @@ namespace client
         Microsoft::WRL::ComPtr<ID3DBlob>                    m_psBlob;
         std::unique_ptr<engine::render::RootSignature>      m_rootSig;
         std::unique_ptr<engine::render::PipelineState>      m_pso;
+
+        // 그림자 — depth-only PSO + rootsig + 라이트 시점 깊이맵.
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_shadowVsBlob;
+        std::unique_ptr<engine::render::RootSignature>      m_shadowRootSig;
+        std::unique_ptr<engine::render::PipelineState>      m_shadowPso;
+        std::unique_ptr<engine::render::ShadowMap>          m_shadowMap;
+
+        // 스카이박스 — 절차적 하늘 풀스크린 PSO + rootsig.
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_skyboxVsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_skyboxPsBlob;
+        std::unique_ptr<engine::render::RootSignature>      m_skyboxRootSig;
+        std::unique_ptr<engine::render::PipelineState>      m_skyboxPso;
+
+        // 포스트프로세싱(bloom) — HDR RT + bloom ping-pong RT + bright/blur/composite PSO.
+        std::unique_ptr<engine::render::RenderTexture>      m_hdrRT;
+        std::unique_ptr<engine::render::RenderTexture>      m_bloomA;
+        std::unique_ptr<engine::render::RenderTexture>      m_bloomB;
+        std::unique_ptr<engine::render::RootSignature>      m_postRootSig;
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_postVsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_brightPsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_blurPsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob>                    m_compositePsBlob;
+        std::unique_ptr<engine::render::PipelineState>      m_brightPso;
+        std::unique_ptr<engine::render::PipelineState>      m_blurPso;
+        std::unique_ptr<engine::render::PipelineState>      m_compositePso;
 
         // 카메라 (FreeCamera 가 Camera 를 참조하므로 Camera 먼저).
         std::unique_ptr<engine::render::Camera>             m_camera;

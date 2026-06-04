@@ -45,6 +45,18 @@ namespace engine::render
             // 깊이/스텐실 포맷 — DXGI_FORMAT_UNKNOWN 이면 깊이 비활성, 그 외엔 활성.
             // DepthStencilBuffer 의 Format() 과 일치시킬 것.
             DXGI_FORMAT dsvFormat = DXGI_FORMAT_UNKNOWN;
+
+            // true 이면 *깊이 전용* PSO (그림자맵 패스). NumRenderTargets=0, pixelShader 는 null 허용,
+            //   slope-scaled depth bias 적용(그림자 acne 완화). dsvFormat 필수.
+            bool depthOnly = false;
+
+            // true 이면 *풀스크린 스카이박스* PSO: 정점 입력 레이아웃 없음(SV_VertexID), cull none,
+            //   깊이 test LESS_EQUAL + write OFF (기하 뒤 빈 픽셀만 채움). dsvFormat 필수.
+            bool fullscreenSky = false;
+
+            // true 이면 *풀스크린 포스트프로세싱* PSO: 입력 레이아웃 없음(SV_VertexID), cull none,
+            //   깊이 완전 비활성(DSV 없음). RTV 만. bloom bright/blur/composite 등.
+            bool fullscreen = false;
         };
 
         PipelineState(Device& device, const Desc& desc);

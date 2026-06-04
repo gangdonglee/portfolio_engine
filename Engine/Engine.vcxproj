@@ -98,6 +98,8 @@
     <ClCompile Include="render\PipelineState.cpp" />
     <ClCompile Include="render\VertexBuffer.cpp" />
     <ClCompile Include="render\DepthStencilBuffer.cpp" />
+    <ClCompile Include="render\ShadowMap.cpp" />
+    <ClCompile Include="render\RenderTexture.cpp" />
     <ClCompile Include="render\ConstantBuffer.cpp" />
     <ClCompile Include="render\IndexBuffer.cpp" />
     <ClCompile Include="render\Camera.cpp" />
@@ -137,6 +139,8 @@
     <ClInclude Include="render\PipelineState.h" />
     <ClInclude Include="render\VertexBuffer.h" />
     <ClInclude Include="render\DepthStencilBuffer.h" />
+    <ClInclude Include="render\ShadowMap.h" />
+    <ClInclude Include="render\RenderTexture.h" />
     <ClInclude Include="render\ConstantBuffer.h" />
     <ClInclude Include="render\IndexBuffer.h" />
     <ClInclude Include="render\Camera.h" />

@@ -100,6 +100,13 @@ namespace editor
         // 배치(brush) 워크플로우용 — 외부 좌표는 ImGui::GetMousePos - ItemRectMin 으로 계산.
         bool RaycastToGround(float screenX, float screenY, DirectX::XMFLOAT3& outWorld) const noexcept;
 
+        // 화면 좌표 (RTT 내부, 좌상단 0,0) → refWorld 를 지나는 *카메라-수직 평면* 위 world 점.
+        // IK 드래그 타겟 산출용 — 끌고 있는 끝 관절의 카메라 깊이를 유지하며 커서를 따라간다.
+        // 반환 false: ray 가 평면과 평행하거나 카메라 뒤.
+        bool ScreenToWorldAtDepth(float screenX, float screenY,
+                                  const DirectX::XMFLOAT3& refWorld,
+                                  DirectX::XMFLOAT3& outWorld) const noexcept;
+
         // 스켈레톤 디버그 draw 토글 (본 잡고 움직이기 기반).
         void SetShowSkeleton(bool show) noexcept { m_showSkeleton = show; }
         bool ShowSkeleton() const noexcept       { return m_showSkeleton; }
@@ -117,6 +124,10 @@ namespace editor
 
         // 카메라의 world-space right / up 축 — 본 드래그 회전축 계산용.
         void CameraRightUp(DirectX::XMFLOAT3& outRight, DirectX::XMFLOAT3& outUp) const noexcept;
+
+        // orbit 카메라를 world 구체(center, radius)에 맞춰 프레이밍 — IK 뷰가 캐릭터를 꽉 채우도록.
+        //   target=center, distance 는 radius 가 세로 FOV 에 들어오게 자동 계산.
+        void FocusOn(const DirectX::XMFLOAT3& center, float radius) noexcept;
 
     private:
         void CreateRtv();        // RTT 텍스처 + RTV (1슬롯 RtvHeap) 생성/재생성.

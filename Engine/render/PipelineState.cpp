@@ -92,6 +92,25 @@ namespace engine::render
             return dss;
         }
 
+        // 스카이박스: 깊이 test LESS_EQUAL + write OFF (기하가 쓴 깊이 통과, 빈 픽셀(=far)만 채움).
+        D3D12_DEPTH_STENCIL_DESC DepthStencilTestNoWrite() noexcept
+        {
+            D3D12_DEPTH_STENCIL_DESC dss{};
+            dss.DepthEnable      = TRUE;
+            dss.DepthWriteMask   = D3D12_DEPTH_WRITE_MASK_ZERO;
+            dss.DepthFunc        = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+            dss.StencilEnable    = FALSE;
+            dss.StencilReadMask  = D3D12_DEFAULT_STENCIL_READ_MASK;
+            dss.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+            const D3D12_DEPTH_STENCILOP_DESC noOp = {
+                D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP,
+                D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS
+            };
+            dss.FrontFace = noOp;
+            dss.BackFace  = noOp;
+            return dss;
+        }
+
         // 깊이 활성: DepthFunc=LESS, write all. 스텐실은 미사용.
         D3D12_DEPTH_STENCIL_DESC DepthStencilEnabled() noexcept
         {
@@ -114,9 +133,15 @@ namespace engine::render
 
     PipelineState::PipelineState(Device& device, const Desc& desc)
     {
-        if (desc.vertexShader == nullptr || desc.pixelShader == nullptr || desc.rootSignature == nullptr)
+        const bool needPs = !desc.depthOnly;
+        if (desc.vertexShader == nullptr || desc.rootSignature == nullptr ||
+            (needPs && desc.pixelShader == nullptr))
         {
             throw std::runtime_error("PipelineState::Desc: vertexShader/pixelShader/rootSignature 가 nullptr");
+        }
+        if ((desc.depthOnly || desc.fullscreenSky) && desc.dsvFormat == DXGI_FORMAT_UNKNOWN)
+        {
+            throw std::runtime_error("PipelineState::Desc: depthOnly/fullscreenSky 인데 dsvFormat 이 UNKNOWN");
         }
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
@@ -124,17 +149,50 @@ namespace engine::render
 
         psoDesc.VS.pShaderBytecode = desc.vertexShader->GetBufferPointer();
         psoDesc.VS.BytecodeLength  = desc.vertexShader->GetBufferSize();
-        psoDesc.PS.pShaderBytecode = desc.pixelShader->GetBufferPointer();
-        psoDesc.PS.BytecodeLength  = desc.pixelShader->GetBufferSize();
+        if (desc.pixelShader != nullptr)
+        {
+            psoDesc.PS.pShaderBytecode = desc.pixelShader->GetBufferPointer();
+            psoDesc.PS.BytecodeLength  = desc.pixelShader->GetBufferSize();
+        }
 
-        psoDesc.InputLayout.pInputElementDescs = kHelloTriangleInputLayout;
-        psoDesc.InputLayout.NumElements        = static_cast<UINT>(std::size(kHelloTriangleInputLayout));
+        if (desc.fullscreenSky || desc.fullscreen)
+        {
+            psoDesc.InputLayout.pInputElementDescs = nullptr;   // SV_VertexID 로 정점 생성
+            psoDesc.InputLayout.NumElements        = 0;
+        }
+        else
+        {
+            psoDesc.InputLayout.pInputElementDescs = kHelloTriangleInputLayout;
+            psoDesc.InputLayout.NumElements        = static_cast<UINT>(std::size(kHelloTriangleInputLayout));
+        }
 
         psoDesc.RasterizerState = DefaultRasterizer();
+        if (desc.depthOnly)
+        {
+            // 그림자 acne 완화 — 깊이 전용 패스에 constant + slope-scaled bias.
+            psoDesc.RasterizerState.DepthBias            = 2000;
+            psoDesc.RasterizerState.SlopeScaledDepthBias = 1.5f;
+            psoDesc.RasterizerState.DepthBiasClamp       = 0.0f;
+        }
+        if (desc.fullscreenSky || desc.fullscreen)
+        {
+            psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;   // 풀스크린 삼각형 winding 무관
+        }
         psoDesc.BlendState      = DefaultBlend();
 
-        // 깊이/스텐실 — Desc.dsvFormat 이 UNKNOWN 이면 비활성, 아니면 활성.
-        if (desc.dsvFormat != DXGI_FORMAT_UNKNOWN)
+        // 깊이/스텐실 — 스카이박스는 test LESS_EQUAL+write OFF, 풀스크린 post 는 완전 비활성,
+        //   그 외엔 dsvFormat 유무로 활성/비활성.
+        if (desc.fullscreen)
+        {
+            psoDesc.DepthStencilState = DepthStencilDisabled();
+            psoDesc.DSVFormat         = DXGI_FORMAT_UNKNOWN;
+        }
+        else if (desc.fullscreenSky)
+        {
+            psoDesc.DepthStencilState = DepthStencilTestNoWrite();
+            psoDesc.DSVFormat         = desc.dsvFormat;
+        }
+        else if (desc.dsvFormat != DXGI_FORMAT_UNKNOWN)
         {
             psoDesc.DepthStencilState = DepthStencilEnabled();
             psoDesc.DSVFormat         = desc.dsvFormat;
@@ -147,8 +205,8 @@ namespace engine::render
 
         psoDesc.SampleMask            = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.NumRenderTargets      = 1;
-        psoDesc.RTVFormats[0]         = desc.rtvFormat;
+        psoDesc.NumRenderTargets      = desc.depthOnly ? 0u : 1u;   // 그림자 패스는 RTV 없음
+        psoDesc.RTVFormats[0]         = desc.depthOnly ? DXGI_FORMAT_UNKNOWN : desc.rtvFormat;
         psoDesc.SampleDesc.Count      = 1;
         psoDesc.SampleDesc.Quality    = 0;
         psoDesc.NodeMask              = 0;

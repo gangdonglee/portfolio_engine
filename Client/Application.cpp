@@ -18,8 +18,10 @@
 #include "render/PipelineState.h"
 #include "render/ProceduralTerrain.h"
 #include "render/RootSignature.h"
+#include "render/RenderTexture.h"
 #include "render/RtvDescriptorHeap.h"
 #include "render/ShaderCompiler.h"
+#include "render/ShadowMap.h"
 #include "render/SrvDescriptorHeap.h"
 #include "render/SwapChain.h"
 #include "render/Texture.h"
@@ -190,7 +192,7 @@ namespace client
         if (!m_sceneRuntime || !m_sceneRuntime->HasAnimatorRuntime()) { return; }
 
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(420, 260), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(440, 420), ImGuiCond_FirstUseEver);
         ImGui::Begin("Animator Debug");
 
         const std::string state = m_sceneRuntime->AnimatorCurrentStateName();
@@ -242,6 +244,25 @@ namespace client
             ImGui::Text("controller: pos.y=%.2f vy=%.2f grounded=%d",
                         ctrl.Position().y, ctrl.VelocityY(), ctrl.IsGrounded() ? 1 : 0);
         }
+        {
+            const auto& fk = m_sceneRuntime->FootIKReadoutRef();
+            ImGui::Text("FootIK L: ankle=%.1f ground=%.1f gap=%.1f plant=%.2f",
+                        fk.leftAnkleY, fk.leftGroundY, fk.leftAnkleY - fk.leftGroundY, fk.leftPlant);
+            ImGui::Text("FootIK R: ankle=%.1f ground=%.1f gap=%.1f plant=%.2f",
+                        fk.rightAnkleY, fk.rightGroundY, fk.rightAnkleY - fk.rightGroundY, fk.rightPlant);
+            ImGui::Text("Speed=%.2f (gap target = ankleOffset)", m_currentSpeed);
+        }
+
+        // 포스트프로세싱 bloom — 실시간 조절 (FrameRenderer 가 매 프레임 반영).
+        if (m_frameRenderer && m_frameRenderer->BloomAvailable())
+        {
+            ImGui::Separator();
+            ImGui::Text("Post-Processing (Bloom)");
+            ImGui::SliderFloat("bloom threshold", &m_frameRenderer->BloomThreshold(), 0.0f, 3.0f);
+            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("이 휘도 이상만 번짐. 낮을수록 더 많이 bloom"); }
+            ImGui::SliderFloat("bloom intensity", &m_frameRenderer->BloomIntensity(), 0.0f, 3.0f);
+            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("bloom 합성 세기. 0=끔"); }
+        }
 
         ImGui::End();
     }
@@ -282,22 +303,101 @@ namespace client
         m_psBlob = engine::render::ShaderCompiler::CompileFromFile(
             shaderPath.c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
 
-        // 슬롯 순서: [0]b0 frame / [1]b1 bones VS / [2]t0 material table PS / [3]t1 dirLights / [4]t2 pointLights.
+        // 슬롯 순서: [0]b0 frame /[1]b1 bones /[2]t0 material /[3]t1 dirLights /[4]t2 pointLights
+        //          /[5]t3 normal /[6]t4 shadow.
         engine::render::RootSignature::Desc rsDesc{};
         rsDesc.cbvAtB0     = engine::render::RootSignature::Desc::CbvB0::All;
         rsDesc.cbvB1Vertex = true;
         rsDesc.srvT0Pixel  = true;
         rsDesc.srvT1Pixel  = true;
         rsDesc.srvT2Pixel  = true;
+        rsDesc.srvT3Pixel  = true;   // [5] t3 normal map table
+        rsDesc.srvT4Pixel  = true;   // [6] t4 shadow map table + s1 comparison sampler
         m_rootSig = std::make_unique<engine::render::RootSignature>(*m_device, rsDesc);
 
         engine::render::PipelineState::Desc psoDesc{};
         psoDesc.vertexShader  = m_vsBlob.Get();
         psoDesc.pixelShader   = m_psBlob.Get();
         psoDesc.rootSignature = m_rootSig.get();
-        psoDesc.rtvFormat     = DXGI_FORMAT_R8G8B8A8_UNORM;
+        psoDesc.rtvFormat     = DXGI_FORMAT_R16G16B16A16_FLOAT;   // HDR RT (bloom 파이프라인)
         psoDesc.dsvFormat     = m_depth->Format();
         m_pso = std::make_unique<engine::render::PipelineState>(*m_device, psoDesc);
+
+        // === 그림자 — depth-only PSO/rootsig + 라이트 시점 깊이맵 ===
+        m_shadowVsBlob = engine::render::ShaderCompiler::CompileFromFile(
+            (shaderDir + L"ShadowDepth.hlsl").c_str(), "VSMain",
+            engine::render::ShaderCompiler::Stage::Vertex);
+
+        engine::render::RootSignature::Desc shadowRs{};   // [0]b0 lightMVP /[1]b1 bones (둘 다 VS)
+        shadowRs.cbvAtB0     = engine::render::RootSignature::Desc::CbvB0::Vertex;
+        shadowRs.cbvB1Vertex = true;
+        m_shadowRootSig = std::make_unique<engine::render::RootSignature>(*m_device, shadowRs);
+
+        engine::render::PipelineState::Desc shadowPso{};
+        shadowPso.vertexShader  = m_shadowVsBlob.Get();
+        shadowPso.pixelShader   = nullptr;          // 깊이 전용
+        shadowPso.rootSignature = m_shadowRootSig.get();
+        shadowPso.dsvFormat     = DXGI_FORMAT_D32_FLOAT;
+        shadowPso.depthOnly     = true;
+        m_shadowPso = std::make_unique<engine::render::PipelineState>(*m_device, shadowPso);
+
+        // 깊이맵 2048² — SRV 는 srvHeap 끝쪽 예약 슬롯(capacity-1)에 고정(씬 Reset 에도 생존).
+        m_shadowMap = std::make_unique<engine::render::ShadowMap>(
+            *m_device, *m_srvHeap, m_srvHeap->Capacity() - 1, 2048);
+
+        // === 스카이박스 — 절차적 하늘 풀스크린 ===
+        const std::wstring skyPath = shaderDir + L"Skybox.hlsl";
+        m_skyboxVsBlob = engine::render::ShaderCompiler::CompileFromFile(
+            skyPath.c_str(), "VSMain", engine::render::ShaderCompiler::Stage::Vertex);
+        m_skyboxPsBlob = engine::render::ShaderCompiler::CompileFromFile(
+            skyPath.c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
+
+        engine::render::RootSignature::Desc skyRs{};   // [0]b0 SkyConstants
+        skyRs.cbvAtB0 = engine::render::RootSignature::Desc::CbvB0::All;
+        m_skyboxRootSig = std::make_unique<engine::render::RootSignature>(*m_device, skyRs);
+
+        engine::render::PipelineState::Desc skyPso{};
+        skyPso.vertexShader  = m_skyboxVsBlob.Get();
+        skyPso.pixelShader   = m_skyboxPsBlob.Get();
+        skyPso.rootSignature = m_skyboxRootSig.get();
+        skyPso.rtvFormat     = DXGI_FORMAT_R16G16B16A16_FLOAT;   // HDR RT
+        skyPso.dsvFormat     = m_depth->Format();
+        skyPso.fullscreenSky = true;
+        m_skyboxPso = std::make_unique<engine::render::PipelineState>(*m_device, skyPso);
+
+        // === 포스트프로세싱 (bloom) — HDR RT + bloom ping-pong + bright/blur/composite ===
+        const engine::uint32 fw = static_cast<engine::uint32>(m_window->Width());
+        const engine::uint32 fh = static_cast<engine::uint32>(m_window->Height());
+        const engine::uint32 bw = (fw > 1) ? fw / 2 : 1;
+        const engine::uint32 bh = (fh > 1) ? fh / 2 : 1;
+        constexpr DXGI_FORMAT kHdr = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        // SRV 예약 슬롯(섀도우 63 아래로): HDR 62, bloomA 61, bloomB 60.
+        m_hdrRT  = std::make_unique<engine::render::RenderTexture>(*m_device, *m_srvHeap, m_srvHeap->Capacity()-2, fw, fh, kHdr);
+        m_bloomA = std::make_unique<engine::render::RenderTexture>(*m_device, *m_srvHeap, m_srvHeap->Capacity()-3, bw, bh, kHdr);
+        m_bloomB = std::make_unique<engine::render::RenderTexture>(*m_device, *m_srvHeap, m_srvHeap->Capacity()-4, bw, bh, kHdr);
+
+        engine::render::RootSignature::Desc postRs{};
+        postRs.postProcess = true;
+        m_postRootSig = std::make_unique<engine::render::RootSignature>(*m_device, postRs);
+
+        const std::wstring postPath = shaderDir + L"PostProcess.hlsl";
+        m_postVsBlob      = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "FullscreenVS", engine::render::ShaderCompiler::Stage::Vertex);
+        m_brightPsBlob    = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "BrightPassPS", engine::render::ShaderCompiler::Stage::Pixel);
+        m_blurPsBlob      = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "BlurPS",       engine::render::ShaderCompiler::Stage::Pixel);
+        m_compositePsBlob = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "CompositePS",  engine::render::ShaderCompiler::Stage::Pixel);
+
+        auto makePostPso = [&](ID3DBlob* ps, DXGI_FORMAT rtv) {
+            engine::render::PipelineState::Desc d{};
+            d.vertexShader  = m_postVsBlob.Get();
+            d.pixelShader   = ps;
+            d.rootSignature = m_postRootSig.get();
+            d.rtvFormat     = rtv;
+            d.fullscreen    = true;
+            return std::make_unique<engine::render::PipelineState>(*m_device, d);
+        };
+        m_brightPso    = makePostPso(m_brightPsBlob.Get(),    kHdr);                       // → bloom RT
+        m_blurPso      = makePostPso(m_blurPsBlob.Get(),      kHdr);                       // → bloom RT
+        m_compositePso = makePostPso(m_compositePsBlob.Get(), DXGI_FORMAT_R8G8B8A8_UNORM); // → backbuffer
     }
 
     void Application::ScanSceneSlots()
@@ -406,10 +506,12 @@ namespace client
         // SceneRuntime — Scene 의 owner 가 SceneRuntime 으로 이동.
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(scene));
+        m_sceneRuntime->SetApplyTonemap(false);   // 게임: 선형 HDR → bloom composite 가 톤맵
 
         // Foot IK 의 ground sampler — procedural terrain 와 동일 height func.
         m_sceneRuntime->SetGroundSampler(
             [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+        m_sceneRuntime->SetFootIKEnabled(true);   // 런타임 지면 적응 — 두 발이 terrain 표면에 안착.
 
         // Player CharacterController 도 같은 ground sampler — terrain 따라 캐릭터 transform.y 갱신.
         m_player->Controller().SetGroundSampler(
@@ -447,6 +549,18 @@ namespace client
         info.pso            = m_pso.get();
         info.srvHeap        = m_srvHeap.get();
         info.fallbackAlbedo = m_fallbackAlbedo.get();
+        info.shadowMap      = m_shadowMap.get();
+        info.shadowRootSig  = m_shadowRootSig.get();
+        info.shadowPso      = m_shadowPso.get();
+        info.skyboxRootSig  = m_skyboxRootSig.get();
+        info.skyboxPso      = m_skyboxPso.get();
+        info.hdrTarget      = m_hdrRT.get();
+        info.bloomA         = m_bloomA.get();
+        info.bloomB         = m_bloomB.get();
+        info.postRootSig    = m_postRootSig.get();
+        info.brightPso      = m_brightPso.get();
+        info.blurPso        = m_blurPso.get();
+        info.compositePso   = m_compositePso.get();
         m_frameRenderer = std::make_unique<FrameRenderer>(info);
 
         if (m_sceneRuntime->ClipCount() > 0)
@@ -517,10 +631,12 @@ namespace client
         // Tick 시작의 nullptr 가드가 한 프레임 skip 으로 안전.
         m_sceneRuntime = std::make_unique<SceneRuntime>(
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(newScene));
+        m_sceneRuntime->SetApplyTonemap(false);   // 게임: 선형 HDR → bloom composite 가 톤맵
 
         // Ground sampler — terrain height func.
         m_sceneRuntime->SetGroundSampler(
             [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+        m_sceneRuntime->SetFootIKEnabled(true);   // 런타임 지면 적응.
 
         // Player 의 transform 재바인딩 — 기존 instance 가 폐기되었으므로 새 ptr 로 갱신.
         if (m_player)
@@ -596,6 +712,11 @@ namespace client
             const auto h = static_cast<engine::uint32>(m_window->Height());
             m_swap->Resize(*m_device, w, h);
             m_depth->Resize(*m_device, w, h);
+            if (m_hdrRT)  { m_hdrRT->Resize(*m_device, w, h); }
+            const auto bw = (w > 1) ? w / 2 : 1;
+            const auto bh = (h > 1) ? h / 2 : 1;
+            if (m_bloomA) { m_bloomA->Resize(*m_device, bw, bh); }
+            if (m_bloomB) { m_bloomB->Resize(*m_device, bw, bh); }
 
             m_camera->SetPerspective(
                 m_sceneRuntime->InitialCameraStart().fovYRad,
@@ -709,6 +830,12 @@ namespace client
             const float alpha = std::min(1.0f, dt * smoothingRate);
             m_currentSpeed += (target - m_currentSpeed) * alpha;
             m_sceneRuntime->SetAnimatorFloat("Speed", m_currentSpeed);
+
+            // Foot IK weight = full(1.0). 달리기 "끊김" 의 원인은 발 IK 가 아니라 controller 가 매
+            //   frame 지면 Y 로 즉시 snap 하던 것(이제 CharacterController 가 부드럽게 보간) →
+            //   weight 페이드는 발만 뜨게 하고 효과 없어 제거. full 유지해 디딘 발을 확실히 지면에.
+            const float ikW = 1.0f;
+            m_sceneRuntime->SetFootIKWeight(ikW);
 
             const bool curJump = input.IsKeyDown(static_cast<std::uint32_t>(VK_SPACE));
             if (curJump && !m_prevJumpDown)

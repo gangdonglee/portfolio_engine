@@ -43,6 +43,17 @@ namespace engine::render
 
             // true 이면 t2 슬롯에 SRV root descriptor (PS 가시) 추가. 두 번째 라이트 배열 등.
             bool srvT2Pixel = false;
+
+            // true 이면 t3 슬롯에 SRV 디스크립터 테이블 (PS 가시) 추가 — normal map 등 머티리얼 텍스처.
+            //   자리 순서: [b0?] [b1?] [t0 table?] [t1?] [t2?] [t3 table?] [t4 table?].
+            bool srvT3Pixel = false;
+
+            // true 이면 t4 슬롯에 SRV 디스크립터 테이블 (PS 가시) + s1 comparison sampler 추가 — 그림자맵.
+            bool srvT4Pixel = false;
+
+            // true 이면 *포스트프로세싱* 레이아웃: [0]b0 CBV(PS) + [1]t0 table + [2]t1 table + s0
+            //   linear-clamp sampler. 다른 플래그와 함께 쓰지 말 것(독립 프리셋).
+            bool postProcess = false;
         };
 
         // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 플래그는 항상 켜짐.

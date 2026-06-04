@@ -82,6 +82,8 @@ namespace editor
         rsDesc.srvT0Pixel  = true;
         rsDesc.srvT1Pixel  = true;
         rsDesc.srvT2Pixel  = true;
+        rsDesc.srvT3Pixel  = true;   // [5] t3 normal map table
+        rsDesc.srvT4Pixel  = true;   // [6] t4 shadow map table (에디터는 그림자맵 없이 폴백 바인딩)
         m_rootSig = std::make_unique<engine::render::RootSignature>(m_device, rsDesc);
 
         engine::render::PipelineState::Desc psoDesc{};
@@ -368,6 +370,42 @@ namespace editor
         return true;
     }
 
+    bool EditorViewport::ScreenToWorldAtDepth(float screenX, float screenY,
+                                              const DirectX::XMFLOAT3& refWorld,
+                                              DirectX::XMFLOAT3& outWorld) const noexcept
+    {
+        using namespace DirectX;
+        if (m_width == 0 || m_height == 0) { return false; }
+
+        // RTT 좌표 → NDC → world ray (RaycastToGround 와 동일 unproject).
+        const float ndcX = (screenX / static_cast<float>(m_width))  * 2.0f - 1.0f;
+        const float ndcY = 1.0f - (screenY / static_cast<float>(m_height)) * 2.0f;
+
+        const XMMATRIX viewProj = m_camera->ViewProjection();
+        XMVECTOR det;
+        const XMMATRIX invVP = XMMatrixInverse(&det, viewProj);
+        if (XMVectorGetX(det) == 0.0f) { return false; }
+
+        XMVECTOR nearW = XMVector4Transform(XMVectorSet(ndcX, ndcY, 0.0f, 1.0f), invVP);
+        XMVECTOR farW  = XMVector4Transform(XMVectorSet(ndcX, ndcY, 1.0f, 1.0f), invVP);
+        nearW = XMVectorDivide(nearW, XMVectorSplatW(nearW));
+        farW  = XMVectorDivide(farW,  XMVectorSplatW(farW));
+        const XMVECTOR rayDir = XMVector3Normalize(XMVectorSubtract(farW, nearW));
+
+        // 평면: refWorld 통과, 법선 = 카메라 forward (target - position).
+        const XMFLOAT3 camPos = m_camera->Position();
+        const XMVECTOR n = XMVector3Normalize(
+            XMVectorSubtract(XMLoadFloat3(&m_orbit.target), XMLoadFloat3(&camPos)));
+        const float denom = XMVectorGetX(XMVector3Dot(rayDir, n));
+        if (std::abs(denom) < 1e-6f) { return false; }
+        const float t = XMVectorGetX(
+            XMVector3Dot(XMVectorSubtract(XMLoadFloat3(&refWorld), nearW), n)) / denom;
+        if (t < 0.0f) { return false; }
+
+        XMStoreFloat3(&outWorld, XMVectorAdd(nearW, XMVectorScale(rayDir, t)));
+        return true;
+    }
+
     bool EditorViewport::WorldToScreen(const DirectX::XMFLOAT3& world,
                                        float& outX, float& outY) const noexcept
     {
@@ -402,6 +440,17 @@ namespace editor
         const XMVECTOR up = XMVector3Normalize(XMVector3Cross(fwd, right));
         XMStoreFloat3(&outRight, right);
         XMStoreFloat3(&outUp,    up);
+    }
+
+    void EditorViewport::FocusOn(const DirectX::XMFLOAT3& center, float radius) noexcept
+    {
+        m_orbit.target = center;
+        const float fovY = DirectX::XM_PIDIV4;
+        const float r    = (radius > 1.0f) ? radius : 50.0f;
+        // 구체가 세로 FOV 안에 들어오는 거리 + 여유 마진.
+        float d = r / std::tan(fovY * 0.5f) * 1.25f;
+        m_orbit.distance = std::clamp(d, 50.0f, 3000.0f);
+        UpdateCameraFromOrbit();
     }
 
     void EditorViewport::PickBone(client::SceneRuntime& sceneRuntime,

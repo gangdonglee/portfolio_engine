@@ -331,7 +331,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             });
 
         // === Editor Viewport — RTT + 오빗 카메라 + Boot CmdList + Fallback Tex ===
+        // world 뷰 (배치/조작) 와 IK 뷰 (본 편집) 를 분리 — 같은 center dock 의 탭으로 두어
+        //   한 프레임에 활성 탭 하나만 렌더 (SceneRuntime cbuffer 공유 충돌 회피).
         editor::EditorViewport viewport(device, commandQueue, srvHeap);
+        editor::EditorViewport ikViewport(device, commandQueue, srvHeap);
+        viewport.SetShowSkeleton(false);    // world 뷰: 본 오버레이 숨김 (배치 전용)
+        ikViewport.SetShowSkeleton(true);   // IK 뷰: 본 오버레이 표시
 
         // === 활성 Scene 상태 ===
         // 부팅은 항상 빈 default scene — sample.scene.json 자동 로드 안 함.
@@ -343,6 +348,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
         // === SceneRuntime — activeScene 을 GPU 자원 (mesh/tex/anim) 으로 실체화 ===
         // 비어 있는 Scene 도 허용 — 단 try/catch 로 로드 실패 시 sceneRuntime=nullptr.
         std::unique_ptr<client::SceneRuntime> sceneRuntime;
+        bool ikFocusDone = false;   // IK 뷰 카메라가 캐릭터에 자동 프레이밍됐는지 (씬 (재)생성 시 reset)
         auto rebuildSceneRuntime = [&]()
         {
             commandQueue.FlushGpu();
@@ -360,6 +366,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                 engine::core::LogInfoA("\n");
                 sceneRuntime.reset();
             }
+            ikFocusDone = false;   // 새 캐릭터 → IK 카메라 재프레이밍 필요
         };
         rebuildSceneRuntime();
 
@@ -367,6 +374,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
         editor::AssetBrowserState assetBrowserState{};
         editor::AnimatorPanelState animatorPanelState{};
         editor::AnimatorGraphState animatorGraphState{};
+
+        // 본 조작 모드 — Phase 3. ikMode=true 면 선택 본을 끝 관절로 보고 드래그 시 부모 체인 CCD.
+        bool ikMode      = false;
+        int  ikChainLen  = 2;     // 굽힐 부모 관절 수 (2 = two-bone IK, 손→팔꿈치+어깨).
 
         std::array<std::uint64_t, kFrameCount> frameFenceValues{};
         std::uint32_t frameIndex = 0;
@@ -428,6 +439,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                     ImGui::DockBuilderDockWindow("Asset Browser",  dockBottom);
                     ImGui::DockBuilderDockWindow("Animator Graph", dockBottom);
                     ImGui::DockBuilderDockWindow("Viewport",       dockMain);
+                    ImGui::DockBuilderDockWindow("IK",             dockMain);   // Viewport 와 같은 탭 그룹
                     ImGui::DockBuilderFinish(dockspaceId);
                 }
             }
@@ -545,9 +557,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             }
             ImGui::End();
 
-            // === Viewport 패널 — 3D RTT + 오빗 카메라 + 브러시 배치 ===
+            // === Viewport 패널 (world 뷰) — 3D RTT + 오빗 카메라 + 브러시 배치. 본 편집은 IK 탭 ===
+            bool viewportTabActive = false;
             if (ImGui::Begin("Viewport"))
             {
+                viewportTabActive = true;
                 const ImVec2 region = ImGui::GetContentRegionAvail();
                 const auto rw = static_cast<std::uint32_t>(region.x > 1.0f ? region.x : 1.0f);
                 const auto rh = static_cast<std::uint32_t>(region.y > 1.0f ? region.y : 1.0f);
@@ -566,8 +580,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                         ImGui::IsMouseDown(ImGuiMouseButton_Right), hovered);
 
                     // 공통 배치 헬퍼 — meshPath 와 화면 좌표를 받아 raycast 후 인스턴스 push.
-                    // GuessAssetDefaults 가 추천하는 import 보정 + animator 도 자동 적용해서
-                    // Mixamo 캐릭터가 raw 상태로 거꾸로 보이는 문제 회피.
                     auto placeAt = [&](const std::string& meshPath, float screenX, float screenY)
                     {
                         DirectX::XMFLOAT3 hit{};
@@ -588,108 +600,221 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                     };
 
                     // Drag-and-drop: AssetBrowser 에서 메쉬 자산을 직접 Viewport 로 드롭.
-                    // 드롭 시점의 마우스 화면 좌표 → image-local 좌표 → raycast → 그 위치에 배치.
                     if (ImGui::BeginDragDropTarget())
                     {
                         const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_MESH_PATH");
                         if (payload != nullptr && payload->Data != nullptr && payload->DataSize > 0)
                         {
                             const ImVec2 mp = ImGui::GetMousePos();
-                            const float lx = mp.x - imageOrigin.x;
-                            const float ly = mp.y - imageOrigin.y;
-                            placeAt(std::string{ static_cast<const char*>(payload->Data) }, lx, ly);
+                            placeAt(std::string{ static_cast<const char*>(payload->Data) },
+                                    mp.x - imageOrigin.x, mp.y - imageOrigin.y);
                         }
                         ImGui::EndDragDropTarget();
                     }
 
-                    // LMB 클릭 — 브러시 모드면 배치, 아니면 본 picking.
-                    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+                    // LMB 클릭 — 브러시 모드면 배치 (본 picking 은 IK 탭 전용).
+                    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) &&
+                        !assetBrowserState.brushMeshPath.empty())
                     {
                         const ImVec2 mp = ImGui::GetMousePos();
-                        const float lx = mp.x - imageOrigin.x;
-                        const float ly = mp.y - imageOrigin.y;
-                        if (!assetBrowserState.brushMeshPath.empty())
-                        {
-                            placeAt(assetBrowserState.brushMeshPath, lx, ly);
-                        }
-                        else
-                        {
-                            // 본 picking — 가장 가까운 본 선택 (없으면 해제).
-                            viewport.PickBone(*sceneRuntime, lx, ly);
-                        }
+                        placeAt(assetBrowserState.brushMeshPath, mp.x - imageOrigin.x, mp.y - imageOrigin.y);
                     }
 
-                    // 본 조작 — 본 선택 + LMB 드래그 → camera-relative 축 둘레로 subtree 회전.
-                    //   수평 드래그 = camera up 축 yaw, 수직 = camera right 축 pitch.
-                    //   자식 본 FK 따라옴 (SceneRuntime.ApplyManualBonePosing). 브러시 모드 제외.
-                    if (assetBrowserState.brushMeshPath.empty() &&
-                        viewport.SelectedBone() >= 0 &&
-                        hovered &&
-                        ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f))
+                    // ESC → 브러시 해제 (Viewport 호버 시).
+                    if (hovered && ImGui::IsKeyPressed(ImGuiKey_Escape) &&
+                        !assetBrowserState.brushMeshPath.empty())
                     {
-                        const ImVec2 d = io2.MouseDelta;
-                        if (d.x != 0.0f || d.y != 0.0f)
-                        {
-                            constexpr float kRotSpeed = 0.01f;   // rad / px
-                            DirectX::XMFLOAT3 camRight, camUp;
-                            viewport.CameraRightUp(camRight, camUp);
-                            // 수평 드래그 → up 축 회전, 수직 → right 축 회전.
-                            sceneRuntime->AddBoneManualRotation(viewport.SelectedBone(), camUp,    -d.x * kRotSpeed);
-                            sceneRuntime->AddBoneManualRotation(viewport.SelectedBone(), camRight, -d.y * kRotSpeed);
-                            modified = true;
-                        }
+                        assetBrowserState.brushMeshPath.clear();
                     }
 
-                    // ESC → 브러시 해제 / 본 선택 해제 (Viewport 호버 시).
-                    if (hovered && ImGui::IsKeyPressed(ImGuiKey_Escape))
-                    {
-                        if (!assetBrowserState.brushMeshPath.empty())
-                        {
-                            assetBrowserState.brushMeshPath.clear();
-                        }
-                        else
-                        {
-                            viewport.SetSelectedBone(-1);
-                        }
-                    }
-
-                    // 선택 본 이름 오버레이 — Viewport 좌상단.
-                    if (viewport.SelectedBone() >= 0)
-                    {
-                        std::vector<DirectX::XMFLOAT3> jp;
-                        std::vector<int>              jpar;
-                        std::vector<std::string>      jn;
-                        if (sceneRuntime->GetSkeletonWorldJoints(jp, jpar, jn) &&
-                            static_cast<size_t>(viewport.SelectedBone()) < jn.size())
-                        {
-                            ImDrawList* dl = ImGui::GetWindowDrawList();
-                            char buf[256];
-                            std::snprintf(buf, sizeof(buf), "Bone [%d]: %s",
-                                          viewport.SelectedBone(),
-                                          jn[static_cast<size_t>(viewport.SelectedBone())].c_str());
-                            dl->AddText(ImVec2{ imageOrigin.x + 10.0f, imageOrigin.y + 10.0f },
-                                        IM_COL32(80, 255, 255, 255), buf);
-                        }
-                    }
-
-                    // 브러시 오버레이 — Viewport 우상단에 표시.
+                    // 브러시 오버레이 — Viewport 좌상단에 표시.
                     if (!assetBrowserState.brushMeshPath.empty())
                     {
                         const auto fname = std::filesystem::path(
                             assetBrowserState.brushMeshPath).filename().string();
                         ImDrawList* dl = ImGui::GetWindowDrawList();
-                        const ImVec2 textPos{ imageOrigin.x + 10.0f, imageOrigin.y + 10.0f };
                         char buf[256];
                         std::snprintf(buf, sizeof(buf), "Brush: %s  (LMB place / ESC clear)", fname.c_str());
-                        dl->AddText(textPos,
-                                    IM_COL32(255, 220, 80, 255),
-                                    buf);
+                        dl->AddText(ImVec2{ imageOrigin.x + 10.0f, imageOrigin.y + 10.0f },
+                                    IM_COL32(255, 220, 80, 255), buf);
                     }
                 }
                 else
                 {
                     ImGui::TextDisabled("(SceneRuntime 없음 — Scene 로드 실패?)");
                     ImGui::TextWrapped("Status: %s", lastStatus.c_str());
+                }
+            }
+            ImGui::End();
+
+            // === IK 패널 (IK 뷰) — 전용 3D 뷰포트에서 본 선택 + IK/FK 드래그 ===
+            //   world Viewport 와 분리: 여기서만 본을 클릭/드래그하므로 배치/조작과 충돌 없음.
+            //   같은 center dock 의 탭이라 활성 탭만 렌더됨 (cbuffer 공유 충돌 회피).
+            bool ikTabActive = false;
+            if (ImGui::Begin("IK"))
+            {
+                ikTabActive = true;
+                if (sceneRuntime && sceneRuntime->HasAnimatorRuntime())
+                {
+                    // --- 상단 컨트롤 바 ---
+                    ImGui::Checkbox("IK 모드", &ikMode);
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("켜기: 끝 관절(손/발) 드래그 -> 부모 체인 굽힘 (IK).\n"
+                                          "끄기: 선택 본만 제자리 회전 (FK).");
+                    }
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(120.0f);
+                    ImGui::SliderInt("체인", &ikChainLen, 1, 4);
+                    ImGui::SameLine();
+                    if (ImGui::Button("포즈 리셋"))
+                    {
+                        sceneRuntime->ClearBoneManualPosing();
+                        modified = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("포커스")) { ikFocusDone = false; }   // 캐릭터에 카메라 재프레이밍
+                    if (ImGui::IsItemHovered()) { ImGui::SetTooltip("카메라를 캐릭터에 맞춰 가운데로."); }
+                    // 주의: SameLine() 은 *실제로 버튼이 그려질 때만* 호출 — 조건이 false 면 dangling
+                    //   SameLine 이 다음 항목(3D Image)에 적용돼 이미지가 툴바 옆으로 밀리고 좌측 공백 발생.
+                    if (ikViewport.SelectedBone() >= 0)
+                    {
+                        ImGui::SameLine();
+                        if (ImGui::Button("선택 해제")) { ikViewport.SetSelectedBone(-1); }
+                    }
+
+                    // 캐릭터 자동 프레이밍 — IK 뷰 진입/씬 변경 시 1회. 본 joints 의 world bbox 중심·반경
+                    //   으로 카메라를 맞춰 캐릭터가 한쪽으로 치우치거나 공백이 남지 않게.
+                    if (!ikFocusDone)
+                    {
+                        std::vector<DirectX::XMFLOAT3> jp;
+                        std::vector<int>              jpar;
+                        std::vector<std::string>      jn;
+                        if (sceneRuntime->GetSkeletonWorldJoints(jp, jpar, jn) && !jp.empty())
+                        {
+                            DirectX::XMFLOAT3 mn = jp[0], mx = jp[0];
+                            for (const auto& p : jp)
+                            {
+                                mn.x = std::min(mn.x, p.x); mn.y = std::min(mn.y, p.y); mn.z = std::min(mn.z, p.z);
+                                mx.x = std::max(mx.x, p.x); mx.y = std::max(mx.y, p.y); mx.z = std::max(mx.z, p.z);
+                            }
+                            const DirectX::XMFLOAT3 c{ (mn.x+mx.x)*0.5f, (mn.y+mx.y)*0.5f, (mn.z+mx.z)*0.5f };
+                            const float dx = mx.x-mn.x, dy = mx.y-mn.y, dz = mx.z-mn.z;
+                            const float radius = 0.5f * std::sqrt(dx*dx + dy*dy + dz*dz);
+                            // 첫 프레임엔 animator 가 BoneGlobal 미계산 → 전 관절이 한 점(=bbox 0)에
+                            //   뭉쳐 잘못 프레이밍됨. 유효한 spread 가 생긴 뒤에만 확정.
+                            if (radius > 10.0f)
+                            {
+                                ikViewport.FocusOn(c, radius);
+                                ikFocusDone = true;
+                            }
+                        }
+                    }
+
+                    // --- IK 전용 3D 뷰포트 ---
+                    const ImVec2 region = ImGui::GetContentRegionAvail();
+                    const auto rw = static_cast<std::uint32_t>(region.x > 1.0f ? region.x : 1.0f);
+                    const auto rh = static_cast<std::uint32_t>(region.y > 1.0f ? region.y : 1.0f);
+                    ikViewport.Resize(rw, rh);
+
+                    const ImVec2 imageOrigin = ImGui::GetCursorScreenPos();
+                    ImGui::Image(static_cast<ImTextureID>(ikViewport.GpuSrvHandle().ptr), region);
+                    const bool hovered = ImGui::IsItemHovered();
+                    const ImGuiIO& io2 = ImGui::GetIO();
+
+                    // RMB drag → orbit / 휠 → zoom.
+                    ikViewport.UpdateInput(io2.MouseDelta.x, io2.MouseDelta.y, io2.MouseWheel,
+                                           ImGui::IsMouseDown(ImGuiMouseButton_Right), hovered);
+
+                    // LMB 클릭 → 가장 가까운 본 선택 (없으면 해제).
+                    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+                    {
+                        const ImVec2 mp = ImGui::GetMousePos();
+                        ikViewport.PickBone(*sceneRuntime, mp.x - imageOrigin.x, mp.y - imageOrigin.y);
+                    }
+
+                    // 본 선택 + LMB 드래그 → IK(부모 체인 굽힘) 또는 FK(선택 본 회전).
+                    if (ikViewport.SelectedBone() >= 0 && hovered &&
+                        ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f))
+                    {
+                        if (ikMode)
+                        {
+                            std::vector<DirectX::XMFLOAT3> jp;
+                            std::vector<int>              jpar;
+                            std::vector<std::string>      jn;
+                            if (sceneRuntime->GetSkeletonWorldJoints(jp, jpar, jn) &&
+                                static_cast<size_t>(ikViewport.SelectedBone()) < jp.size())
+                            {
+                                const ImVec2 mp = ImGui::GetMousePos();
+                                const DirectX::XMFLOAT3 endWorld =
+                                    jp[static_cast<size_t>(ikViewport.SelectedBone())];
+                                DirectX::XMFLOAT3 target;
+                                if (ikViewport.ScreenToWorldAtDepth(mp.x - imageOrigin.x,
+                                                                    mp.y - imageOrigin.y,
+                                                                    endWorld, target))
+                                {
+                                    sceneRuntime->SolveBoneIK(ikViewport.SelectedBone(), target,
+                                                              ikChainLen, /*iterations*/10);
+                                    modified = true;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            const ImVec2 d = io2.MouseDelta;
+                            if (d.x != 0.0f || d.y != 0.0f)
+                            {
+                                constexpr float kRotSpeed = 0.01f;   // rad / px
+                                DirectX::XMFLOAT3 camRight, camUp;
+                                ikViewport.CameraRightUp(camRight, camUp);
+                                sceneRuntime->AddBoneManualRotation(ikViewport.SelectedBone(), camUp,    -d.x * kRotSpeed);
+                                sceneRuntime->AddBoneManualRotation(ikViewport.SelectedBone(), camRight, -d.y * kRotSpeed);
+                                modified = true;
+                            }
+                        }
+                    }
+
+                    // ESC → 본 선택 해제 (호버 시).
+                    if (hovered && ImGui::IsKeyPressed(ImGuiKey_Escape))
+                    {
+                        ikViewport.SetSelectedBone(-1);
+                    }
+
+                    // 오버레이 — 선택 본 이름 + 현재 모드.
+                    {
+                        ImDrawList* dl = ImGui::GetWindowDrawList();
+                        char buf[256];
+                        std::snprintf(buf, sizeof(buf), "%s  |  %s",
+                                      ikMode ? "IK (끝 관절 끌기)" : "FK (선택 본 회전)",
+                                      sceneRuntime->HasBoneManualPosing() ? "수정됨" : "원본");
+                        dl->AddText(ImVec2{ imageOrigin.x + 10.0f, imageOrigin.y + 10.0f },
+                                    IM_COL32(255, 220, 80, 255), buf);
+                        if (ikViewport.SelectedBone() >= 0)
+                        {
+                            std::vector<DirectX::XMFLOAT3> jp;
+                            std::vector<int>              jpar;
+                            std::vector<std::string>      jn;
+                            if (sceneRuntime->GetSkeletonWorldJoints(jp, jpar, jn) &&
+                                static_cast<size_t>(ikViewport.SelectedBone()) < jn.size())
+                            {
+                                char b2[256];
+                                std::snprintf(b2, sizeof(b2), "Bone [%d]: %s",
+                                              ikViewport.SelectedBone(),
+                                              jn[static_cast<size_t>(ikViewport.SelectedBone())].c_str());
+                                dl->AddText(ImVec2{ imageOrigin.x + 10.0f, imageOrigin.y + 28.0f },
+                                            IM_COL32(80, 255, 255, 255), b2);
+                            }
+                        }
+                        else
+                        {
+                            dl->AddText(ImVec2{ imageOrigin.x + 10.0f, imageOrigin.y + 28.0f },
+                                        IM_COL32(160, 160, 160, 255), "본을 클릭해 선택");
+                        }
+                    }
+                }
+                else
+                {
+                    ImGui::TextDisabled("(스켈레톤이 있는 캐릭터를 로드하세요)");
                 }
             }
             ImGui::End();
@@ -794,7 +919,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             if (sceneRuntime)
             {
                 sceneRuntime->Tick(io.DeltaTime);
-                viewport.Render(list, *sceneRuntime, frameIndex);
+                // 활성 탭의 뷰포트만 RTT 렌더 — Viewport/IK 는 같은 dock 의 탭이라 한쪽만 active.
+                if (viewportTabActive) { viewport.Render(list, *sceneRuntime, frameIndex); }
+                if (ikTabActive)       { ikViewport.Render(list, *sceneRuntime, frameIndex); }
             }
 
             ID3D12Resource* const backBuffer = swapChain.CurrentBackBuffer();
