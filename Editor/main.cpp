@@ -726,23 +726,50 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                             modified = true;
                         }
 
-                        // 브러시 커서 — hit 중심 원 (world 반경을 화면에 투영해 픽셀 반경 근사).
+                        // 브러시 커서 — *지형 표면을 따라 감기는* 링 + 반투명 채움. world 원 둘레를
+                        //   N 등분해 각 점을 발밑 지면 높이로 샘플 후 화면 투영 → polyline(굴곡 따라감).
+                        //   center→ring fan 으로 채워 선택 영역(영향 디스크)을 직관적으로 표시.
                         if (gotHit && hovered)
                         {
-                            float cx = 0.0f, cy = 0.0f, ex = 0.0f, ey = 0.0f;
-                            const DirectX::XMFLOAT3 edge{ hit.x + terrainRadius, hit.y, hit.z };
-                            if (viewport.WorldToScreen(hit, cx, cy) &&
-                                viewport.WorldToScreen(edge, ex, ey))
+                            const ImU32 ringCol = (terrainBrush == 1)
+                                ? IM_COL32(120, 180, 255, 255)    // lower=파랑
+                                : (terrainBrush == 2)
+                                    ? IM_COL32(210, 210, 210, 255) // smooth=회색
+                                    : IM_COL32(255, 210, 80, 255); // raise=노랑
+                            const ImU32 fillCol = (ringCol & 0x00FFFFFFu) | (0x33u << 24);  // ~20% alpha
+                            constexpr int kN = 48;
+                            ImVec2 pts[kN];
+                            bool   ok = true;
+                            for (int i = 0; i < kN; ++i)
                             {
-                                const float rpix = std::hypot(ex - cx, ey - cy);
-                                ImDrawList* dl = ImGui::GetWindowDrawList();
-                                const ImU32 col = (terrainBrush == 1)
-                                    ? IM_COL32(120, 180, 255, 220)    // lower=파랑
-                                    : (terrainBrush == 2)
-                                        ? IM_COL32(200, 200, 200, 220) // smooth=회색
-                                        : IM_COL32(255, 210, 80, 220); // raise=노랑
-                                dl->AddCircle(ImVec2{ imageOrigin.x + cx, imageOrigin.y + cy },
-                                              rpix, col, 40, 2.0f);
+                                const float a  = 6.2831853f * static_cast<float>(i) / static_cast<float>(kN);
+                                const float wx = hit.x + std::cos(a) * terrainRadius;
+                                const float wz = hit.z + std::sin(a) * terrainRadius;
+                                const float wy = sceneRuntime->SampleGround(wx, wz);
+                                float px = 0.0f, py = 0.0f;
+                                if (!viewport.WorldToScreen(DirectX::XMFLOAT3{ wx, wy, wz }, px, py)) { ok = false; break; }
+                                pts[i] = ImVec2{ imageOrigin.x + px, imageOrigin.y + py };
+                            }
+                            float ccx = 0.0f, ccy = 0.0f;
+                            const bool cOk = viewport.WorldToScreen(hit, ccx, ccy);   // hit.y = 표면 높이
+                            ImDrawList* dl = ImGui::GetWindowDrawList();
+                            if (ok)
+                            {
+                                const ImVec2 c{ imageOrigin.x + ccx, imageOrigin.y + ccy };
+                                if (cOk)   // center→ring fan 채움 (비볼록 투영도 안전)
+                                {
+                                    for (int i = 0; i < kN; ++i)
+                                    {
+                                        dl->AddTriangleFilled(c, pts[i], pts[(i + 1) % kN], fillCol);
+                                    }
+                                }
+                                dl->AddPolyline(pts, kN, ringCol, ImDrawFlags_Closed, 2.5f);
+                                if (cOk) { dl->AddCircleFilled(c, 4.0f, ringCol); }
+                            }
+                            else if (cOk)   // 폴백 — 일부 둘레점이 카메라 뒤면 평면 원.
+                            {
+                                dl->AddCircle(ImVec2{ imageOrigin.x + ccx, imageOrigin.y + ccy },
+                                              40.0f, ringCol, 32, 2.0f);
                             }
                         }
                     }
