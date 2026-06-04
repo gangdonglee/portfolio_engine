@@ -232,7 +232,7 @@ namespace client
         //   높이로 끌어당기도록 leg chain(hip/knee)을 CCD(rotate-about-pivot, column-convention)로
         //   *직접 BoneGlobal 에* 적용 (누적 X, 매 프레임 애니 포즈에서 새로). SolveBoneIK 와 동일한
         //   검증된 기법이라 mesh 정상 변형. (예전 ApplyFootIK 의 rotation 재구성 결함 회피.)
-        void ApplyFootIKRuntime();
+        void ApplyFootIKRuntime(float dt);
 
         struct LoadedAsset
         {

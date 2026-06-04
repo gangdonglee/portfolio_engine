@@ -456,7 +456,7 @@ namespace client
 
         // Foot IK — Update(BuildPalette) + manual posing 직후. CCD rotate-about-pivot 로 두 발을
         //   각자 발밑 지면에 안착 (검증된 SolveBoneIK 기법, mesh 정상 변형).
-        if (m_footIKEnabled) { ApplyFootIKRuntime(); }
+        if (m_footIKEnabled) { ApplyFootIKRuntime(dt); }
     }
 
     void SceneRuntime::SetFootIKConfig(const engine::anim::FootIKConfig& cfg)
@@ -772,7 +772,7 @@ namespace client
         }
     }
 
-    void SceneRuntime::ApplyFootIKRuntime()
+    void SceneRuntime::ApplyFootIKRuntime(float dt)
     {
         using namespace DirectX;
         if (!m_animatorRuntime || !m_animSkeleton || !m_footIKBones || !m_footIKConfig) { return; }
@@ -1030,39 +1030,27 @@ namespace client
         const float leftPlant  = plantWeight(leftAnimY,  leftG);
         const float rightPlant = plantWeight(rightAnimY, rightG);
 
-        // === Body lower (pelvis IK) — 낮은 발의 절대 목표가 다리 길이로 못 닿으면 그 *부족분(reach
-        //   deficit)* 만큼 몸 전체를 내려서 닿게 함. terrain(지면)·다리 길이 기준이라 *보행 사이클에
-        //   비의존* → 예전 anim-keyed 골반 하강처럼 출렁이지 않음. 강한 스무딩(lerp 0.1)으로 더 안정.
-        //   cap 으로 깊은 구덩이서 과한 스쿼트 방지(잔여 뜸은 허용 — 묻힘보다 덜 거슬림).
-        auto reachDeficit = [&](int hip, int knee, int ankle, int toe, float pw) -> float {
-            if (hip < 0 || knee < 0 || ankle < 0 || pw < 0.05f) { return 0.0f; }
-            const XMVECTOR hipW   = XMVector3TransformCoord(bonePos(hip),   meshW);
-            const XMVECTOR kneeW  = XMVector3TransformCoord(bonePos(knee),  meshW);
-            const XMVECTOR ankleW = XMVector3TransformCoord(bonePos(ankle), meshW);
-            const float ax = XMVectorGetX(ankleW), ay = XMVectorGetY(ankleW), az = XMVectorGetZ(ankleW);
-            const float gA = m_groundSampler ? m_groundSampler(ax, az) : 0.0f;
-            float aboveToe = 7.2f, gT = gA;
-            if (toe >= 0 && static_cast<size_t>(toe) < bones.size())
-            {
-                const XMVECTOR tW = XMVector3TransformCoord(bonePos(toe), meshW);
-                aboveToe = ay - XMVectorGetY(tW);
-                gT = m_groundSampler ? m_groundSampler(XMVectorGetX(tW), XMVectorGetZ(tW)) : gA;
-            }
-            const float desiredAnkleWorldY = std::max(gT, gA) + aboveToe;   // 최종 절대 목표(world)
-            const float legLen =
-                XMVectorGetX(XMVector3Length(XMVectorSubtract(kneeW,  hipW))) +
-                XMVectorGetX(XMVector3Length(XMVectorSubtract(ankleW, kneeW)));
-            const float finalHipY = XMVectorGetY(hipW) + kRootLift;        // lift 후 hip(근사 — bodyLower 전)
-            const float horiz = std::hypot(ax - XMVectorGetX(hipW), az - XMVectorGetZ(hipW));
-            const float vReach = std::sqrt(std::max(legLen * legLen - horiz * horiz, 0.0f)) * 0.98f;
-            const float lowestReachableY = finalHipY - vReach;            // 다리로 닿는 최저 ankle Y
-            return std::max(lowestReachableY - desiredAnkleWorldY, 0.0f) * pw;  // 못 닿는 깊이
-        };
-        const float kMaxBodyLower = 8.0f;   // 깊은 구덩이 과스쿼트 방지(잔여 뜸 허용)
-        const float bodyLowerRaw  = std::min(kMaxBodyLower,
-            std::max(reachDeficit(m_footIKBones->leftHip,  m_footIKBones->leftKnee,  m_footIKBones->leftAnkle,  leftToe,  leftPlant),
-                     reachDeficit(m_footIKBones->rightHip, m_footIKBones->rightKnee, m_footIKBones->rightAnkle, rightToe, rightPlant)));
-        m_footIKBodyLower += (bodyLowerRaw - m_footIKBodyLower) * 0.1f;    // 강한 스무딩(bob 방지)
+        // === Body lower (pelvis IK) — 낮은 발이 다리 길이로 못 닿으면 몸을 내려 닿게 함.
+        //   *terrain-driven*: 두 발밑 지면 중 *낮은 쪽* 이 몸 접지 기준(controller pos.y)보다
+        //   kMaxFootDrop 이상 아래면 그 초과분만큼 몸을 내림. **어느 발이 디뎠는지(plant)·보행
+        //   사이클에 무관** → step 주파수 진동(덜그럭) 원천 제거. (예전 per-foot reach-deficit 는
+        //   디딘 발이 L↔R 번갈며 deficit 이 매 스텝 출렁여 몸이 위아래로 덜그럭거렸다.) 발 XZ 가
+        //   stride 로 범프를 지나며 생기는 잔 ripple 은 느린 스무딩(lerp 0.03)으로 제거. cap=과스쿼트
+        //   방지(깊은 구덩이 잔여 뜸은 허용 — 묻힘보다 덜 거슬림).
+        const float kMaxBodyLower = 8.0f;
+        const float kMaxFootDrop  = 2.0f;   // 발 지면이 몸 기준 이만큼 아래까진 다리로 닿음(그 이상=하강)
+        const float bodyRefY      = inst.transform.position.y;   // controller 접지 기준(절대 world Y)
+        const float lowestGround  = std::min(leftG, rightG);     // 두 발밑 지면 중 낮은 쪽
+        const float bodyLowerTgt  =
+            std::clamp((bodyRefY - kMaxFootDrop) - lowestGround, 0.0f, kMaxBodyLower);
+        // *rate limit (시간 기준)* — 몸의 수직 이동 속도를 kRate(u/s)로 제한. 사람 골반은 지형
+        //   노이즈를 따라 출렁이지 않고 *다리가 흡수* 한다(발 IK 가 이미 흡수). bumpy heightmap(±12)
+        //   위에서 target 이 매 스텝 크게 출렁여도 몸은 느리게 평균으로만 따라가 *덜그럭 제거*. 지속
+        //   고저차(실제 내리막)는 수 초에 걸쳐 부드럽게 반영. **프레임당 고정 step 은 fps 가 높으면
+        //   (이 게임 uncapped) 무력화돼 dt 기반 필수.** dt 는 hitch 대비 clamp.
+        const float kRate = 2.0f;   // u/s — idle 접지까지 ~4s, 보행 중엔 거의 정지(잔 진동 ~±0.5, 비가시)
+        const float step  = kRate * std::clamp(dt, 0.0f, 0.1f);
+        m_footIKBodyLower += std::clamp(bodyLowerTgt - m_footIKBodyLower, -step, step);
         effectiveLift = kRootLift - m_footIKBodyLower;
 
         // (골반 하강 #2 는 제거 — 디딘 발 animAnkleY 가 보행 사이클마다 변해 pelvisTarget 이 매 프레임
