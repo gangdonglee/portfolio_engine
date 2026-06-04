@@ -661,6 +661,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                         io2.MouseDelta.x, io2.MouseDelta.y, io2.MouseWheel,
                         ImGui::IsMouseDown(ImGuiMouseButton_Right), hovered);
 
+                    // WASD 이동 + Q/E 상하 (호버 시, 텍스트 입력 중엔 무시).
+                    if (hovered && !io2.WantTextInput)
+                    {
+                        float fwd = 0.0f, rgt = 0.0f, up = 0.0f;
+                        if (ImGui::IsKeyDown(ImGuiKey_W)) { fwd += 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_S)) { fwd -= 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_D)) { rgt += 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_A)) { rgt -= 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_E)) { up  += 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_Q)) { up  -= 1.0f; }
+                        viewport.PanCamera(fwd, rgt, up, io2.DeltaTime > 0.0f ? io2.DeltaTime : 0.016f);
+                    }
+
                     // 공통 배치 헬퍼 — meshPath 와 화면 좌표를 받아 raycast 후 인스턴스 push.
                     auto placeAt = [&](const std::string& meshPath, float screenX, float screenY)
                     {
@@ -879,6 +892,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                     // RMB drag → orbit / 휠 → zoom.
                     ikViewport.UpdateInput(io2.MouseDelta.x, io2.MouseDelta.y, io2.MouseWheel,
                                            ImGui::IsMouseDown(ImGuiMouseButton_Right), hovered);
+
+                    // WASD 이동 + Q/E 상하 (호버 시, 텍스트 입력 중엔 무시).
+                    if (hovered && !io2.WantTextInput)
+                    {
+                        float fwd = 0.0f, rgt = 0.0f, up = 0.0f;
+                        if (ImGui::IsKeyDown(ImGuiKey_W)) { fwd += 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_S)) { fwd -= 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_D)) { rgt += 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_A)) { rgt -= 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_E)) { up  += 1.0f; }
+                        if (ImGui::IsKeyDown(ImGuiKey_Q)) { up  -= 1.0f; }
+                        ikViewport.PanCamera(fwd, rgt, up, io2.DeltaTime > 0.0f ? io2.DeltaTime : 0.016f);
+                    }
 
                     // LMB 클릭 → 가장 가까운 본 선택 (없으면 해제).
                     if (ImGui::IsItemClicked(ImGuiMouseButton_Left))

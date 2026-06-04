@@ -82,6 +82,10 @@ namespace editor
         //   hovered: Viewport 패널 위 호버 (입력 무시 게이트).
         void UpdateInput(float mouseDeltaX, float mouseDeltaY, float wheelDelta, bool rmbHeld, bool hovered);
 
+        // WASD/QE 카메라 이동 — orbit target 을 카메라 수평면에서 pan (+ Q/E 수직). forward/right/up 은
+        //   -1..+1 입력, dt 로 프레임률 보정. 이동 속도는 줌 거리에 비례(멀수록 빠름).
+        void PanCamera(float forward, float right, float up, float dt) noexcept;
+
         // RTT 에 씬 렌더링 — barrier (RT) + clear + draw + barrier (SRV).
         // 호출 시점: ImGui::Render() 직후, ImGui_ImplDX12_RenderDrawData() 직전.
         // sceneRuntime: 호출자 소유. 매 프레임 PrepareGpuResources/RecordDraw 호출됨.

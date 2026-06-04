@@ -311,6 +311,20 @@ namespace editor
         UpdateCameraFromOrbit();
     }
 
+    void EditorViewport::PanCamera(float forward, float right, float up, float dt) noexcept
+    {
+        if (forward == 0.0f && right == 0.0f && up == 0.0f) { return; }
+        // 카메라 yaw 기준 수평 forward/right (pitch 무시 — 지면 위를 미끄러지듯 이동).
+        const float cy = std::cos(m_orbit.yaw);
+        const float sy = std::sin(m_orbit.yaw);
+        const float speed = std::max(m_orbit.distance, 100.0f) * 0.8f * dt;   // 줌 거리 비례(멀수록 빠름)
+        // forward(W) = (sy,0,cy), right(D) = (cy,0,-sy) (LH, yaw=0 → +Z 보고 +X 가 오른쪽).
+        m_orbit.target.x += (sy * forward + cy * right) * speed;
+        m_orbit.target.z += (cy * forward - sy * right) * speed;
+        m_orbit.target.y += up * speed;
+        UpdateCameraFromOrbit();
+    }
+
     void EditorViewport::UpdateCameraFromOrbit()
     {
         // yaw=0, pitch=0 → 카메라가 target 의 -Z 쪽. yaw 증가 = top view 시계 반대.
