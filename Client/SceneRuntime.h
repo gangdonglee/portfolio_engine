@@ -312,6 +312,7 @@ namespace client
         float                                           m_footIKDefSmooth     = 0.0f; // deficit 저역통과 — gait phase 노이즈 제거(보행 중 발 덜그럭 방지)
         DirectX::XMFLOAT3                                m_footIKNormalSmooth[2] = { {0.0f,1.0f,0.0f}, {0.0f,1.0f,0.0f} }; // 발[L,R] 정렬 normal 시간축 평활(발바닥 tilt 덜그럭 방지)
         float                                           m_footIKLocomotion    = 0.0f; // 이동 속도(0..1) — bodyLower 수렴속도 게이트(정지 빠름/보행 느림)
+        DirectX::XMFLOAT3                                m_footIKBendSmooth[2]  = { {0,0,0}, {0,0,0} }; // 발[L,R] 무릎 굽힘방향 시간축 평활(near-straight 지터/flip 방지)
 
         // 본 수동 포징 — boneIdx → 누적 모델공간 회전 (quaternion). Tick 의 Update 직후
         //   각 본 subtree 에 rotate-about-pivot 적용 (BuildPalette 결과 덮어씀).

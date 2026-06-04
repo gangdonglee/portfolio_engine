@@ -1008,30 +1008,37 @@ namespace client
             const XMVECTOR newAnkle    = XMVectorAdd(hipP, toTarget);
             const XMVECTOR dirToTarget = XMVectorScale(toTarget, 1.0f / L);
 
-            // 무릎 굽힘 방향(pole) — *애니 무릎의 leg 수직 성분* 을 그대로 사용(연속적).
-            //   예전엔 cross(leg,좌우축) 의 부호를 애니 무릎 쪽으로 *binary flip* 했는데, 달리기 중
-            //   애니 무릎이 그 평면을 지나는 순간 부호가 휙 뒤집혀 무릎이 반대편으로 *툭* 튐. 대신
-            //   애니 무릎 방향(hip→knee 의 leg 수직 성분)을 직접 쓰면 부호가 안 뒤집힌다(연속). 거기서
-            //   *좌우(lrAxis) 성분만 제거* 해 sagittal 평면에 가두면 좌우 wobble 도 없앤다 → 둘 다 해결.
+            // 무릎 굽힘 방향(pole). *예전엔 애니 무릎의 leg 수직 성분* 을 썼는데, 다리가 near-straight
+            //   이면 그 성분이 0 에 가까워(noise) 방향이 매 프레임 흔들려 *정강이+발이 덜그럭*. 대신
+            //   **cross(dirToTarget, lrAxis)** = sagittal 평면에서 다리에 수직인 *안정적* 방향(애니 무릎
+            //   미세변동 무관). 부호는 *직전 프레임과 연속* 되게(첫 프레임만 애니 무릎 앞쪽), 거기에
+            //   시간축 평활까지 더해 flip/지터 원천 제거.
             XMVECTOR bend;
             {
-                const XMVECTOR hk = XMVectorSubtract(kneeP, hipP);
-                XMVECTOR fwd = XMVectorSubtract(hk,
-                    XMVectorScale(dirToTarget, XMVectorGetX(XMVector3Dot(hk, dirToTarget))));
-                if (lrValid)   // 좌우 성분 제거 → sagittal 평면 (wobble 방지)
+                XMVECTOR pole = lrValid
+                    ? XMVector3Cross(dirToTarget, lrAxis)
+                    : XMVectorSubtract(XMVectorSubtract(kneeP, hipP),   // 폴백: 애니 무릎 투영
+                        XMVectorScale(dirToTarget,
+                            XMVectorGetX(XMVector3Dot(XMVectorSubtract(kneeP, hipP), dirToTarget))));
+                float pl = XMVectorGetX(XMVector3Length(pole));
+                if (pl < 1e-4f) { return; }   // 다리 ∥ lrAxis (거의 없음)
+                pole = XMVectorScale(pole, 1.0f / pl);
+
+                XMVECTOR prev = XMLoadFloat3(&m_footIKBendSmooth[footIdx]);
+                const float prevLen = XMVectorGetX(XMVector3Length(prev));
+                if (prevLen > 0.5f)   // 직전 방향과 같은 쪽으로(부호 연속 → flip pop 방지)
                 {
-                    fwd = XMVectorSubtract(fwd,
-                        XMVectorScale(lrAxis, XMVectorGetX(XMVector3Dot(fwd, lrAxis))));
+                    if (XMVectorGetX(XMVector3Dot(pole, prev)) < 0.0f) { pole = XMVectorNegate(pole); }
+                    const float aB = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / 0.12f);
+                    pole = XMVector3Normalize(XMVectorAdd(prev, XMVectorScale(XMVectorSubtract(pole, prev), aB)));
                 }
-                float bl = XMVectorGetX(XMVector3Length(fwd));
-                if (bl < 1e-3f)
-                {   // 다리 거의 일직선 — 굽힘 방향 모호(이때 무릎 위치는 bend 에 거의 무관).
-                    if (!lrValid) { return; }
-                    fwd = XMVector3Cross(dirToTarget, lrAxis);   // 안전 폴백
-                    bl  = XMVectorGetX(XMVector3Length(fwd));
-                    if (bl < 1e-3f) { return; }
+                else   // 첫 프레임 — 애니 무릎 앞쪽으로 부호 결정
+                {
+                    const XMVECTOR hk = XMVectorSubtract(kneeP, hipP);
+                    if (XMVectorGetX(XMVector3Dot(pole, hk)) < 0.0f) { pole = XMVectorNegate(pole); }
                 }
-                bend = XMVectorScale(fwd, 1.0f / bl);
+                XMStoreFloat3(&m_footIKBendSmooth[footIdx], pole);
+                bend = pole;
             }
 
             // 코사인 법칙 — hip 정점 각. knee 를 dirToTarget 에서 bend 쪽으로 hipAngle 회전.
