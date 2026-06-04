@@ -251,10 +251,9 @@ namespace client
             ImGui::Text("FootIK R: ankle=%.1f ground=%.1f gap=%.1f plant=%.2f",
                         fk.rightAnkleY, fk.rightGroundY, fk.rightAnkleY - fk.rightGroundY, fk.rightPlant);
             ImGui::Text("Speed=%.2f  bodyLower=%.1f", m_currentSpeed, fk.bodyLower);
-            // 발 IK on/off 토글 — 덜그럭이 발 IK 때문인지 직접 비교용(끄면 떨림 사라지나?).
-            bool ikOn = m_sceneRuntime->FootIKEnabled();
-            if (ImGui::Checkbox("Foot IK 켜기", &ikOn)) { m_sceneRuntime->SetFootIKEnabled(ikOn); }
-            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("끄면 발이 애니 그대로(접지 보정 없음).\n걸으며 토글해 덜그럭이 발 IK 때문인지 확인."); }
+            // 발 접지 보정 on/off — 기본 OFF(떨림 없음). 켜면 per-foot 접지+bodyLower 적용.
+            ImGui::Checkbox("Foot IK 접지 보정", &m_footIKCorrEnabled);
+            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("OFF: root lift 기본 배치만(발 안 묻힘, 떨림 없음).\nON: 지형 접지 보정(떨림 있을 수 있음)."); }
         }
 
         // 포스트프로세싱 bloom — 실시간 조절 (FrameRenderer 가 매 프레임 반영).
@@ -840,11 +839,10 @@ namespace client
             m_sceneRuntime->SetAnimatorFloat("Speed", m_currentSpeed);
             m_sceneRuntime->SetFootIKLocomotion(m_currentSpeed);   // bodyLower 수렴 속도 게이트(정지 빠름)
 
-            // Foot IK weight = full(1.0). 달리기 "끊김" 의 원인은 발 IK 가 아니라 controller 가 매
-            //   frame 지면 Y 로 즉시 snap 하던 것(이제 CharacterController 가 부드럽게 보간) →
-            //   weight 페이드는 발만 뜨게 하고 효과 없어 제거. full 유지해 디딘 발을 확실히 지면에.
-            const float ikW = 1.0f;
-            m_sceneRuntime->SetFootIKWeight(ikW);
+            // Foot IK per-foot 보정 weight — 사용자 토글(m_footIKCorrEnabled). 기본 OFF(0): root lift
+            //   기본 배치만(발 묻힘 없음), 떨림 유발하는 per-foot 보정/bodyLower 는 꺼짐. 토글 ON(1):
+            //   full 접지 보정. (디버그 오버레이 체크박스로 전환.)
+            m_sceneRuntime->SetFootIKWeight(m_footIKCorrEnabled ? 1.0f : 0.0f);
 
             const bool curJump = input.IsKeyDown(static_cast<std::uint32_t>(VK_SPACE));
             if (curJump && !m_prevJumpDown)

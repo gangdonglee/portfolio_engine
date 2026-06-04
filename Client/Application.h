@@ -144,6 +144,7 @@ namespace client
         // Bind() 는 SceneRuntime 생성/재생성 후 호출 — AnimatorInstanceTransform() 추적.
         std::unique_ptr<Player>                             m_player;
         bool                                                m_thirdPersonActive = false;
+        bool                                                m_footIKCorrEnabled = false;  // 발 접지 보정(per-foot+bodyLower). 기본 OFF(떨림 없음, root lift 만). 디버그 체크박스로 전환.
         bool                                                m_prevToggleKeyDown = false;
 
         // Scene 런타임 / 매 프레임 렌더러 / 입력 컨트롤러.

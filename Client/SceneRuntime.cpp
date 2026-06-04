@@ -845,7 +845,8 @@ namespace client
         if (!m_animatorRuntime || !m_animSkeleton || !m_footIKBones || !m_footIKConfig) { return; }
         if (m_animatorInstanceIdx >= m_scene.meshes.size()) { return; }
         const auto& cfg = *m_footIKConfig;
-        if (cfg.weight <= 0.001f || m_footIKWeight <= 0.01f) { return; }   // 속도 페이드로 꺼지면 skip
+        if (cfg.weight <= 0.001f) { return; }   // m_footIKWeight=0 이어도 root lift(기본 배치)는 적용 —
+                                                //   per-foot 보정/bodyLower 만 weight 로 꺼짐(IK off=묻힘 방지).
 
         const auto& bones = m_animSkeleton->Bones();
         if (m_animatorRuntime->BoneGlobal().size() != bones.size()) { return; }
@@ -1186,8 +1187,10 @@ namespace client
         const float kRate  = 10.0f + (2.0f - 10.0f) * loco;                        // idle 10, walk 2 u/s
         const float aDef = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / tauDef);
         m_footIKDefSmooth += (defMax - m_footIKDefSmooth) * aDef;
-        // *idle 엔 target→0* (loco 곱) → 골반 안 내림(곧은 다리). 보행엔 full deficit 보정.
-        const float target  = std::clamp(m_footIKBodyLower + m_footIKDefSmooth, 0.0f, kMaxBodyLower) * loco;
+        // *idle 엔 target→0* (loco 곱) → 골반 안 내림(곧은 다리). m_footIKWeight 곱 → IK off(weight 0)
+        //   이면 bodyLower 0(root lift 만). 보행+IK on 엔 full deficit 보정.
+        const float target  = std::clamp(m_footIKBodyLower + m_footIKDefSmooth, 0.0f, kMaxBodyLower)
+                            * loco * m_footIKWeight;
         const float maxStep = kRate * std::clamp(dt, 0.0f, 0.1f);
         m_footIKBodyLower += std::clamp(target - m_footIKBodyLower, -maxStep, maxStep);
         effectiveLift = kRootLift - m_footIKBodyLower;
