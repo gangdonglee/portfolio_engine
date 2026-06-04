@@ -251,6 +251,10 @@ namespace client
             ImGui::Text("FootIK R: ankle=%.1f ground=%.1f gap=%.1f plant=%.2f",
                         fk.rightAnkleY, fk.rightGroundY, fk.rightAnkleY - fk.rightGroundY, fk.rightPlant);
             ImGui::Text("Speed=%.2f  bodyLower=%.1f", m_currentSpeed, fk.bodyLower);
+            // 발 IK on/off 토글 — 덜그럭이 발 IK 때문인지 직접 비교용(끄면 떨림 사라지나?).
+            bool ikOn = m_sceneRuntime->FootIKEnabled();
+            if (ImGui::Checkbox("Foot IK 켜기", &ikOn)) { m_sceneRuntime->SetFootIKEnabled(ikOn); }
+            if (ImGui::IsItemHovered()) { ImGui::SetTooltip("끄면 발이 애니 그대로(접지 보정 없음).\n걸으며 토글해 덜그럭이 발 IK 때문인지 확인."); }
         }
 
         // 포스트프로세싱 bloom — 실시간 조절 (FrameRenderer 가 매 프레임 반영).
