@@ -977,8 +977,11 @@ namespace client
             // *temporal smoothing* — 보정량을 프레임간 lerp(달리기 plant↔swing 전환에서 발 *툭* 튐 방지).
             //   swing 땐 blend≈0 → rawCorr≈0 → 보정이 0 으로 부드럽게 감쇠. pw<0.05 라도 early-out 없이
             //   매 프레임 lerp 갱신해야 다음 plant 에서 stale 값으로 안 튄다.
+            // *dt 기반* 평활 — 프레임당 고정 lerp 는 이 게임의 높은(uncapped) fps 서 거의 즉시 수렴 →
+            //   사실상 스무딩 안 됨(지터 통과). dt 기반(tau 0.10)이라야 fps 무관하게 실제 평활.
             float& sc = m_footIKCorrSmooth[footIdx];
-            sc += (rawCorr - sc) * 0.18f;   // 약간 느리게 — 접지 보정이 부드럽게 안착(plant 덜그럭 완화)
+            const float aSc = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / 0.10f);
+            sc += (rawCorr - sc) * aSc;
             const float targetY = ay + sc;
             if (std::abs(targetY - ay) < 0.5f) { return; }   // 보정 미미(swing/평지) — IK·정렬 미적용
 
@@ -1090,14 +1093,21 @@ namespace client
                 if (al > 1e-5f)
                 {
                     axisV = XMVectorScale(axisV, 1.0f / al);
-                    float ang = std::acos(std::clamp(
-                        XMVectorGetX(XMVector3Dot(upModel, nModel)), -1.0f, 1.0f));
-                    ang = std::min(ang, 0.28f) * pw * m_footIKWeight;   // ~16° cap (덜그럭 줄이게 완화)
-                    if (ang > 1e-4f)
+                    const float slope = std::acos(std::clamp(
+                        XMVectorGetX(XMVector3Dot(upModel, nModel)), -1.0f, 1.0f));   // 지면 경사각
+                    // *평지 deadzone* — 경사 kDead(~7°) 이하면 발 정렬 안 함(애니 발 포즈 유지).
+                    //   평지·잔 범프에선 발바닥이 안 기울어 *덜그럭 원천 제거*. 진짜 경사만 정렬하되
+                    //   deadzone 을 빼고 ramp 해 임계에서 튀지 않게. cap 더 낮춤(~11°).
+                    const float kDead = 0.12f;
+                    if (slope > kDead)
                     {
-                        XMFLOAT3 axis;  XMStoreFloat3(&axis,  axisV);
-                        XMFLOAT3 pivot; XMStoreFloat3(&pivot, bonePos(ankle));
-                        rotateSubtreeLive(ankle, axis, ang, pivot);
+                        const float ang = std::min(slope - kDead, 0.20f) * pw * m_footIKWeight;
+                        if (ang > 1e-4f)
+                        {
+                            XMFLOAT3 axis;  XMStoreFloat3(&axis,  axisV);
+                            XMFLOAT3 pivot; XMStoreFloat3(&pivot, bonePos(ankle));
+                            rotateSubtreeLive(ankle, axis, ang, pivot);
+                        }
                     }
                 }
             }
