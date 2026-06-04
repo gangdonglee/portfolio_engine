@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Types.h"
+#include "render/HeightMap.h"
 #include "render/SwapChain.h"
 #include "scene/Scene.h"
 
@@ -156,6 +157,19 @@ namespace client
         const engine::anim::FootIKConfig&  FootIKConfigRef() const noexcept;
         engine::anim::FootIKConfig&        FootIKConfigMutable() noexcept;
         void SetGroundSampler  (std::function<float(float, float)> fn) { m_groundSampler = std::move(fn); }
+
+        // === 지형 높이맵 (에디터 스컬프트 / 런타임 ground) ===
+        // 통합 ground 샘플러 — 높이맵 있으면 bilinear sample, 없으면 절차적 sin/cos. 발 IK/컨트롤러
+        //   모두 이걸 쓰면 지형 소스가 하나로 일치. (Application 이 컨트롤러 샘플러를 이걸로 연결.)
+        float SampleGround(float x, float z) const noexcept;
+        bool  HasTerrainHeightMap() const noexcept { return !m_heightMap.Empty(); }
+        // 높이맵이 없으면 현재 절차적 지형을 그리드로 베이크해 생성 (에디터에서 스컬프트 시작점).
+        void  EnsureTerrainHeightMap();
+        // (wx,wz) 중심 브러시 적용 후 지형 메시 정점 재업로드. brush: 0=raise,1=lower,2=smooth.
+        void  SculptTerrain(float wx, float wz, float radius, float strength, int brush);
+        bool  SaveTerrainHeightMap(std::string_view path) const;
+        // 브러시 커서/카메라 프레이밍용 지형 world 범위 (한 변 절반).
+        float TerrainHalfExtent() const noexcept;
         const engine::anim::FootIKDebug&   LastFootIKDebug() const noexcept;
 
         // Foot IK 캘리브레이션 readout — 디버그 오버레이용. 마지막 프레임의 ankle world Y / 발밑 지면 Y.
@@ -234,6 +248,9 @@ namespace client
         //   검증된 기법이라 mesh 정상 변형. (예전 ApplyFootIK 의 rotation 재구성 결함 회피.)
         void ApplyFootIKRuntime(float dt);
 
+        // 현재 m_heightMap 으로 지형 메시 정점 재생성 + in-place 재업로드 (스컬프트 후).
+        void RegenerateTerrainMesh();
+
         struct LoadedAsset
         {
             std::unique_ptr<engine::render::Mesh>                  mesh;
@@ -243,6 +260,12 @@ namespace client
 
         engine::scene::Scene                                m_scene;
         std::unordered_map<std::string, LoadedAsset>        m_assetCache;
+
+        // 지형 높이맵 — scene.terrainHeightmapPath 가 있으면 로드, 없으면 비어있음(절차적 폴백).
+        //   m_terrainMesh: __Terrain__ 자산 메시 raw 포인터(m_assetCache 소유) — 스컬프트 시
+        //   FillGridVertices → UpdateVertices 로 in-place 재업로드. m_terrainDevice: 미사용(VB 재-map).
+        engine::render::HeightMap                           m_heightMap;
+        engine::render::Mesh*                               m_terrainMesh   = nullptr;
 
         // 별도 클립 FBX 캐시 — Mixamo without-skin 등 메시 없이 클립만 있는 자산.
         // 키: MeshInstance.animationClipPath (빈 문자열이면 미사용).

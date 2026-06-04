@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 namespace engine::render
@@ -111,6 +112,12 @@ namespace editor
         // 반환 true: rayDir.y 가 평행 아니고 t>=0 (카메라 앞쪽).
         // 배치(brush) 워크플로우용 — 외부 좌표는 ImGui::GetMousePos - ItemRectMin 으로 계산.
         bool RaycastToGround(float screenX, float screenY, DirectX::XMFLOAT3& outWorld) const noexcept;
+
+        // 화면 좌표 → 높이필드 표면 hit. sampleHeight(x,z) 로 평면 교차를 반복 정제(iterative)해
+        //   기복 있는 지형에서도 커서 아래 표면 XZ 를 근사. 지형 스컬프트 브러시 배치용.
+        bool RaycastToHeightField(float screenX, float screenY,
+                                  const std::function<float(float, float)>& sampleHeight,
+                                  DirectX::XMFLOAT3& outWorld) const noexcept;
 
         // 화면 좌표 (RTT 내부, 좌상단 0,0) → refWorld 를 지나는 *카메라-수직 평면* 위 world 점.
         // IK 드래그 타겟 산출용 — 끌고 있는 끝 관절의 카메라 깊이를 유지하며 커서를 따라간다.

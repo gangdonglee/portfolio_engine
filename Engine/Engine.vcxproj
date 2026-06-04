@@ -114,6 +114,7 @@
     <ClCompile Include="render\StructuredBuffer.cpp" />
     <ClCompile Include="render\DebugRenderer.cpp" />
     <ClCompile Include="render\ProceduralTerrain.cpp" />
+    <ClCompile Include="render\HeightMap.cpp" />
     <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
@@ -157,6 +158,7 @@
     <ClInclude Include="render\StructuredBuffer.h" />
     <ClInclude Include="render\DebugRenderer.h" />
     <ClInclude Include="render\ProceduralTerrain.h" />
+    <ClInclude Include="render\HeightMap.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />
     <ClInclude Include="scene\Scene.h" />

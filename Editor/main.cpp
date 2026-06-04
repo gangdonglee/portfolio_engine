@@ -11,12 +11,15 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "AnimatorGraph.h"
@@ -131,6 +134,12 @@ namespace
         fill.color       = { 0.4f, 0.55f, 0.85f };
         fill.intensity   = 0.6f;
         s.dirLights.push_back(std::move(fill));
+
+        // 지형 — 스컬프트 대상. terrainHeightmapPath 비어있으면 절차적, 첫 스컬프트 시 베이크.
+        engine::scene::MeshInstance terrain;
+        terrain.name          = "Terrain";
+        terrain.meshAssetPath = "__Terrain__";
+        s.meshes.push_back(std::move(terrain));
 
         return s;
     }
@@ -380,6 +389,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
         bool ikMode      = false;
         int  ikChainLen  = 2;     // 굽힐 부모 관절 수 (2 = two-bone IK, 손→팔꿈치+어깨).
 
+        // 지형 스컬프트 — terrainSculpt=true 면 Viewport LMB 드래그로 높이맵 편집.
+        bool  terrainSculpt   = false;
+        int   terrainBrush    = 0;       // 0=raise, 1=lower, 2=smooth
+        float terrainRadius   = 250.0f;  // world units
+        float terrainStrength = 8.0f;    // raise/lower: world units/적용, smooth: 0..1
+
         std::array<std::uint64_t, kFrameCount> frameFenceValues{};
         std::uint32_t frameIndex = 0;
 
@@ -527,6 +542,53 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
             }
             ImGui::End();
 
+            // === Terrain 패널 — 높이맵 스컬프트 ===
+            //   Sculpt 모드 ON 후 Viewport 에서 LMB 드래그 → 지형 편집(실시간 메시 갱신).
+            //   Heightmap 저장 → .hmap 기록 + scene.terrainHeightmapPath 설정(Scene 저장 시 영속).
+            if (ImGui::Begin("Terrain"))
+            {
+                if (ImGui::Checkbox("Sculpt 모드 (Viewport LMB 드래그)", &terrainSculpt)
+                    && terrainSculpt && sceneRuntime)
+                {
+                    // 스컬프트 켤 때 카메라를 지형에 프레이밍 (캐릭터 스케일 기본은 너무 가까움).
+                    viewport.FocusOn(DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f },
+                                     sceneRuntime->TerrainHalfExtent() * 0.55f);
+                }
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("켜면 Viewport 에서 좌클릭 드래그로 지형을 조각.\n"
+                                      "RMB=카메라 회전, 휠=줌. 첫 편집 시 절차적 지형을 베이크.");
+                }
+                const char* brushes[] = { "Raise (올리기)", "Lower (내리기)", "Smooth (다듬기)" };
+                ImGui::Combo("브러시", &terrainBrush, brushes, 3);
+                ImGui::SliderFloat("반경", &terrainRadius, 20.0f, 1200.0f, "%.0f");
+                ImGui::SliderFloat("강도", &terrainStrength, 5.0f, 400.0f, "%.0f");
+                ImGui::Separator();
+                if (ImGui::Button("Heightmap 저장") && sceneRuntime)
+                {
+                    std::error_code ec;
+                    std::filesystem::create_directories("assets", ec);
+                    const std::string rel = "assets/terrain.hmap";
+                    sceneRuntime->EnsureTerrainHeightMap();   // 빈 상태면 절차적 베이크
+                    if (sceneRuntime->SaveTerrainHeightMap(rel))
+                    {
+                        activeScene.terrainHeightmapPath = rel;
+                        modified   = true;
+                        lastStatus = "Heightmap 저장됨: " + rel + " (Scene 도 저장해 경로 기록)";
+                    }
+                    else { lastStatus = "Heightmap 저장 실패"; }
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled(sceneRuntime && sceneRuntime->HasTerrainHeightMap()
+                                        ? "(편집됨)" : "(절차적)");
+                ImGui::TextWrapped("저장 후 File>Save 로 Scene 을 저장해야 클라이언트가 로드합니다.");
+                if (!activeScene.terrainHeightmapPath.empty())
+                {
+                    ImGui::TextDisabled("heightmap: %s", activeScene.terrainHeightmapPath.c_str());
+                }
+            }
+            ImGui::End();
+
             // === Animator 패널 ===
             // 선택된 MeshInstance 의 animatorControllerPath 가 가리키는 .animator.json 을
             // 로드해 파라미터 / state / transition 표시 + 편집. Float/Bool/Trigger 위젯의
@@ -632,12 +694,57 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                         ImGui::EndDragDropTarget();
                     }
 
-                    // LMB 클릭 — 브러시 모드면 배치 (본 picking 은 IK 탭 전용).
-                    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) &&
+                    // LMB 클릭 — 브러시 모드면 배치 (본 picking 은 IK 탭 전용). Sculpt 중엔 억제.
+                    if (!terrainSculpt && ImGui::IsItemClicked(ImGuiMouseButton_Left) &&
                         !assetBrowserState.brushMeshPath.empty())
                     {
                         const ImVec2 mp = ImGui::GetMousePos();
                         placeAt(assetBrowserState.brushMeshPath, mp.x - imageOrigin.x, mp.y - imageOrigin.y);
+                    }
+
+                    // === 지형 스컬프트 — LMB 드래그(호버 시). RMB 는 카메라 회전이라 제외. ===
+                    if (terrainSculpt)
+                    {
+                        const ImVec2 mp = ImGui::GetMousePos();
+                        const float sx = mp.x - imageOrigin.x;
+                        const float sy = mp.y - imageOrigin.y;
+                        DirectX::XMFLOAT3 hit{};
+                        const bool gotHit = viewport.RaycastToHeightField(
+                            sx, sy,
+                            [&](float x, float z) { return sceneRuntime->SampleGround(x, z); },
+                            hit);
+
+                        if (gotHit && hovered &&
+                            ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+                            !ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                        {
+                            const float dt = io2.DeltaTime > 0.0f ? io2.DeltaTime : 0.016f;
+                            const float s  = (terrainBrush == 2)
+                                ? std::min(terrainStrength * dt * 0.1f, 1.0f)   // smooth: 0..1 factor
+                                : terrainStrength * dt;                          // raise/lower: units/s·dt
+                            sceneRuntime->SculptTerrain(hit.x, hit.z, terrainRadius, s, terrainBrush);
+                            modified = true;
+                        }
+
+                        // 브러시 커서 — hit 중심 원 (world 반경을 화면에 투영해 픽셀 반경 근사).
+                        if (gotHit && hovered)
+                        {
+                            float cx = 0.0f, cy = 0.0f, ex = 0.0f, ey = 0.0f;
+                            const DirectX::XMFLOAT3 edge{ hit.x + terrainRadius, hit.y, hit.z };
+                            if (viewport.WorldToScreen(hit, cx, cy) &&
+                                viewport.WorldToScreen(edge, ex, ey))
+                            {
+                                const float rpix = std::hypot(ex - cx, ey - cy);
+                                ImDrawList* dl = ImGui::GetWindowDrawList();
+                                const ImU32 col = (terrainBrush == 1)
+                                    ? IM_COL32(120, 180, 255, 220)    // lower=파랑
+                                    : (terrainBrush == 2)
+                                        ? IM_COL32(200, 200, 200, 220) // smooth=회색
+                                        : IM_COL32(255, 210, 80, 220); // raise=노랑
+                                dl->AddCircle(ImVec2{ imageOrigin.x + cx, imageOrigin.y + cy },
+                                              rpix, col, 40, 2.0f);
+                            }
+                        }
                     }
 
                     // ESC → 브러시 해제 (Viewport 호버 시).

@@ -126,6 +126,16 @@ namespace client
                                      std::to_string(kPointLightCapacity) + " 초과");
         }
 
+        // 지형 높이맵 로드 — scene.terrainHeightmapPath 가 있으면. 실패해도 절차적 폴백(throw 안 함).
+        if (!m_scene.terrainHeightmapPath.empty())
+        {
+            const std::string hmPath =
+                std::filesystem::absolute(std::filesystem::path{ m_scene.terrainHeightmapPath }).string();
+            engine::render::HeightMap hm;
+            if (engine::render::HeightMap::Load(hmPath, hm)) { m_heightMap = std::move(hm); }
+            else { engine::core::LogInfoA("[SceneRuntime] heightmap 로드 실패 (절차적 폴백)"); }
+        }
+
         // 자산 캐시 — 확장자 분기.
         for (const auto& inst : m_scene.meshes)
         {
@@ -138,17 +148,19 @@ namespace client
 
             if (inst.meshAssetPath == "__Terrain__")
             {
-                // Procedural heightmap terrain — 절차적 mesh 생성 (FBX 로드 우회).
-                //   5000 × 5000 units, 100 × 100 segments = 10201 vertices / 20000 triangles.
-                //   기본 height func (sin/cos 합성). caller 가 width/height 커스터마이즈하려면
-                //   별도 path 토큰 (__Terrain_Large__ 등) 으로 분기 추가 가능.
-                asset.mesh = engine::render::procedural_terrain::Generate(
-                    device,
-                    /*width*/      5000.0f,
-                    /*depth*/      5000.0f,
-                    /*segmentsX*/  100,
-                    /*segmentsZ*/  100,
-                    engine::render::procedural_terrain::DefaultHeightFunc);
+                // 지형 메시 — 높이맵 있으면 그 데이터로, 없으면 절차적 sin/cos. 둘 다 동일 해상도
+                //   규약(kTerrainSeg)이라 EnsureTerrainHeightMap 베이크 후 UpdateVertices 정점수 일치.
+                float w = 5000.0f, d = 5000.0f;
+                int segX = 192, segZ = 192;
+                std::function<float(float, float)> hf =
+                    engine::render::procedural_terrain::DefaultHeightFunc;
+                if (!m_heightMap.Empty())
+                {
+                    w = m_heightMap.WorldWidth(); d = m_heightMap.WorldDepth();
+                    segX = m_heightMap.Cols() - 1; segZ = m_heightMap.Rows() - 1;
+                    hf = [this](float x, float z) { return m_heightMap.Sample(x, z); };
+                }
+                asset.mesh = engine::render::procedural_terrain::Generate(device, w, d, segX, segZ, hf);
             }
             else if (ext == ".fbx" || ext == ".FBX")
             {
@@ -172,7 +184,15 @@ namespace client
             }
 
             m_assetCache.emplace(inst.meshAssetPath, std::move(asset));
+            if (inst.meshAssetPath == "__Terrain__")
+            {
+                m_terrainMesh = m_assetCache.at(inst.meshAssetPath).mesh.get();
+            }
         }
+
+        // 통합 ground 샘플러 — 높이맵/절차적 자동 분기. 발 IK 가 이걸 쓰게 기본 연결
+        //   (Application 이 컨트롤러 샘플러도 SampleGround 로 연결). 외부 SetGroundSampler 로 덮어쓰기 가능.
+        m_groundSampler = [this](float x, float z) { return SampleGround(x, z); };
 
         // M1: animatorControllerPath 가 있는 *첫 번째* 인스턴스의 controller 활성화.
         //   - 베이스 스켈레톤 = 그 인스턴스의 meshAssetPath 의 skeleton.
@@ -398,6 +418,53 @@ namespace client
     }
 
     SceneRuntime::~SceneRuntime() = default;
+
+    // === 지형 높이맵 ===
+    float SceneRuntime::SampleGround(float x, float z) const noexcept
+    {
+        if (!m_heightMap.Empty()) { return m_heightMap.Sample(x, z); }
+        return engine::render::procedural_terrain::DefaultHeightFunc(x, z);
+    }
+
+    float SceneRuntime::TerrainHalfExtent() const noexcept
+    {
+        return (m_heightMap.Empty() ? 5000.0f : m_heightMap.WorldWidth()) * 0.5f;
+    }
+
+    void SceneRuntime::EnsureTerrainHeightMap()
+    {
+        if (!m_heightMap.Empty()) { return; }
+        // 현재 절차적 지형을 그리드로 베이크 — 기존 메시(192 seg)와 동일 해상도라 UpdateVertices 일치.
+        m_heightMap = engine::render::HeightMap::Bake(
+            193, 193, 5000.0f, 5000.0f,
+            engine::render::procedural_terrain::DefaultHeightFunc);
+        RegenerateTerrainMesh();
+    }
+
+    void SceneRuntime::RegenerateTerrainMesh()
+    {
+        if (m_terrainMesh == nullptr || m_heightMap.Empty()) { return; }
+        std::vector<engine::render::Mesh::Vertex> verts;
+        engine::render::procedural_terrain::FillGridVertices(
+            verts, m_heightMap.WorldWidth(), m_heightMap.WorldDepth(),
+            m_heightMap.Cols() - 1, m_heightMap.Rows() - 1,
+            [this](float x, float z) { return m_heightMap.Sample(x, z); });
+        m_terrainMesh->UpdateVertices(verts.data(), static_cast<engine::uint32>(verts.size()));
+    }
+
+    void SceneRuntime::SculptTerrain(float wx, float wz, float radius, float strength, int brush)
+    {
+        EnsureTerrainHeightMap();
+        const auto b = (brush == 1) ? engine::render::HeightMap::Brush::Lower
+                     : (brush == 2) ? engine::render::HeightMap::Brush::Smooth
+                                    : engine::render::HeightMap::Brush::Raise;
+        if (m_heightMap.Sculpt(wx, wz, radius, strength, b)) { RegenerateTerrainMesh(); }
+    }
+
+    bool SceneRuntime::SaveTerrainHeightMap(std::string_view path) const
+    {
+        return m_heightMap.Save(path);
+    }
 
     namespace
     {

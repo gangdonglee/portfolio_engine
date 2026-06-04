@@ -523,6 +523,46 @@ namespace editor
         return true;
     }
 
+    bool EditorViewport::RaycastToHeightField(
+        float screenX, float screenY,
+        const std::function<float(float, float)>& sampleHeight,
+        DirectX::XMFLOAT3& outWorld) const noexcept
+    {
+        using namespace DirectX;
+        if (m_width == 0 || m_height == 0) { return false; }
+
+        const float ndcX = (screenX / static_cast<float>(m_width))  * 2.0f - 1.0f;
+        const float ndcY = 1.0f - (screenY / static_cast<float>(m_height)) * 2.0f;
+
+        const XMMATRIX viewProj = m_camera->ViewProjection();
+        XMVECTOR det;
+        const XMMATRIX invVP = XMMatrixInverse(&det, viewProj);
+        if (XMVectorGetX(det) == 0.0f) { return false; }
+
+        XMVECTOR nearW = XMVector4Transform(XMVectorSet(ndcX, ndcY, 0.0f, 1.0f), invVP);
+        XMVECTOR farW  = XMVector4Transform(XMVectorSet(ndcX, ndcY, 1.0f, 1.0f), invVP);
+        nearW = XMVectorDivide(nearW, XMVectorSplatW(nearW));
+        farW  = XMVectorDivide(farW,  XMVectorSplatW(farW));
+        const XMVECTOR rayDir = XMVector3Normalize(XMVectorSubtract(farW, nearW));
+        const float dirY  = XMVectorGetY(rayDir);
+        const float nearY = XMVectorGetY(nearW);
+        if (std::abs(dirY) < 1e-6f) { return false; }
+
+        // 수평 평면 y=Y 교차를 반복 정제 — 표면 높이로 평면을 갱신해 기복 지형에 수렴.
+        float surfaceY = 0.0f;
+        XMVECTOR p = XMVectorZero();
+        for (int it = 0; it < 4; ++it)
+        {
+            const float t = (surfaceY - nearY) / dirY;
+            if (t < 0.0f) { return false; }
+            p = XMVectorAdd(nearW, XMVectorScale(rayDir, t));
+            surfaceY = sampleHeight(XMVectorGetX(p), XMVectorGetZ(p));
+        }
+        XMStoreFloat3(&outWorld, p);
+        outWorld.y = surfaceY;
+        return true;
+    }
+
     bool EditorViewport::ScreenToWorldAtDepth(float screenX, float screenY,
                                               const DirectX::XMFLOAT3& refWorld,
                                               DirectX::XMFLOAT3& outWorld) const noexcept

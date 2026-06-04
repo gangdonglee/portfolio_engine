@@ -1,14 +1,16 @@
 #pragma once
 
+#include "render/Mesh.h"
+
 #include <DirectXMath.h>
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace engine::render
 {
     class Device;
-    class Mesh;
 
     // Procedural heightmap terrain — 그리드 mesh + 정점별 height/normal.
     //   Mesh 생성 시간 비용 적음 (CPU 측 정점 채움). 추후 GPU compute 로 옮길 수 있음.
@@ -18,6 +20,17 @@ namespace engine::render
         // heightFunc(x, z) → y. caller 가 단순 sin/cos 또는 Perlin noise 등 전달.
         std::unique_ptr<Mesh> Generate(
             Device&                                  device,
+            float                                    widthUnits,
+            float                                    depthUnits,
+            int                                      segmentsX,
+            int                                      segmentsZ,
+            const std::function<float(float, float)>& heightFunc,
+            const DirectX::XMFLOAT3&                 tintColor = { 0.45f, 0.55f, 0.35f });
+
+        // 그리드 정점(위치+유한차분 노멀+uv+color) 채움 — Generate 와 라이브 스컬프트(Mesh::
+        //   UpdateVertices) 가 공유. out 은 (segmentsX+1)*(segmentsZ+1) 으로 resize 됨.
+        void FillGridVertices(
+            std::vector<Mesh::Vertex>&               out,
             float                                    widthUnits,
             float                                    depthUnits,
             int                                      segmentsX,

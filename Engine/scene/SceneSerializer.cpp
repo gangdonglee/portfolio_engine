@@ -46,6 +46,7 @@ namespace engine::scene
         json root;
         root["name"]    = scene.name;
         root["ambient"] = ToArray(scene.ambient);
+        if (!scene.terrainHeightmapPath.empty()) { root["terrainHeightmap"] = scene.terrainHeightmapPath; }
 
         json camStart;
         camStart["position"] = ToArray(scene.cameraStart.position);
@@ -159,6 +160,7 @@ namespace engine::scene
         Scene scene;
         if (auto it = root.find("name");    it != root.end() && it->is_string()) { scene.name = it->get<std::string>(); }
         if (auto it = root.find("ambient"); it != root.end()) { scene.ambient = ParseFloat3(*it, scene.ambient); }
+        if (auto it = root.find("terrainHeightmap"); it != root.end() && it->is_string()) { scene.terrainHeightmapPath = it->get<std::string>(); }
 
         if (auto it = root.find("cameraStart"); it != root.end() && it->is_object())
         {

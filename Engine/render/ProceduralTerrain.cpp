@@ -19,8 +19,8 @@ namespace engine::render::procedural_terrain
         return h;
     }
 
-    std::unique_ptr<Mesh> Generate(
-        Device&                                   device,
+    void FillGridVertices(
+        std::vector<Mesh::Vertex>&                out,
         float                                     widthUnits,
         float                                     depthUnits,
         int                                       segmentsX,
@@ -33,9 +33,7 @@ namespace engine::render::procedural_terrain
 
         const int vx = segmentsX + 1;
         const int vz = segmentsZ + 1;
-
-        std::vector<Mesh::Vertex> verts;
-        verts.reserve(static_cast<std::size_t>(vx) * static_cast<std::size_t>(vz));
+        out.resize(static_cast<std::size_t>(vx) * static_cast<std::size_t>(vz));
 
         const float halfW = widthUnits * 0.5f;
         const float halfD = depthUnits * 0.5f;
@@ -68,9 +66,27 @@ namespace engine::render::procedural_terrain
                                static_cast<float>(iz) / static_cast<float>(segmentsZ) };
                 v.color    = tintColor;
                 // boneIndices / boneWeights default zero — no skinning.
-                verts.push_back(v);
+                out[static_cast<std::size_t>(iz) * vx + ix] = v;
             }
         }
+    }
+
+    std::unique_ptr<Mesh> Generate(
+        Device&                                   device,
+        float                                     widthUnits,
+        float                                     depthUnits,
+        int                                       segmentsX,
+        int                                       segmentsZ,
+        const std::function<float(float, float)>& heightFunc,
+        const DirectX::XMFLOAT3&                  tintColor)
+    {
+        if (segmentsX < 1) { segmentsX = 1; }
+        if (segmentsZ < 1) { segmentsZ = 1; }
+
+        const int vx = segmentsX + 1;   // 행 stride (인덱스용). 정점 채움은 FillGridVertices.
+
+        std::vector<Mesh::Vertex> verts;
+        FillGridVertices(verts, widthUnits, depthUnits, segmentsX, segmentsZ, heightFunc, tintColor);
 
         // Indices — 각 quad 를 2 triangle 로. Winding 은 엔진의 기존 mesh 패턴 (CCW 또는 CW) 일치 필요.
         // FbxLoader 가 생성한 mesh 가 정상 표시되는 winding 과 맞춰서 시도 → 안 보이면 swap.

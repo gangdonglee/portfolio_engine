@@ -72,6 +72,10 @@ namespace engine::render
         // VertexBuffer 만 IA 단계에 바인딩. SubMesh 의 IB 는 각 Draw 호출 시 자체적으로 바인딩.
         void BindVertexBuffer(ID3D12GraphicsCommandList* list) const;
 
+        // 정점 데이터 in-place 갱신 (UPLOAD heap 재-map). topology(인덱스) 불변 — 지형 스컬프트처럼
+        //   정점 위치/노멀만 바뀌는 라이브 편집용. vertexCount 는 생성 시 capacity 이하.
+        void UpdateVertices(const Vertex* vertices, uint32 vertexCount);
+
         // 모든 SubMesh 를 순회하며 머티리얼 SRV 바인딩 + DrawIndexed.
         // rootParamMaterialTable: SetGraphicsRootDescriptorTable 의 root parameter 인덱스.
         // defaultSrvGpu: 머티리얼에 albedoTexture 가 없을 때 사용할 폴백 SRV (예: 1x1 흰색).

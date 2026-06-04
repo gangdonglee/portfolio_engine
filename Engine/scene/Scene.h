@@ -88,5 +88,8 @@ namespace engine::scene
         std::vector<PointLight>       pointLights;
         DirectX::XMFLOAT3             ambient{ 0.15f, 0.15f, 0.18f };
         CameraStart                   cameraStart;
+        // 지형 높이맵 (.hmap) 경로 — 비어있으면 절차적 sin/cos 지형. 에디터가 스컬프트해 저장,
+        //   런타임이 로드해 "__Terrain__" 메시 + ground 샘플러 생성. assets/ 기준 상대 경로 권장.
+        std::string                   terrainHeightmapPath;
     };
 }

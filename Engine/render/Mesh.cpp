@@ -100,6 +100,11 @@ namespace engine::render
         m_vb->Bind(list);
     }
 
+    void Mesh::UpdateVertices(const Vertex* vertices, uint32 vertexCount)
+    {
+        m_vb->Update(vertices, static_cast<uint32>(vertexCount * sizeof(Vertex)));
+    }
+
     void Mesh::DrawAll(ID3D12GraphicsCommandList* list,
                        uint32                     rootParamMaterialTable,
                        D3D12_GPU_DESCRIPTOR_HANDLE defaultSrvGpu,

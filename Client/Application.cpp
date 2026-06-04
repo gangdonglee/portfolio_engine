@@ -508,14 +508,17 @@ namespace client
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(scene));
         m_sceneRuntime->SetApplyTonemap(false);   // 게임: 선형 HDR → bloom composite 가 톤맵
 
-        // Foot IK 의 ground sampler — procedural terrain 와 동일 height func.
-        m_sceneRuntime->SetGroundSampler(
-            [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+        // Foot IK ground sampler 는 SceneRuntime 가 ctor 에서 SampleGround(높이맵/절차적 자동)로
+        //   자체 설정 → 별도 SetGroundSampler 불필요. 발 IK 만 켠다.
         m_sceneRuntime->SetFootIKEnabled(true);   // 런타임 지면 적응 — 두 발이 terrain 표면에 안착.
 
-        // Player CharacterController 도 같은 ground sampler — terrain 따라 캐릭터 transform.y 갱신.
-        m_player->Controller().SetGroundSampler(
-            [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+        // Player CharacterController 도 같은 통합 ground sampler (SampleGround) — 높이맵 편집이
+        //   캐릭터 접지에도 반영. SceneRuntime 수명이 컨트롤러보다 길어 raw capture 안전.
+        {
+            client::SceneRuntime* sr = m_sceneRuntime.get();
+            m_player->Controller().SetGroundSampler(
+                [sr](float x, float z) { return sr->SampleGround(x, z); });
+        }
 
         // Player 의 transform 바인딩 — AnimatorInstanceTransform() 이 nullptr 면 silent unbound.
         m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
@@ -633,14 +636,15 @@ namespace client
             *m_device, *m_queue, *m_bootCmdList, *m_srvHeap, std::move(newScene));
         m_sceneRuntime->SetApplyTonemap(false);   // 게임: 선형 HDR → bloom composite 가 톤맵
 
-        // Ground sampler — terrain height func.
-        m_sceneRuntime->SetGroundSampler(
-            [](float x, float z) { return engine::render::procedural_terrain::SampleDefaultHeight(x, z); });
+        // Ground sampler 는 SceneRuntime 자체 설정(SampleGround). 발 IK 만 켠다.
         m_sceneRuntime->SetFootIKEnabled(true);   // 런타임 지면 적응.
 
         // Player 의 transform 재바인딩 — 기존 instance 가 폐기되었으므로 새 ptr 로 갱신.
         if (m_player)
         {
+            client::SceneRuntime* sr = m_sceneRuntime.get();
+            m_player->Controller().SetGroundSampler(
+                [sr](float x, float z) { return sr->SampleGround(x, z); });
             m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
         }
 
