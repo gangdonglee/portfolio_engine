@@ -838,6 +838,7 @@ namespace client
             const float alpha = std::min(1.0f, dt * smoothingRate);
             m_currentSpeed += (target - m_currentSpeed) * alpha;
             m_sceneRuntime->SetAnimatorFloat("Speed", m_currentSpeed);
+            m_sceneRuntime->SetFootIKLocomotion(m_currentSpeed);   // bodyLower 수렴 속도 게이트(정지 빠름)
 
             // Foot IK weight = full(1.0). 달리기 "끊김" 의 원인은 발 IK 가 아니라 controller 가 매
             //   frame 지면 Y 로 즉시 snap 하던 것(이제 CharacterController 가 부드럽게 보간) →

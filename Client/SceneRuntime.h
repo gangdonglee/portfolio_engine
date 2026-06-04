@@ -152,6 +152,9 @@ namespace client
         // Foot IK 전역 weight (0..1) — 호출자(게임)가 *이동 속도* 로 페이드. 빠른 달리기에선 낮춰
         //   IK 간섭을 줄임(발이 너무 빨라 IK 가 득보다 실 — 프로덕션 표준). 보정량·무릎굽힘에 곱해짐.
         void SetFootIKWeight   (float w) noexcept { m_footIKWeight = (w < 0.0f) ? 0.0f : (w > 1.0f ? 1.0f : w); }
+        // 이동 속도(0=idle..1=run) — bodyLower 수렴 속도 게이트. 정지 시엔 빠르게 복귀(걷다 멈춘 직후
+        //   골반이 내려간 채 머무는 "이상한 idle" 방지), 보행 중엔 느리게(덜그럭 방지).
+        void SetFootIKLocomotion(float s) noexcept { m_footIKLocomotion = (s < 0.0f) ? 0.0f : s; }
         bool FootIKEnabled     () const noexcept       { return m_footIKEnabled; }
         void SetFootIKConfig   (const engine::anim::FootIKConfig& cfg);
         const engine::anim::FootIKConfig&  FootIKConfigRef() const noexcept;
@@ -308,6 +311,7 @@ namespace client
         float                                           m_footIKBodyLower     = 0.0f; // 낮은 발이 닿게 몸(root) 하강량 — leg-reach deficit 음의되먹임
         float                                           m_footIKDefSmooth     = 0.0f; // deficit 저역통과 — gait phase 노이즈 제거(보행 중 발 덜그럭 방지)
         DirectX::XMFLOAT3                                m_footIKNormalSmooth[2] = { {0.0f,1.0f,0.0f}, {0.0f,1.0f,0.0f} }; // 발[L,R] 정렬 normal 시간축 평활(발바닥 tilt 덜그럭 방지)
+        float                                           m_footIKLocomotion    = 0.0f; // 이동 속도(0..1) — bodyLower 수렴속도 게이트(정지 빠름/보행 느림)
 
         // 본 수동 포징 — boneIdx → 누적 모델공간 회전 (quaternion). Tick 의 Update 직후
         //   각 본 subtree 에 rotate-about-pivot 적용 (BuildPalette 결과 덮어씀).

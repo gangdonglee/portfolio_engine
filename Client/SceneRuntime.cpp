@@ -864,6 +864,10 @@ namespace client
         // 실제 적용 root lift = kRootLift − bodyLower. 낮은 발이 다리 길이로 못 닿으면 몸을 내려(bodyLower)
         //   닿게 함. solveLeg(목표 = ground+aboveToe−effectiveLift)·최종 translate 모두 이 값을 씀.
         float effectiveLift = kRootLift;
+        // 이동 게이트 — 정지(idle)면 0, 보행이면 1. *idle 엔 발 IK 의 다리 조정(per-foot 보정 + bodyLower)
+        //   을 0 으로 페이드* → 다리가 깨끗한 애니 idle 포즈(곧음). 경사 idle 에서 발이 살짝 뜨더라도
+        //   "걷다 멈췄을 때 무릎 굽은 이상한 idle" 보다 곧은 자세가 사용자 선호. root lift 는 유지(발 배치).
+        const float loco = std::clamp(m_footIKLocomotion / 0.15f, 0.0f, 1.0f);
 
         auto bonePos = [&](int b) -> XMVECTOR {
             const XMFLOAT4X4& m = m_animatorRuntime->BoneGlobal()[static_cast<size_t>(b)];
@@ -972,7 +976,7 @@ namespace client
             }
             const float plantGround   = std::max(groundUnderToe, groundAtAnkle);
             const float desiredAnkleY = plantGround + ankleAboveToe - effectiveLift;
-            const float blend         = cfg.weight * pw * m_footIKWeight;
+            const float blend         = cfg.weight * pw * m_footIKWeight * loco;   // idle 엔 0(곧은 애니 다리)
             const float rawCorr       = (desiredAnkleY - ay) * blend;
             // *temporal smoothing* — 보정량을 프레임간 lerp(달리기 plant↔swing 전환에서 발 *툭* 튐 방지).
             //   swing 땐 blend≈0 → rawCorr≈0 → 보정이 0 으로 부드럽게 감쇠. pw<0.05 라도 early-out 없이
@@ -1167,14 +1171,17 @@ namespace client
         //   되먹임에 넣으면 몸이 매 스텝 따라 출렁여 발이 덜그럭. → deficit 를 먼저 저역통과(tau 0.35,
         //   스텝 주기 0.5s 보다 길어 gait 제거)해 *지형 추세만* 남긴 뒤 누적 보정. 지속 고저차(실제
         //   내리막)는 통과 → 발 접지 유지. gait ripple 만 제거 → 덜그럭 사라짐.
-        const float aDef = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / 0.55f);   // tau 0.55 — 보폭(stride) 성분까지 평균화
+        // **수렴 속도를 이동 속도로 게이트** — 보행 중엔 느리게(stride 평균화 tau 0.55 + rate 2u/s →
+        //   덜그럭 방지), *정지 시엔 빠르게*(tau 0.10 + rate 10u/s). 걷다 멈추면 bodyLower 가 walk 값
+        //   (~6)에서 idle 값(~0)으로 *빠르게* 복귀 → 골반 내려간 채(무릎 굽은 채) 머무는 "이상한 idle"
+        //   해소. 정지엔 지면 일정·gait 없어 빠른 수렴이 떨림을 안 만든다.
+        const float tauDef = 0.10f + (0.55f - 0.10f) * loco;                       // idle 빠름, walk 느림
+        const float kRate  = 10.0f + (2.0f - 10.0f) * loco;                        // idle 10, walk 2 u/s
+        const float aDef = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / tauDef);
         m_footIKDefSmooth += (defMax - m_footIKDefSmooth) * aDef;
-        const float target = std::clamp(m_footIKBodyLower + m_footIKDefSmooth, 0.0f, kMaxBodyLower);
-        // rate limit — 몸 수직 *속도* 를 ≤kRate u/s 로 하드 캡. "덜그럭"=빠른 상하 운동이라 속도를 묶는
-        //   게 가장 직접적. deficit 가 이미 평활(tau 0.55)이라 target 도 부드러움 → 천천히 수렴.
-        //   (프레임당 고정 step 은 uncapped fps 서 무력 → 반드시 dt 기반.)
-        const float kRate    = 2.0f;   // u/s — 더 느리게(보행 중 몸 거의 정지, 덜그럭 추가 억제)
-        const float maxStep  = kRate * std::clamp(dt, 0.0f, 0.1f);
+        // *idle 엔 target→0* (loco 곱) → 골반 안 내림(곧은 다리). 보행엔 full deficit 보정.
+        const float target  = std::clamp(m_footIKBodyLower + m_footIKDefSmooth, 0.0f, kMaxBodyLower) * loco;
+        const float maxStep = kRate * std::clamp(dt, 0.0f, 0.1f);
         m_footIKBodyLower += std::clamp(target - m_footIKBodyLower, -maxStep, maxStep);
         effectiveLift = kRootLift - m_footIKBodyLower;
 
