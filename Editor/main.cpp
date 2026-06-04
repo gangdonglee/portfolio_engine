@@ -333,8 +333,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
         // === Editor Viewport — RTT + 오빗 카메라 + Boot CmdList + Fallback Tex ===
         // world 뷰 (배치/조작) 와 IK 뷰 (본 편집) 를 분리 — 같은 center dock 의 탭으로 두어
         //   한 프레임에 활성 탭 하나만 렌더 (SceneRuntime cbuffer 공유 충돌 회피).
-        editor::EditorViewport viewport(device, commandQueue, srvHeap);
-        editor::EditorViewport ikViewport(device, commandQueue, srvHeap);
+        // postSlotBase 분리 — 두 viewport 의 HDR/bloom SRV 예약 슬롯 충돌 방지 (63/62/61, 60/59/58).
+        editor::EditorViewport viewport(device, commandQueue, srvHeap, 63);
+        editor::EditorViewport ikViewport(device, commandQueue, srvHeap, 60);
         viewport.SetShowSkeleton(false);    // world 뷰: 본 오버레이 숨김 (배치 전용)
         ikViewport.SetShowSkeleton(true);   // IK 뷰: 본 오버레이 표시
 
@@ -504,6 +505,25 @@ int APIENTRY wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
                     if (sceneRuntime) { sceneRuntime->SyncEditableFieldsFrom(activeScene); }
                 }
                 if (ir.needRebuild) { needSceneRebuild = true; }
+            }
+            ImGui::End();
+
+            // 포스트프로세싱(bloom) 조절 — world/IK viewport 동기화.
+            if (ImGui::Begin("Render Settings"))
+            {
+                ImGui::Text("Post-Processing (Bloom)");
+                float th = viewport.BloomThreshold();
+                float in = viewport.BloomIntensity();
+                bool  ch = false;
+                ch |= ImGui::SliderFloat("bloom threshold", &th, 0.0f, 3.0f);
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("이 휘도 이상만 번짐"); }
+                ch |= ImGui::SliderFloat("bloom intensity", &in, 0.0f, 3.0f);
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("bloom 합성 세기. 0=끔"); }
+                if (ch)
+                {
+                    viewport.BloomThreshold()   = th;  viewport.BloomIntensity()   = in;
+                    ikViewport.BloomThreshold() = th;  ikViewport.BloomIntensity() = in;
+                }
             }
             ImGui::End();
 

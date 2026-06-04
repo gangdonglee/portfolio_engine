@@ -3,10 +3,12 @@
 #include "render/Camera.h"
 #include "render/CommandList.h"
 #include "render/CommandQueue.h"
+#include "render/ConstantBuffer.h"
 #include "render/DebugRenderer.h"
 #include "render/DepthStencilBuffer.h"
 #include "render/Device.h"
 #include "render/PipelineState.h"
+#include "render/RenderTexture.h"
 #include "render/RootSignature.h"
 #include "render/ShaderCompiler.h"
 #include "render/SrvDescriptorHeap.h"
@@ -29,7 +31,34 @@ namespace editor
     namespace
     {
         constexpr DXGI_FORMAT kRttFormat   = DXGI_FORMAT_R8G8B8A8_UNORM;
+        constexpr DXGI_FORMAT kHdrFormat   = DXGI_FORMAT_R16G16B16A16_FLOAT;
         constexpr DXGI_FORMAT kDepthFormat = DXGI_FORMAT_D32_FLOAT;
+
+        struct SkyConstants
+        {
+            DirectX::XMFLOAT4X4 invViewProj;
+            DirectX::XMFLOAT3   cameraPosWS;  float _p0;
+            DirectX::XMFLOAT3   sunDirWS;     float _p1;
+        };
+        struct PostConstants
+        {
+            DirectX::XMFLOAT2 texelSize;
+            DirectX::XMFLOAT2 blurDir;
+            float             threshold;
+            float             bloomIntensity;
+            DirectX::XMFLOAT2 _pad;
+        };
+        void TransitionRes(ID3D12GraphicsCommandList* list, ID3D12Resource* res,
+                           D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+        {
+            D3D12_RESOURCE_BARRIER b{};
+            b.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            b.Transition.pResource   = res;
+            b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            b.Transition.StateBefore = before;
+            b.Transition.StateAfter  = after;
+            list->ResourceBarrier(1, &b);
+        }
         constexpr float       kNearPlane   = 1.0f;
         constexpr float       kFarPlane    = 5000.0f;
         constexpr float       kClearColor[4] = { 0.05f, 0.07f, 0.10f, 1.0f };
@@ -40,10 +69,12 @@ namespace editor
 
     EditorViewport::EditorViewport(engine::render::Device&            device,
                                    engine::render::CommandQueue&      queue,
-                                   engine::render::SrvDescriptorHeap& srvHeap)
+                                   engine::render::SrvDescriptorHeap& srvHeap,
+                                   std::uint32_t                      postSlotBase)
         : m_device (device)
         , m_queue  (queue)
         , m_srvHeap(srvHeap)
+        , m_postSlotBase(postSlotBase)
     {
         // === RTV 디스크립터 힙 (1슬롯) ===
         D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{};
@@ -90,9 +121,64 @@ namespace editor
         psoDesc.vertexShader  = m_vsBlob.Get();
         psoDesc.pixelShader   = m_psBlob.Get();
         psoDesc.rootSignature = m_rootSig.get();
-        psoDesc.rtvFormat     = kRttFormat;
+        psoDesc.rtvFormat     = kHdrFormat;   // 씬을 HDR RT 에 → bloom
         psoDesc.dsvFormat     = kDepthFormat;
         m_pso = std::make_unique<engine::render::PipelineState>(m_device, psoDesc);
+
+        // === 포스트프로세싱 (skybox + bloom) ===
+        // HDR 씬 타깃 + bloom ping-pong (SRV 예약 슬롯: base, base-1, base-2).
+        m_hdrScene = std::make_unique<engine::render::RenderTexture>(
+            m_device, m_srvHeap, m_postSlotBase,     m_width, m_height, kHdrFormat);
+        const std::uint32_t bw0 = (m_width  > 1) ? m_width  / 2 : 1;
+        const std::uint32_t bh0 = (m_height > 1) ? m_height / 2 : 1;
+        m_bloomA = std::make_unique<engine::render::RenderTexture>(
+            m_device, m_srvHeap, m_postSlotBase - 1, bw0, bh0, kHdrFormat);
+        m_bloomB = std::make_unique<engine::render::RenderTexture>(
+            m_device, m_srvHeap, m_postSlotBase - 2, bw0, bh0, kHdrFormat);
+
+        // skybox.
+        m_skyVs = engine::render::ShaderCompiler::CompileFromFile(
+            (shaderDir + L"Skybox.hlsl").c_str(), "VSMain", engine::render::ShaderCompiler::Stage::Vertex);
+        m_skyPs = engine::render::ShaderCompiler::CompileFromFile(
+            (shaderDir + L"Skybox.hlsl").c_str(), "PSMain", engine::render::ShaderCompiler::Stage::Pixel);
+        engine::render::RootSignature::Desc skyRs{};
+        skyRs.cbvAtB0 = engine::render::RootSignature::Desc::CbvB0::All;
+        m_skyRootSig = std::make_unique<engine::render::RootSignature>(m_device, skyRs);
+        {
+            engine::render::PipelineState::Desc d{};
+            d.vertexShader = m_skyVs.Get(); d.pixelShader = m_skyPs.Get();
+            d.rootSignature = m_skyRootSig.get();
+            d.rtvFormat = kHdrFormat; d.dsvFormat = kDepthFormat; d.fullscreenSky = true;
+            m_skyPso = std::make_unique<engine::render::PipelineState>(m_device, d);
+        }
+
+        // bloom post.
+        const std::wstring postPath = shaderDir + L"PostProcess.hlsl";
+        m_postVs      = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "FullscreenVS", engine::render::ShaderCompiler::Stage::Vertex);
+        m_brightPs    = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "BrightPassPS", engine::render::ShaderCompiler::Stage::Pixel);
+        m_blurPs      = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "BlurPS",       engine::render::ShaderCompiler::Stage::Pixel);
+        m_compositePs = engine::render::ShaderCompiler::CompileFromFile(postPath.c_str(), "CompositePS",  engine::render::ShaderCompiler::Stage::Pixel);
+        engine::render::RootSignature::Desc postRs{};
+        postRs.postProcess = true;
+        m_postRootSig = std::make_unique<engine::render::RootSignature>(m_device, postRs);
+        auto mkPost = [&](ID3DBlob* ps, DXGI_FORMAT rtv) {
+            engine::render::PipelineState::Desc d{};
+            d.vertexShader = m_postVs.Get(); d.pixelShader = ps;
+            d.rootSignature = m_postRootSig.get(); d.rtvFormat = rtv; d.fullscreen = true;
+            return std::make_unique<engine::render::PipelineState>(m_device, d);
+        };
+        m_brightPso    = mkPost(m_brightPs.Get(),    kHdrFormat);
+        m_blurPso      = mkPost(m_blurPs.Get(),      kHdrFormat);
+        m_compositePso = mkPost(m_compositePs.Get(), kRttFormat);
+
+        for (std::uint32_t f = 0; f < kPostFrames; ++f)
+        {
+            m_skyCBs[f] = std::make_unique<engine::render::ConstantBuffer>(m_device, sizeof(SkyConstants));
+            for (int pass = 0; pass < 4; ++pass)
+            {
+                m_postCBs[f][pass] = std::make_unique<engine::render::ConstantBuffer>(m_device, sizeof(PostConstants));
+            }
+        }
 
         // === Boot CommandList + fallback texture ===
         m_bootCmdList = std::make_unique<engine::render::CommandList>(m_device);
@@ -181,6 +267,11 @@ namespace editor
         m_height = height;
         CreateRtv();
         m_depth->Resize(m_device, m_width, m_height);
+        if (m_hdrScene) { m_hdrScene->Resize(m_device, m_width, m_height); }
+        const std::uint32_t bw = (m_width  > 1) ? m_width  / 2 : 1;
+        const std::uint32_t bh = (m_height > 1) ? m_height / 2 : 1;
+        if (m_bloomA) { m_bloomA->Resize(m_device, bw, bh); }
+        if (m_bloomB) { m_bloomB->Resize(m_device, bw, bh); }
 
         if (m_camera)
         {
@@ -246,45 +337,107 @@ namespace editor
                                 client::SceneRuntime&      sceneRuntime,
                                 std::uint32_t              frameIndex)
     {
-        // SceneRuntime — 라이트 SB / view-proj 캐시.
+        constexpr auto kPSR = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        constexpr auto kRT  = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+        // SceneRuntime — 게임처럼 선형 HDR 출력(composite 가 톤맵) + 라이트/view-proj 캐시.
+        sceneRuntime.SetApplyTonemap(false);
         sceneRuntime.PrepareGpuResources(frameIndex, *m_camera);
 
-        // RTT 전이: SHADER_RESOURCE → RENDER_TARGET
-        D3D12_RESOURCE_BARRIER toRT{};
-        toRT.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        toRT.Transition.pResource   = m_rttTexture.Get();
-        toRT.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        toRT.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        toRT.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        list->ResourceBarrier(1, &toRT);
+        ID3D12DescriptorHeap* heaps[] = { m_srvHeap.Native() };
+        list->SetDescriptorHeaps(1, heaps);
 
         const D3D12_CPU_DESCRIPTOR_HANDLE dsv = m_depth->DsvHandle();
-        list->OMSetRenderTargets(1, &m_rtvCpu, FALSE, &dsv);
-        list->ClearRenderTargetView(m_rtvCpu, kClearColor, 0, nullptr);
+        const D3D12_VIEWPORT vp{ 0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 1.0f };
+        const D3D12_RECT     scissor{ 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
+
+        // === 씬 + 스카이박스 → HDR RT ===
+        TransitionRes(list, m_hdrScene->Native(), kPSR, kRT);
+        const D3D12_CPU_DESCRIPTOR_HANDLE hdrRtv = m_hdrScene->Rtv();
+        list->OMSetRenderTargets(1, &hdrRtv, FALSE, &dsv);
+        list->ClearRenderTargetView(hdrRtv, kClearColor, 0, nullptr);
         list->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-        D3D12_VIEWPORT vp{};
-        vp.Width    = static_cast<float>(m_width);
-        vp.Height   = static_cast<float>(m_height);
-        vp.MinDepth = 0.0f;
-        vp.MaxDepth = 1.0f;
         list->RSSetViewports(1, &vp);
-
-        D3D12_RECT scissor{};
-        scissor.right  = static_cast<LONG>(m_width);
-        scissor.bottom = static_cast<LONG>(m_height);
         list->RSSetScissorRects(1, &scissor);
 
         list->SetGraphicsRootSignature(m_rootSig->Native());
         list->SetPipelineState(m_pso->Native());
-        ID3D12DescriptorHeap* heaps[] = { m_srvHeap.Native() };
-        list->SetDescriptorHeaps(1, heaps);
         list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
         sceneRuntime.RecordDraw(list, frameIndex, *m_fallback);
 
-        // 디버그 — Y=0 격자 + 좌표축 (배치 워크플로우 바닥 참조).
-        // depth-test OFF — 어떤 메쉬에도 가려지지 않음. PSO 가 자체 RootSig 사용 → 호출자 RootSig 영향 없음.
+        // 스카이박스 (절차적 하늘) → HDR RT 빈 픽셀.
+        {
+            using namespace DirectX;
+            XMVECTOR det;
+            const XMMATRIX invVP = XMMatrixInverse(&det, m_camera->ViewProjection());
+            SkyConstants sc{};
+            XMStoreFloat4x4(&sc.invViewProj, invVP);
+            sc.cameraPosWS = m_camera->Position();
+            sc.sunDirWS    = sceneRuntime.SunDirectionWS();
+            m_skyCBs[frameIndex]->Update(&sc, sizeof(sc));
+            list->SetGraphicsRootSignature(m_skyRootSig->Native());
+            list->SetPipelineState(m_skyPso->Native());
+            list->SetGraphicsRootConstantBufferView(0, m_skyCBs[frameIndex]->GpuAddress());
+            list->IASetVertexBuffers(0, 0, nullptr);
+            list->DrawInstanced(3, 1, 0, 0);
+        }
+        TransitionRes(list, m_hdrScene->Native(), kRT, kPSR);
+
+        // === bloom — bright → blur(H/V) → composite → 표시 RTT ===
+        {
+            const float hw = static_cast<float>(m_hdrScene->Width());
+            const float hh = static_cast<float>(m_hdrScene->Height());
+            const float bw = static_cast<float>(m_bloomA->Width());
+            const float bh = static_cast<float>(m_bloomA->Height());
+            PostConstants pc{};
+            pc.texelSize = { 1.0f/hw, 1.0f/hh }; pc.threshold = m_bloomThreshold; pc.bloomIntensity = 0.0f; pc.blurDir = { 0.0f, 0.0f };
+            m_postCBs[frameIndex][0]->Update(&pc, sizeof(pc));
+            pc.texelSize = { 1.0f/bw, 1.0f/bh }; pc.threshold = 0.0f; pc.blurDir = { 1.0f, 0.0f };
+            m_postCBs[frameIndex][1]->Update(&pc, sizeof(pc));
+            pc.blurDir = { 0.0f, 1.0f };
+            m_postCBs[frameIndex][2]->Update(&pc, sizeof(pc));
+            pc.blurDir = { 0.0f, 0.0f }; pc.bloomIntensity = m_bloomIntensity;
+            m_postCBs[frameIndex][3]->Update(&pc, sizeof(pc));
+
+            auto postPass = [&](engine::render::PipelineState* pso, int pass,
+                                D3D12_GPU_DESCRIPTOR_HANDLE src, D3D12_GPU_DESCRIPTOR_HANDLE src2,
+                                D3D12_CPU_DESCRIPTOR_HANDLE rtv, std::uint32_t w, std::uint32_t h)
+            {
+                const D3D12_VIEWPORT pv{ 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h), 0.0f, 1.0f };
+                const D3D12_RECT     pr{ 0, 0, static_cast<LONG>(w), static_cast<LONG>(h) };
+                list->RSSetViewports(1, &pv);
+                list->RSSetScissorRects(1, &pr);
+                list->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+                list->SetGraphicsRootSignature(m_postRootSig->Native());
+                list->SetPipelineState(pso->Native());
+                list->SetGraphicsRootConstantBufferView(0, m_postCBs[frameIndex][pass]->GpuAddress());
+                list->SetGraphicsRootDescriptorTable(1, src);
+                list->SetGraphicsRootDescriptorTable(2, src2);
+                list->IASetVertexBuffers(0, 0, nullptr);
+                list->DrawInstanced(3, 1, 0, 0);
+            };
+            const auto hdrSrv = m_hdrScene->SrvGpu();
+            const auto aSrv   = m_bloomA->SrvGpu();
+            const auto bSrv   = m_bloomB->SrvGpu();
+
+            TransitionRes(list, m_bloomA->Native(), kPSR, kRT);
+            postPass(m_brightPso.get(), 0, hdrSrv, hdrSrv, m_bloomA->Rtv(), m_bloomA->Width(), m_bloomA->Height());
+            TransitionRes(list, m_bloomA->Native(), kRT, kPSR);
+            TransitionRes(list, m_bloomB->Native(), kPSR, kRT);
+            postPass(m_blurPso.get(), 1, aSrv, aSrv, m_bloomB->Rtv(), m_bloomB->Width(), m_bloomB->Height());
+            TransitionRes(list, m_bloomB->Native(), kRT, kPSR);
+            TransitionRes(list, m_bloomA->Native(), kPSR, kRT);
+            postPass(m_blurPso.get(), 2, bSrv, bSrv, m_bloomA->Rtv(), m_bloomA->Width(), m_bloomA->Height());
+            TransitionRes(list, m_bloomA->Native(), kRT, kPSR);
+
+            TransitionRes(list, m_rttTexture.Get(), kPSR, kRT);
+            postPass(m_compositePso.get(), 3, hdrSrv, aSrv, m_rtvCpu, m_width, m_height);
+        }
+
+        // === 디버그(격자/좌표축/스켈레톤) → 표시 RTT (composite 위에). 깊이 버퍼 그대로. ===
+        list->OMSetRenderTargets(1, &m_rtvCpu, FALSE, &dsv);
+        list->RSSetViewports(1, &vp);
+        list->RSSetScissorRects(1, &scissor);
         const DirectX::XMMATRIX viewProj = m_camera->ViewProjection();
         m_debug->DrawGrid(list, frameIndex, viewProj);
         m_debug->DrawAxes(list, frameIndex, viewProj, 100.0f);

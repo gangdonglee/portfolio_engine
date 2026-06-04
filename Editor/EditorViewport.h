@@ -1,10 +1,13 @@
 #pragma once
 
+#include "render/SwapChain.h"   // kBackBufferCount (post cbuffer 배열 크기)
+
 #include <d3d12.h>
 #include <d3dcommon.h>
 #include <DirectXMath.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -13,11 +16,13 @@ namespace engine::render
     class Camera;
     class CommandList;
     class CommandQueue;
+    class ConstantBuffer;
     class DebugRenderer;
     class DepthStencilBuffer;
     class Device;
     class FreeCamera;
     class PipelineState;
+    class RenderTexture;
     class RootSignature;
     class SrvDescriptorHeap;
     class Texture;
@@ -52,9 +57,12 @@ namespace editor
     class EditorViewport final
     {
     public:
+        // postSlotBase: 포스트프로세싱 RT(HDR/bloomA/bloomB) 의 SRV 예약 슬롯 시작(base, base-1, base-2).
+        //   두 viewport 가 srvHeap 을 공유하므로 서로 다른 base 를 줄 것(예: 63, 60).
         EditorViewport(engine::render::Device&            device,
                        engine::render::CommandQueue&      queue,
-                       engine::render::SrvDescriptorHeap& srvHeap);
+                       engine::render::SrvDescriptorHeap& srvHeap,
+                       std::uint32_t                      postSlotBase = 63);
         ~EditorViewport();
 
         EditorViewport(const EditorViewport&)            = delete;
@@ -89,6 +97,10 @@ namespace editor
 
         // fallback albedo (SceneRuntime.RecordDraw 인자).
         engine::render::Texture& FallbackAlbedo() noexcept { return *m_fallback; }
+
+        // bloom 파라미터 — ImGui 슬라이더 직접 바인딩(float&).
+        float& BloomThreshold() noexcept { return m_bloomThreshold; }
+        float& BloomIntensity() noexcept { return m_bloomIntensity; }
 
         // orbit camera — 외부에서 Scene 의 cameraStart 로 초기화 가능.
         engine::render::Camera&     Camera()     noexcept { return *m_camera; }
@@ -149,11 +161,30 @@ namespace editor
         // Depth buffer (viewport 크기).
         std::unique_ptr<engine::render::DepthStencilBuffer> m_depth;
 
-        // 렌더 파이프라인.
+        // 렌더 파이프라인 — 씬은 HDR RT 에 그림(메인 PSO rtvFormat=RGBA16F).
         Microsoft::WRL::ComPtr<ID3DBlob>                m_vsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob>                m_psBlob;
         std::unique_ptr<engine::render::RootSignature>  m_rootSig;
         std::unique_ptr<engine::render::PipelineState>  m_pso;
+
+        // === 포스트프로세싱 (skybox + bloom) — 게임과 동일 파이프라인 ===
+        static constexpr std::uint32_t kPostFrames = engine::render::SwapChain::kBackBufferCount;
+        std::uint32_t                                   m_postSlotBase = 63;
+        std::unique_ptr<engine::render::RenderTexture>  m_hdrScene;   // RGBA16F 씬 타깃
+        std::unique_ptr<engine::render::RenderTexture>  m_bloomA;     // half-res
+        std::unique_ptr<engine::render::RenderTexture>  m_bloomB;
+        // skybox
+        Microsoft::WRL::ComPtr<ID3DBlob>                m_skyVs, m_skyPs;
+        std::unique_ptr<engine::render::RootSignature>  m_skyRootSig;
+        std::unique_ptr<engine::render::PipelineState>  m_skyPso;
+        std::array<std::unique_ptr<engine::render::ConstantBuffer>, kPostFrames> m_skyCBs;
+        // bloom post
+        Microsoft::WRL::ComPtr<ID3DBlob>                m_postVs, m_brightPs, m_blurPs, m_compositePs;
+        std::unique_ptr<engine::render::RootSignature>  m_postRootSig;
+        std::unique_ptr<engine::render::PipelineState>  m_brightPso, m_blurPso, m_compositePso;
+        std::array<std::array<std::unique_ptr<engine::render::ConstantBuffer>, 4>, kPostFrames> m_postCBs;
+        float m_bloomThreshold = 1.0f;
+        float m_bloomIntensity = 1.0f;
 
         // Boot CommandList + fallback texture.
         std::unique_ptr<engine::render::CommandList>    m_bootCmdList;
