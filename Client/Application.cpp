@@ -830,6 +830,8 @@ namespace client
             const float alpha = std::min(1.0f, dt * smoothingRate);
             m_currentSpeed += (target - m_currentSpeed) * alpha;
             m_sceneRuntime->SetAnimatorFloat("Speed", m_currentSpeed);
+            // bodyLower(골반 하강)는 정지 시에만 — 보행 중 몸 둥실 방지 (SceneRuntime 게이트).
+            m_sceneRuntime->SetFootIKLocomotion(m_currentSpeed);
 
             // Foot IK weight = full(1.0). 달리기 "끊김" 의 원인은 발 IK 가 아니라 controller 가 매
             //   frame 지면 Y 로 즉시 snap 하던 것(이제 CharacterController 가 부드럽게 보간) →

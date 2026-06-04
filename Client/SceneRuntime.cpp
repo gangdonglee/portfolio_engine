@@ -1041,16 +1041,18 @@ namespace client
         const float kMaxFootDrop  = 2.0f;   // 발 지면이 몸 기준 이만큼 아래까진 다리로 닿음(그 이상=하강)
         const float bodyRefY      = inst.transform.position.y;   // controller 접지 기준(절대 world Y)
         const float lowestGround  = std::min(leftG, rightG);     // 두 발밑 지면 중 낮은 쪽
-        const float bodyLowerTgt  =
-            std::clamp((bodyRefY - kMaxFootDrop) - lowestGround, 0.0f, kMaxBodyLower);
-        // *rate limit (시간 기준)* — 몸의 수직 이동 속도를 kRate(u/s)로 제한. 사람 골반은 지형
-        //   노이즈를 따라 출렁이지 않고 *다리가 흡수* 한다(발 IK 가 이미 흡수). bumpy heightmap(±12)
-        //   위에서 target 이 매 스텝 크게 출렁여도 몸은 느리게 평균으로만 따라가 *덜그럭 제거*. 지속
-        //   고저차(실제 내리막)는 수 초에 걸쳐 부드럽게 반영. **프레임당 고정 step 은 fps 가 높으면
-        //   (이 게임 uncapped) 무력화돼 dt 기반 필수.** dt 는 hitch 대비 clamp.
-        const float kRate = 2.0f;   // u/s — idle 접지까지 ~4s, 보행 중엔 거의 정지(잔 진동 ~±0.5, 비가시)
-        const float step  = kRate * std::clamp(dt, 0.0f, 0.1f);
-        m_footIKBodyLower += std::clamp(bodyLowerTgt - m_footIKBodyLower, -step, step);
+        // *stationary 게이트* — 이 리그는 standing 다리가 거의 곧아(측정: origin 아래 reach ≈ anim+1.4
+        //   뿐) 발을 standing 보다 깊은 지면에 디디려면 *몸을 내려야* 함. 보행 중 bumpy(±12) 지형서
+        //   매 스텝 내렸다 올리면 몸이 위아래로 *둥실/덜그럭*. → bodyLower 를 **정지 시에만** engage:
+        //   이동 속도>0 면 0 으로 페이드(몸 고정, 발은 절대 IK 로 범프 적응·깊은 구덩이만 살짝 뜸 —
+        //   몸 출렁임보다 훨씬 덜 거슬림). 정지 시엔 지면 일정 → bob 없이 안정 접지(idle ridge 도움).
+        const float stat   = std::clamp(1.0f - m_footIKLocomotion / 0.12f, 0.0f, 1.0f); // idle=1, 보행=0
+        const float target = std::clamp((bodyRefY - kMaxFootDrop) - lowestGround, 0.0f, kMaxBodyLower)
+                           * stat;
+        // dt 기반 rate limit(프레임당 고정 step 은 uncapped fps 서 무력). 정지/보행 두 regime 모두
+        //   target 이 안정(정지=지면일정, 보행=0)이라 진동할 신호가 없어 빠른 rate 도 안전(둥실 없음).
+        const float step = 6.0f * std::clamp(dt, 0.0f, 0.1f);   // ~6 u/s — 출발/정지 전환 ~1.3s 부드럽게
+        m_footIKBodyLower += std::clamp(target - m_footIKBodyLower, -step, step);
         effectiveLift = kRootLift - m_footIKBodyLower;
 
         // (골반 하강 #2 는 제거 — 디딘 발 animAnkleY 가 보행 사이클마다 변해 pelvisTarget 이 매 프레임
