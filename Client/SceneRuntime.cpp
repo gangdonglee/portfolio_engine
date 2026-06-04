@@ -888,8 +888,17 @@ namespace client
             //   early-out 안 하고 lerp 갱신해야 다음 plant 때 stale 값에서 안 튄다.
             float& sc = m_footIKCorrSmooth[footIdx];
             sc += (rawCorr - sc) * 0.25f;
-            if (std::abs(sc) < 0.5f) { return; }         // 보정 미미(swing/평지) — IK·정렬 미적용
-            const float targetY = ay + sc;
+            // floor — 발이 *발밑 지면* 의 자연 planted 높이보다 아래로는 안 내려가게(경사/단차에서 한 발
+            //   묻힘 방지). delta 는 gap 이 애니 발높이에만 의존해, 높은 지면 위 발이 낮은 애니 포즈면
+            //   묻힘. kFootFloor=자연 planted gap(ankle−groundSample≈-7, sampler offset) 이라 평지선
+            //   거의 무영향(크라우치 없음) — 경사에서 묻히는 발만 표면으로 들어올림.
+            float targetY = ay + sc;
+            // floor 는 *root lift(=liftWorld 4) 보정 후 gap≈0*(표면) 이 되게 = groundAtFoot - 4.
+            //   평지 디딘 발은 gap≈+7 이라 무영향(크라우치 없음) — 경사에서 표면 아래로 묻히는 발만 표면으로.
+            const float kFootFloor = -4.0f;
+            const float floorY = groundAtFoot + kFootFloor;
+            if (targetY < floorY) { targetY = floorY; }      // 발이 자연 위면 무영향 — 묻힘만 들어올림
+            if (std::abs(targetY - ay) < 0.5f) { return; }   // 보정 미미(swing/평지) — IK·정렬 미적용
 
             const XMVECTOR targetModel =
                 XMVector3TransformCoord(XMVectorSet(ax, targetY, az, 1.0f), meshWInv);
