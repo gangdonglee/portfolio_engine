@@ -102,17 +102,35 @@ namespace engine::render
 
     void Mesh::DrawAll(ID3D12GraphicsCommandList* list,
                        uint32                     rootParamMaterialTable,
-                       D3D12_GPU_DESCRIPTOR_HANDLE defaultSrvGpu) const
+                       D3D12_GPU_DESCRIPTOR_HANDLE defaultSrvGpu,
+                       uint32                      rootParamNormalTable,
+                       D3D12_GPU_DESCRIPTOR_HANDLE defaultNormalSrvGpu) const
     {
         for (const SubMesh& sm : m_subs)
         {
-            // 머티리얼 SRV 바인딩 — 텍스처 있으면 그것, 없으면 폴백.
+            // 알베도 SRV (t0) — 텍스처 있으면 그것, 없으면 폴백(흰색).
             const D3D12_GPU_DESCRIPTOR_HANDLE srv =
                 (sm.material && sm.material->albedoTexture)
                     ? sm.material->albedoSrvGpu
                     : defaultSrvGpu;
             list->SetGraphicsRootDescriptorTable(rootParamMaterialTable, srv);
 
+            // normal map SRV (t3) — 있으면 그것, 없으면 폴백(평탄 노멀 = 효과 없음).
+            const D3D12_GPU_DESCRIPTOR_HANDLE nrm =
+                (sm.material && sm.material->normalTexture)
+                    ? sm.material->normalSrvGpu
+                    : defaultNormalSrvGpu;
+            list->SetGraphicsRootDescriptorTable(rootParamNormalTable, nrm);
+
+            sm.ib->Bind(list);
+            list->DrawIndexedInstanced(sm.ib->IndexCount(), 1, 0, 0, 0);
+        }
+    }
+
+    void Mesh::DrawAllDepthOnly(ID3D12GraphicsCommandList* list) const
+    {
+        for (const SubMesh& sm : m_subs)
+        {
             sm.ib->Bind(list);
             list->DrawIndexedInstanced(sm.ib->IndexCount(), 1, 0, 0, 0);
         }

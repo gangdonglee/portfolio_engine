@@ -77,7 +77,12 @@ namespace engine::render
         // defaultSrvGpu: 머티리얼에 albedoTexture 가 없을 때 사용할 폴백 SRV (예: 1x1 흰색).
         void DrawAll(ID3D12GraphicsCommandList* list,
                      uint32                     rootParamMaterialTable,
-                     D3D12_GPU_DESCRIPTOR_HANDLE defaultSrvGpu) const;
+                     D3D12_GPU_DESCRIPTOR_HANDLE defaultSrvGpu,
+                     uint32                      rootParamNormalTable,
+                     D3D12_GPU_DESCRIPTOR_HANDLE defaultNormalSrvGpu) const;
+
+        // 모든 SubMesh 의 인덱스만 DrawIndexed (머티리얼 SRV 바인딩 없음) — 그림자 깊이 패스용.
+        void DrawAllDepthOnly(ID3D12GraphicsCommandList* list) const;
 
         size_t                       SubMeshCount() const noexcept { return m_subs.size(); }
         const Material*              GetMaterial(size_t i) const noexcept;
