@@ -151,9 +151,6 @@ namespace client
         // Foot IK 전역 weight (0..1) — 호출자(게임)가 *이동 속도* 로 페이드. 빠른 달리기에선 낮춰
         //   IK 간섭을 줄임(발이 너무 빨라 IK 가 득보다 실 — 프로덕션 표준). 보정량·무릎굽힘에 곱해짐.
         void SetFootIKWeight   (float w) noexcept { m_footIKWeight = (w < 0.0f) ? 0.0f : (w > 1.0f ? 1.0f : w); }
-        // 이동 속도(0=idle..1=run) — bodyLower(골반 하강)를 *정지 시에만* 켜기 위함. 보행 중엔 몸이
-        //   지형 따라 출렁이면(둥실) 거슬려 0 으로 페이드 → 몸 고정, 발은 절대 IK 로 범프에 적응.
-        void SetFootIKLocomotion(float s) noexcept { m_footIKLocomotion = (s < 0.0f) ? 0.0f : s; }
         bool FootIKEnabled     () const noexcept       { return m_footIKEnabled; }
         void SetFootIKConfig   (const engine::anim::FootIKConfig& cfg);
         const engine::anim::FootIKConfig&  FootIKConfigRef() const noexcept;
@@ -285,8 +282,7 @@ namespace client
         float                                           m_footIKWeight   = 1.0f;   // 속도 기반 페이드 (게임이 설정)
         FootIKReadout                                   m_footIKReadout;           // 디버그 오버레이 calibration
         float                                           m_footIKCorrSmooth[2] = { 0.0f, 0.0f }; // 발[L,R] 보정 temporal lerp (plant/swing 전환 pop 방지)
-        float                                           m_footIKBodyLower     = 0.0f; // 낮은 발이 닿게 몸(root) 하강량 — 정지 시에만 engage(보행 중 둥실 방지)
-        float                                           m_footIKLocomotion    = 0.0f; // 이동 속도(0..1) — bodyLower stationary 게이트
+        float                                           m_footIKBodyLower     = 0.0f; // 낮은 발이 닿게 몸(root) 하강량 — leg-reach deficit 음의되먹임
 
         // 본 수동 포징 — boneIdx → 누적 모델공간 회전 (quaternion). Tick 의 Update 직후
         //   각 본 subtree 에 rotate-about-pivot 적용 (BuildPalette 결과 덮어씀).
