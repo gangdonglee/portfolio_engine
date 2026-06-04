@@ -1143,10 +1143,20 @@ namespace client
         const float defMax = std::max(
             footDeficit(m_footIKBones->leftHip,  m_footIKBones->leftKnee,  m_footIKBones->leftAnkle,  leftToe),
             footDeficit(m_footIKBones->rightHip, m_footIKBones->rightKnee, m_footIKBones->rightAnkle, rightToe));
-        const float target = std::clamp(m_footIKBodyLower + defMax, 0.0f, kMaxBodyLower);
-        const float tau = 0.15f;   // 시상수 — 지형엔 즉각, 스텝 노이즈 흡수
-        const float a   = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / tau);
-        m_footIKBodyLower += (target - m_footIKBodyLower) * a;
+        // **deficit 저역통과 (덜그럭 핵심 수정)** — defMax 는 anim 다리(hip bob/stride/발 pitch)에서
+        //   측정돼 *gait 주파수로 ±3.5 출렁임*(실제 지형 need 아닌 측정 artifact). 이걸 그대로 bodyLower
+        //   되먹임에 넣으면 몸이 매 스텝 따라 출렁여 발이 덜그럭. → deficit 를 먼저 저역통과(tau 0.35,
+        //   스텝 주기 0.5s 보다 길어 gait 제거)해 *지형 추세만* 남긴 뒤 누적 보정. 지속 고저차(실제
+        //   내리막)는 통과 → 발 접지 유지. gait ripple 만 제거 → 덜그럭 사라짐.
+        const float aDef = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / 0.55f);   // tau 0.55 — 보폭(stride) 성분까지 평균화
+        m_footIKDefSmooth += (defMax - m_footIKDefSmooth) * aDef;
+        const float target = std::clamp(m_footIKBodyLower + m_footIKDefSmooth, 0.0f, kMaxBodyLower);
+        // rate limit — 몸 수직 *속도* 를 ≤kRate u/s 로 하드 캡. "덜그럭"=빠른 상하 운동이라 속도를 묶는
+        //   게 가장 직접적. deficit 가 이미 평활(tau 0.55)이라 target 도 부드러움 → 천천히 수렴.
+        //   (프레임당 고정 step 은 uncapped fps 서 무력 → 반드시 dt 기반.)
+        const float kRate    = 3.0f;   // u/s — idle↔walk 자세 전환 ~2s, 보행 중 거의 정지
+        const float maxStep  = kRate * std::clamp(dt, 0.0f, 0.1f);
+        m_footIKBodyLower += std::clamp(target - m_footIKBodyLower, -maxStep, maxStep);
         effectiveLift = kRootLift - m_footIKBodyLower;
 
         // (골반 하강 #2 는 제거 — 디딘 발 animAnkleY 가 보행 사이클마다 변해 pelvisTarget 이 매 프레임
