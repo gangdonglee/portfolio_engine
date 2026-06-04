@@ -1074,7 +1074,14 @@ namespace client
                 const float e  = 18.0f;   // 발 크기 — 잔 범프 무시(덜그럭 방지), 큰 경사만 반영
                 const float hL = m_groundSampler(ax - e, az), hR = m_groundSampler(ax + e, az);
                 const float hB = m_groundSampler(ax, az - e), hF = m_groundSampler(ax, az + e);
-                const XMVECTOR nWorld = XMVector3Normalize(XMVectorSet(hL - hR, 2.0f * e, hB - hF, 0.0f));
+                const XMVECTOR nRaw = XMVector3Normalize(XMVectorSet(hL - hR, 2.0f * e, hB - hF, 0.0f));
+                // *시간축 평활* — 발이 움직이면 지면 normal 이 프레임마다 바뀌어 발바닥이 매 프레임
+                //   기우뚱(덜그럭). normal 을 프레임간 lerp(dt 기반 tau 0.12)해 *부드럽게* 따라가게.
+                XMVECTOR nSm = XMLoadFloat3(&m_footIKNormalSmooth[footIdx]);
+                const float aN = 1.0f - std::exp(-std::clamp(dt, 0.0f, 0.1f) / 0.12f);
+                nSm = XMVector3Normalize(XMVectorAdd(nSm, XMVectorScale(XMVectorSubtract(nRaw, nSm), aN)));
+                XMStoreFloat3(&m_footIKNormalSmooth[footIdx], nSm);
+                const XMVECTOR nWorld = nSm;
                 const XMVECTOR nModel  = XMVector3Normalize(XMVector3TransformNormal(nWorld, meshWInv));
                 const XMVECTOR upModel = XMVector3Normalize(
                     XMVector3TransformNormal(XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f), meshWInv));
@@ -1156,7 +1163,7 @@ namespace client
         // rate limit — 몸 수직 *속도* 를 ≤kRate u/s 로 하드 캡. "덜그럭"=빠른 상하 운동이라 속도를 묶는
         //   게 가장 직접적. deficit 가 이미 평활(tau 0.55)이라 target 도 부드러움 → 천천히 수렴.
         //   (프레임당 고정 step 은 uncapped fps 서 무력 → 반드시 dt 기반.)
-        const float kRate    = 3.0f;   // u/s — idle↔walk 자세 전환 ~2s, 보행 중 거의 정지
+        const float kRate    = 2.0f;   // u/s — 더 느리게(보행 중 몸 거의 정지, 덜그럭 추가 억제)
         const float maxStep  = kRate * std::clamp(dt, 0.0f, 0.1f);
         m_footIKBodyLower += std::clamp(target - m_footIKBodyLower, -maxStep, maxStep);
         effectiveLift = kRootLift - m_footIKBodyLower;
