@@ -162,6 +162,11 @@ namespace client
                 }
                 asset.mesh = engine::render::procedural_terrain::Generate(device, w, d, segX, segZ, hf);
             }
+            else if (inst.meshAssetPath == "__Box__")
+            {
+                // 단위 큐브 — 인스턴스 transform.scale 로 크기 조절. 물리 장애물/벽 시각 표현.
+                asset.mesh = engine::render::procedural_terrain::GenerateUnitCube(device);
+            }
             else if (ext == ".fbx" || ext == ".FBX")
             {
                 engine::render::fbx_loader::LoadedFbxModel loaded =

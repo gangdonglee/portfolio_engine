@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct ID3D10Blob;
@@ -19,6 +20,11 @@ using ID3DBlob = ID3D10Blob;
 namespace engine::platform
 {
     class Window;
+}
+
+namespace engine::physics
+{
+    class PhysicsWorld;
 }
 
 namespace engine::render
@@ -143,6 +149,9 @@ namespace client
         //   inactive 시: WASD → FreeCamera (기존 자유 시점).
         // Bind() 는 SceneRuntime 생성/재생성 후 호출 — AnimatorInstanceTransform() 추적.
         std::unique_ptr<Player>                             m_player;
+        std::unique_ptr<engine::physics::PhysicsWorld>      m_physics;
+        // 물리 장애물 — {center, halfExtents}. 씬 박스 메시 + 물리 콜라이더 동일 위치.
+        std::vector<std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>> m_obstacles;
         bool                                                m_thirdPersonActive = false;
         bool                                                m_footIKCorrEnabled = false;  // 발 접지 보정(per-foot+bodyLower). 기본 OFF(떨림 없음, root lift 만). 디버그 체크박스로 전환.
         bool                                                m_prevToggleKeyDown = false;

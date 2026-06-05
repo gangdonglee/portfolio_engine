@@ -1,5 +1,6 @@
 #include "game/CharacterController.h"
 
+#include "physics/PhysicsWorld.h"
 #include "platform/Input.h"
 
 #include <Windows.h>   // VK_SHIFT
@@ -41,6 +42,31 @@ namespace engine::game
         m_jumpApexThisFrame = false;
         m_landedThisFrame   = false;
 
+        // === PhysX 위임 경로 — PxCapsuleController 가 collide-and-slide (지형/벽/경사/계단) ===
+        if (m_physics != nullptr && m_physics->HasCharacter())
+        {
+            const float oldVy = m_velocityY;
+            m_velocityY -= m_gravity * dt;                     // 항상 중력 적분(grounded 면 아래 충돌로 0)
+            if (oldVy > 0.0f && m_velocityY <= 0.0f) { m_jumpApexThisFrame = true; }
+
+            bool grounded = false;
+            const DirectX::XMFLOAT3 disp{ m_pendingMoveXZ.x, m_velocityY * dt, m_pendingMoveXZ.z };
+            const DirectX::XMFLOAT3 foot = m_physics->MoveCharacter(disp, dt, grounded);
+            m_position = foot;
+
+            if (grounded)
+            {
+                if (!m_isGrounded) { m_landedThisFrame = true; }   // UE Landed() 등가
+                m_isGrounded = true;
+                if (m_velocityY < 0.0f) { m_velocityY = 0.0f; }    // 낙하 멈춤(다음 프레임 새 중력)
+            }
+            else { m_isGrounded = false; }
+
+            m_pendingMoveXZ = { 0.0f, 0.0f, 0.0f };   // 소비 — free-cam UpdatePhysics 에서 stale 방지
+            return;
+        }
+
+        // === 폴백 — ground sampler snap (PhysX 미연결) ===
         // 현재 (x, z) 의 ground Y — sampler 있으면 호출, 없으면 평지 (0).
         const float groundY = m_groundSampler
             ? m_groundSampler(m_position.x, m_position.z)
@@ -111,9 +137,16 @@ namespace engine::game
                 : m_moveSpeed;
             m_lastSpeed = speed;
 
-            XMVECTOR pos = XMLoadFloat3(&m_position);
-            pos = XMVectorAdd(pos, XMVectorScale(move, speed * dt));
-            XMStoreFloat3(&m_position, pos);
+            // 이번 프레임 XZ 변위. PhysX 연결 시엔 *적용하지 않고* m_pendingMoveXZ 에 저장 →
+            //   UpdatePhysics 가 Y(중력)와 합쳐 MoveCharacter 로 위임(collide-and-slide). 폴백(미연결)
+            //   땐 여기서 직접 적용(기존 동작).
+            XMFLOAT3 mv; XMStoreFloat3(&mv, XMVectorScale(move, speed * dt));
+            m_pendingMoveXZ = { mv.x, 0.0f, mv.z };
+            if (m_physics == nullptr)
+            {
+                m_position.x += mv.x;
+                m_position.z += mv.z;
+            }
 
             // 이동 방향 → target yaw. m_yaw 를 target 으로 *각도 보간*.
             XMFLOAT3 moveF;

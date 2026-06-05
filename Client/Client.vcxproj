@@ -83,7 +83,8 @@ xcopy /Y /D /Q /E /I "$(SolutionDir)assets" "$(OutDir)assets" &gt;nul
 if exist "$(SolutionDir)Resources" (
   if not exist "$(OutDir)Resources" mkdir "$(OutDir)Resources"
   xcopy /Y /D /Q /E /I "$(SolutionDir)Resources" "$(OutDir)Resources" &gt;nul
-)</Command>
+)
+xcopy /Y /D /Q "C:\vcpkg\installed\x64-windows\bin\PhysX*.dll" "$(OutDir)" &gt;nul</Command>
       <Message>Copying shaders + assets + Resources to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -119,7 +120,8 @@ xcopy /Y /D /Q /E /I "$(SolutionDir)assets" "$(OutDir)assets" &gt;nul
 if exist "$(SolutionDir)Resources" (
   if not exist "$(OutDir)Resources" mkdir "$(OutDir)Resources"
   xcopy /Y /D /Q /E /I "$(SolutionDir)Resources" "$(OutDir)Resources" &gt;nul
-)</Command>
+)
+xcopy /Y /D /Q "C:\vcpkg\installed\x64-windows\bin\PhysX*.dll" "$(OutDir)" &gt;nul</Command>
       <Message>Copying shaders + assets + Resources to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>

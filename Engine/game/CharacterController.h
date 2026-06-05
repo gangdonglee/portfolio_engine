@@ -5,6 +5,7 @@
 #include <functional>
 
 namespace engine::platform { class Input; }
+namespace engine::physics { class PhysicsWorld; }
 
 namespace engine::game
 {
@@ -78,6 +79,10 @@ namespace engine::game
         //   Jump 도 sample 기준 (점프 시작 시 capsule 위치에서 Vy 추가).
         void SetGroundSampler(std::function<float(float, float)> fn) noexcept { m_groundSampler = std::move(fn); }
 
+        // PhysX 캐릭터 컨트롤러 연결 — 설정 시 *이동을 PxCapsuleController 로 위임*(collide-and-slide:
+        //   지형/벽/경사/계단). nullptr 이면 기존 ground sampler snap 폴백. 캐릭터는 미리 생성돼 있어야 함.
+        void SetPhysicsWorld(engine::physics::PhysicsWorld* physics) noexcept { m_physics = physics; }
+
     private:
         DirectX::XMFLOAT3 m_position { 0.0f, 0.0f, 0.0f };
         float             m_yaw       = 0.0f;   // rad — Y axis 회전.
@@ -103,5 +108,10 @@ namespace engine::game
 
         // Ground sampler — Application 이 procedural terrain height func 주입.
         std::function<float(float, float)> m_groundSampler;
+
+        // PhysX 위임 — 설정 시 이동/충돌을 PxController 가 처리. m_pendingMoveXZ: 이번 프레임 XZ 변위
+        //   (Update 에서 계산, UpdatePhysics 에서 Y(중력)와 합쳐 MoveCharacter 로 전달).
+        engine::physics::PhysicsWorld* m_physics = nullptr;
+        DirectX::XMFLOAT3              m_pendingMoveXZ { 0.0f, 0.0f, 0.0f };
     };
 }

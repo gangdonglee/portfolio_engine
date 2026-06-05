@@ -42,6 +42,11 @@ namespace engine::render
         //   x, z 가 큰 값일 때도 부드러운 언덕 + 작은 융기 패턴.
         float DefaultHeightFunc(float x, float z) noexcept;
 
+        // 단위 큐브 (−0.5..+0.5, per-face 노멀). 인스턴스 transform.scale 로 크기 조절 → 물리 박스
+        //   장애물/벽의 시각 표현. 한 메시를 여러 인스턴스가 공유(scale 만 다름).
+        std::unique_ptr<Mesh> GenerateUnitCube(Device& device,
+                                               const DirectX::XMFLOAT3& tintColor = { 0.55f, 0.5f, 0.45f });
+
         // Foot IK / character placement 등에서 ground Y 조회 — Generate 와 동일 height func.
         //   별도 함수 — Generate 의 콜백 캐시 없이도 sample 가능.
         inline float SampleDefaultHeight(float x, float z) noexcept { return DefaultHeightFunc(x, z); }

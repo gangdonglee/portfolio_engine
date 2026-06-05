@@ -71,6 +71,45 @@ namespace engine::render::procedural_terrain
         }
     }
 
+    std::unique_ptr<Mesh> GenerateUnitCube(Device& device, const DirectX::XMFLOAT3& tint)
+    {
+        // 6면 × 4정점 = 24 (per-face 노멀). −0.5..+0.5.
+        const DirectX::XMFLOAT3 n[6] = {
+            { 0, 0, 1}, { 0, 0,-1}, { 1, 0, 0}, {-1, 0, 0}, { 0, 1, 0}, { 0,-1, 0} };
+        // 각 면의 4 코너 (CCW, 노멀 기준).
+        const DirectX::XMFLOAT3 faces[6][4] = {
+            {{-0.5f,-0.5f, 0.5f},{ 0.5f,-0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},{-0.5f, 0.5f, 0.5f}}, // +Z
+            {{ 0.5f,-0.5f,-0.5f},{-0.5f,-0.5f,-0.5f},{-0.5f, 0.5f,-0.5f},{ 0.5f, 0.5f,-0.5f}}, // -Z
+            {{ 0.5f,-0.5f, 0.5f},{ 0.5f,-0.5f,-0.5f},{ 0.5f, 0.5f,-0.5f},{ 0.5f, 0.5f, 0.5f}}, // +X
+            {{-0.5f,-0.5f,-0.5f},{-0.5f,-0.5f, 0.5f},{-0.5f, 0.5f, 0.5f},{-0.5f, 0.5f,-0.5f}}, // -X
+            {{-0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f, 0.5f},{ 0.5f, 0.5f,-0.5f},{-0.5f, 0.5f,-0.5f}}, // +Y
+            {{-0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f,-0.5f},{ 0.5f,-0.5f, 0.5f},{-0.5f,-0.5f, 0.5f}}, // -Y
+        };
+        std::vector<Mesh::Vertex> verts;
+        std::vector<uint32>       indices;
+        verts.reserve(24); indices.reserve(36);
+        for (int f = 0; f < 6; ++f)
+        {
+            const uint32 base = static_cast<uint32>(verts.size());
+            for (int k = 0; k < 4; ++k)
+            {
+                Mesh::Vertex v{};
+                v.position = faces[f][k];
+                v.normal   = n[f];
+                v.uv       = { (k == 1 || k == 2) ? 1.0f : 0.0f, (k >= 2) ? 1.0f : 0.0f };
+                v.color    = tint;
+                verts.push_back(v);
+            }
+            indices.push_back(base + 0); indices.push_back(base + 2); indices.push_back(base + 1);
+            indices.push_back(base + 0); indices.push_back(base + 3); indices.push_back(base + 2);
+        }
+        auto mat = std::make_shared<Material>();
+        mat->name = L"Box"; mat->diffuseColor = tint;
+        std::vector<std::vector<uint32>>       subIdx { std::move(indices) };
+        std::vector<std::shared_ptr<Material>> subMats{ mat };
+        return std::make_unique<Mesh>(device, verts.data(), static_cast<uint32>(verts.size()), subIdx, subMats);
+    }
+
     std::unique_ptr<Mesh> Generate(
         Device&                                   device,
         float                                     widthUnits,

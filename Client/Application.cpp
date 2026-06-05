@@ -17,6 +17,7 @@
 #include "render/ImageLoader.h"
 #include "render/PipelineState.h"
 #include "render/ProceduralTerrain.h"
+#include "physics/PhysicsWorld.h"
 #include "render/RootSignature.h"
 #include "render/RenderTexture.h"
 #include "render/RtvDescriptorHeap.h"
@@ -241,8 +242,9 @@ namespace client
         if (m_player)
         {
             const auto& ctrl = m_player->Controller();
-            ImGui::Text("controller: pos.y=%.2f vy=%.2f grounded=%d",
-                        ctrl.Position().y, ctrl.VelocityY(), ctrl.IsGrounded() ? 1 : 0);
+            ImGui::Text("controller: pos=(%.0f,%.1f,%.0f) vy=%.1f grounded=%d",
+                        ctrl.Position().x, ctrl.Position().y, ctrl.Position().z,
+                        ctrl.VelocityY(), ctrl.IsGrounded() ? 1 : 0);
         }
         {
             const auto& fk = m_sceneRuntime->FootIKReadoutRef();
@@ -488,6 +490,29 @@ namespace client
             if (!hasTerrain) { scene.meshes.push_back(MakeTerrainInstance()); }
         }
 
+        // === 물리 장애물 (벽/박스) — 시각 메시(__Box__) + 물리 콜라이더 동일 위치. 충돌 시연용. ===
+        //   center/halfExtent 를 m_obstacles 에 저장 → SceneRuntime 생성 후 물리 콜라이더로 재사용.
+        //   Y 는 절차 지형 높이 기준(부팅 씬 기본). 계단(step)·경사도 박스로 표현.
+        m_obstacles.clear();
+        {
+            using engine::render::procedural_terrain::DefaultHeightFunc;
+            auto addObstacle = [&](float cx, float cz, float hx, float hy, float hz)
+            {
+                const float cy = DefaultHeightFunc(cx, cz) + hy;   // 바닥이 지면에 닿게
+                m_obstacles.push_back({ { cx, cy, cz }, { hx, hy, hz } });
+                engine::scene::MeshInstance box;
+                box.name          = "Obstacle";
+                box.meshAssetPath = "__Box__";
+                box.transform.position = { cx, cy, cz };
+                box.transform.scale    = { 2.0f * hx, 2.0f * hy, 2.0f * hz };   // 단위큐브 → 실제 크기
+                box.roughness = 0.8f; box.metallic = 0.0f;
+                scene.meshes.push_back(std::move(box));
+            };
+            addObstacle(   0.0f, 300.0f, 200.0f, 60.0f, 15.0f);   // 벽
+            addObstacle( 150.0f, 180.0f,  40.0f, 40.0f, 40.0f);   // 박스
+            addObstacle(-150.0f, 220.0f, 120.0f, 20.0f, 60.0f);   // 낮은 단(계단/올라타기)
+        }
+
         // 카메라 — Scene 의 cameraStart 기준.
         m_camera = std::make_unique<engine::render::Camera>();
         m_camera->SetPosition(scene.cameraStart.position);
@@ -522,6 +547,26 @@ namespace client
             m_player->Controller().SetGroundSampler(
                 [sr](float x, float z) { return sr->SampleGround(x, z); });
         }
+
+        // === PhysX 물리 — 지형 heightfield 콜라이더 + 플레이어 캡슐 컨트롤러 ===
+        m_physics = std::make_unique<engine::physics::PhysicsWorld>();
+        if (m_physics->Init())
+        {
+            engine::core::LogInfoA("[physics] PhysX init OK\n");
+            client::SceneRuntime* sr = m_sceneRuntime.get();
+            // 지형 콜라이더 — 시각 지형과 동일 범위/높이 함수(SampleGround)로 heightfield 생성.
+            const float halfExt = sr->TerrainHalfExtent();
+            m_physics->AddTerrain([sr](float x, float z) { return sr->SampleGround(x, z); },
+                                  2.0f * halfExt, 2.0f * halfExt, 193, 193);
+            // 장애물 물리 콜라이더 — 시각 박스 메시와 동일 위치(m_obstacles).
+            for (const auto& [boxCenter, boxHalf] : m_obstacles) { m_physics->AddStaticBox(boxCenter, boxHalf); }
+            // 플레이어 캡슐 — 스폰 발 위치 = terrain(0,0). 반경 30, 직선부 절반높이 55 (총 ~170cm).
+            const float spawnY = sr->SampleGround(0.0f, 0.0f);
+            m_physics->CreateCharacter({ 0.0f, spawnY, 0.0f }, 30.0f, 55.0f);
+            m_player->Controller().SetPosition({ 0.0f, spawnY, 0.0f });
+            m_player->Controller().SetPhysicsWorld(m_physics.get());
+        }
+        else { engine::core::LogInfoA("[physics] PhysX init FAILED\n"); m_physics.reset(); }
 
         // Player 의 transform 바인딩 — AnimatorInstanceTransform() 이 nullptr 면 silent unbound.
         m_player->Bind(m_sceneRuntime->AnimatorInstanceTransform());
@@ -895,6 +940,9 @@ namespace client
             {
                 m_player->Controller().UpdatePhysics(dt);
             }
+            // PhysX 씬 시뮬레이션 (동적 액터용 — 현재 정적+kinematic 컨트롤러라 거의 no-op,
+            //   추후 강체/적 추가 대비). 컨트롤러 move 는 UpdatePhysics 안에서 이미 처리됨.
+            if (m_physics) { m_physics->Step(dt); }
 
             if (engine::scene::Transform* xform = m_sceneRuntime->AnimatorInstanceTransform())
             {

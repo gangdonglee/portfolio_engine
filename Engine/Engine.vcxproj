@@ -65,7 +65,7 @@
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);$(SolutionDir)external\nlohmann_json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);$(SolutionDir)external\nlohmann_json;C:\vcpkg\installed\x64-windows\include\physx;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -81,7 +81,7 @@
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);$(SolutionDir)external\nlohmann_json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Engine;$(FbxSdkInclude);$(SolutionDir)external\nlohmann_json;C:\vcpkg\installed\x64-windows\include\physx;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -115,6 +115,7 @@
     <ClCompile Include="render\DebugRenderer.cpp" />
     <ClCompile Include="render\ProceduralTerrain.cpp" />
     <ClCompile Include="render\HeightMap.cpp" />
+    <ClCompile Include="physics\PhysicsWorld.cpp" />
     <ClCompile Include="render\Texture.cpp" />
     <ClCompile Include="core\HrCheck.cpp" />
     <ClCompile Include="core\Logger.cpp" />
@@ -159,6 +160,7 @@
     <ClInclude Include="render\DebugRenderer.h" />
     <ClInclude Include="render\ProceduralTerrain.h" />
     <ClInclude Include="render\HeightMap.h" />
+    <ClInclude Include="physics\PhysicsWorld.h" />
     <ClInclude Include="render\Texture.h" />
     <ClInclude Include="core\Types.h" />
     <ClInclude Include="scene\Scene.h" />
